@@ -65,6 +65,7 @@
 #include "common/address_obfuscator.h"
 #include "common/metrics.h"
 #include "device/include/interop.h"
+#include "main/shim/shim.h"
 #include "osi/include/alarm.h"
 #include "osi/include/allocation_tracker.h"
 #include "osi/include/log.h"
@@ -81,6 +82,7 @@ using bluetooth::hearing_aid::HearingAidInterface;
 
 bt_callbacks_t* bt_hal_cbacks = NULL;
 bool restricted_mode = false;
+bool single_user_mode = false;
 
 /*******************************************************************************
  *  Externs
@@ -132,8 +134,16 @@ static bool is_profile(const char* p1, const char* p2) {
  *
  ****************************************************************************/
 
-static int init(bt_callbacks_t* callbacks) {
-  LOG_INFO(LOG_TAG, "%s", __func__);
+static int init(bt_callbacks_t* callbacks, bool start_restricted,
+                bool is_single_user_mode) {
+  LOG_INFO(LOG_TAG, "%s: start restricted = %d ; single user = %d", __func__,
+           start_restricted, is_single_user_mode);
+
+  if (bluetooth::shim::is_gd_shim_enabled()) {
+    LOG_INFO(LOG_TAG, "%s Enable Gd bluetooth functionality", __func__);
+  } else {
+    LOG_INFO(LOG_TAG, "%s Preserving legacy bluetooth functionality", __func__);
+  }
 
   if (interface_ready()) return BT_STATUS_DONE;
 
@@ -142,16 +152,14 @@ static int init(bt_callbacks_t* callbacks) {
 #endif
 
   bt_hal_cbacks = callbacks;
+  restricted_mode = start_restricted;
+  single_user_mode = is_single_user_mode;
   stack_manager_get_interface()->init_stack();
   btif_debug_init();
   return BT_STATUS_SUCCESS;
 }
 
-static int enable(bool start_restricted) {
-  LOG_INFO(LOG_TAG, "%s: start restricted = %d", __func__, start_restricted);
-
-  restricted_mode = start_restricted;
-
+static int enable() {
   if (!interface_ready()) return BT_STATUS_NOT_READY;
 
   stack_manager_get_interface()->start_up_stack_async();
@@ -168,6 +176,7 @@ static int disable(void) {
 static void cleanup(void) { stack_manager_get_interface()->clean_up_stack(); }
 
 bool is_restricted_mode() { return restricted_mode; }
+bool is_single_user_mode() { return single_user_mode; }
 
 static int get_adapter_properties(void) {
   /* sanity check */

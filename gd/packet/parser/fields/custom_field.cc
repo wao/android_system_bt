@@ -39,21 +39,30 @@ std::string CustomField::GetDataType() const {
   return type_name_;
 }
 
-void CustomField::GenExtractor(std::ostream& s, Size start_offset, Size end_offset) const {
-  GenBounds(s, start_offset, end_offset, Size());
-  s << " auto subview = GetLittleEndianSubview(field_begin, field_end); ";
-  s << "auto it = subview.begin();";
-  s << "std::vector<" << GetDataType() << "> vec;";
-  s << GetDataType() << "::Parse(vec, it);";
+void CustomField::GenExtractor(std::ostream& s, int, bool) const {
+  s << "auto optional_it = ";
+  s << GetDataType() << "::Parse( " << GetName() << "_ptr, " << GetName() << "_it);";
+  s << "if (optional_it) {";
+  s << GetName() << "_it = *optional_it;";
+  s << "} else {";
+  s << GetName() << "_it = " << GetName() << "_it + " << GetName() << "_it.NumBytesRemaining();";
+  s << GetName() << "_ptr = nullptr;";
+  s << "}";
 }
 
 void CustomField::GenGetter(std::ostream& s, Size start_offset, Size end_offset) const {
-  s << "std::vector<" << GetDataType() << "> Get" << util::UnderscoreToCamelCase(GetName()) << "() const {";
+  s << "std::unique_ptr<" << GetDataType() << "> Get" << util::UnderscoreToCamelCase(GetName()) << "() const {";
   s << "ASSERT(was_validated_);";
   s << "size_t end_index = size();";
+  s << "auto to_bound = begin();";
 
-  GenExtractor(s, start_offset, end_offset);
-  s << "return vec;";
+  int num_leading_bits = GenBounds(s, start_offset, end_offset, GetSize());
+  s << "std::unique_ptr<" << GetDataType() << "> " << GetName() << "_value";
+  s << " = std::make_unique<" << GetDataType() << ">();";
+  s << GetDataType() << "* " << GetName() << "_ptr = " << GetName() << "_value.get();";
+  GenExtractor(s, num_leading_bits, false);
+  s << "if (" << GetName() << "_ptr == nullptr) {" << GetName() << "_value.reset(); }";
+  s << "return " << GetName() << "_value;";
   s << "}\n";
 }
 

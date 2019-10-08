@@ -24,6 +24,7 @@
 #include "common/blocking_queue.h"
 #include "grpc/grpc_event_stream.h"
 #include "hci/cert/api.grpc.pb.h"
+#include "hci/classic_security_manager.h"
 #include "hci/controller.h"
 #include "hci/hci_layer.h"
 #include "hci/hci_packets.h"
@@ -57,6 +58,15 @@ class AclManagerCertService : public AclManagerCert::Service {
     hci_layer_->RegisterEventHandler(EventCode::CONNECTION_REQUEST,
                                      Bind(&AclManagerCertService::on_incoming_connection, common::Unretained(this)),
                                      handler_);
+    hci_layer_->RegisterEventHandler(
+        EventCode::CONNECTION_PACKET_TYPE_CHANGED,
+        Bind(&AclManagerCertService::on_connection_packet_type_changed, common::Unretained(this)), handler_);
+    hci_layer_->RegisterEventHandler(EventCode::QOS_SETUP_COMPLETE,
+                                     Bind(&AclManagerCertService::on_qos_setup_complete, common::Unretained(this)),
+                                     handler_);
+    hci_layer_->RegisterEventHandler(EventCode::ROLE_CHANGE,
+                                     Bind(&AclManagerCertService::on_role_change, common::Unretained(this)), handler_);
+
     controller_->RegisterCompletedAclPacketsCallback(common::Bind([](uint16_t, uint16_t) { /* TODO check */ }),
                                                      handler_);
     acl_queue_end_->RegisterDequeue(handler_,
@@ -125,7 +135,7 @@ class AclManagerCertService : public AclManagerCert::Service {
   void on_incoming_connection(EventPacketView packet) {
     ConnectionRequestView request = ConnectionRequestView::Create(packet);
     ASSERT(request.IsValid());
-    common::Address address = request.GetBdAddr();
+    Address address = request.GetBdAddr();
     if (accepted_devices_.find(address) != accepted_devices_.end()) {
       auto role = AcceptConnectionRequestRole::BECOME_MASTER;  // We prefer to be master
       hci_layer_->EnqueueCommand(AcceptConnectionRequestBuilder::Create(address, role),
@@ -138,14 +148,16 @@ class AclManagerCertService : public AclManagerCert::Service {
     }
   }
 
-  using EventStream = ::bluetooth::grpc::GrpcEventStream<AclData, AclPacketView>;
-
-  ::grpc::Status ReadLocalAddress(::grpc::ServerContext* context, const ::google::protobuf::Empty* request,
-                                  ::bluetooth::facade::BluetoothAddress* response) override {
-    auto address = controller_->GetControllerMacAddress().ToString();
-    response->set_address(address);
-    return ::grpc::Status::OK;
+  void on_connection_packet_type_changed(EventPacketView packet) { /*TODO*/
   }
+
+  void on_qos_setup_complete(EventPacketView packet) { /*TODO*/
+  }
+
+  void on_role_change(EventPacketView packet) { /*TODO*/
+  }
+
+  using EventStream = ::bluetooth::grpc::GrpcEventStream<AclData, AclPacketView>;
 
   ::grpc::Status SetPageScanMode(::grpc::ServerContext* context, const ::bluetooth::hci::cert::PageScanMode* request,
                                  ::google::protobuf::Empty* response) override {
@@ -165,8 +177,8 @@ class AclManagerCertService : public AclManagerCert::Service {
                                              const ::bluetooth::hci::cert::IncomingConnectionPolicy* request,
                                              ::google::protobuf::Empty* response) override {
     std::unique_lock<std::mutex> lock(mutex_);
-    common::Address peer;
-    ASSERT(common::Address::FromString(request->remote().address(), peer));
+    Address peer;
+    ASSERT(Address::FromString(request->remote().address(), peer));
     if (request->accepted()) {
       accepted_devices_.insert(peer);
     } else {
@@ -185,8 +197,8 @@ class AclManagerCertService : public AclManagerCert::Service {
     ClockOffsetValid clock_offset_valid = ClockOffsetValid::INVALID;
     CreateConnectionRoleSwitch allow_role_switch = CreateConnectionRoleSwitch::ALLOW_ROLE_SWITCH;
 
-    common::Address peer;
-    ASSERT(common::Address::FromString(remote->address(), peer));
+    Address peer;
+    ASSERT(Address::FromString(remote->address(), peer));
     std::unique_ptr<CreateConnectionBuilder> packet = CreateConnectionBuilder::Create(
         peer, packet_type, page_scan_repetition_mode, clock_offset, clock_offset_valid, allow_role_switch);
 
@@ -202,8 +214,8 @@ class AclManagerCertService : public AclManagerCert::Service {
   ::grpc::Status Disconnect(::grpc::ServerContext* context, const facade::BluetoothAddress* request,
                             ::google::protobuf::Empty* response) override {
     std::unique_lock<std::mutex> lock(mutex_);
-    common::Address peer;
-    common::Address::FromString(request->address(), peer);
+    Address peer;
+    Address::FromString(request->address(), peer);
     uint16_t handle = find_connected_device_handle_by_address(peer);
     if (handle == kInvalidHandle) {
       return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Invalid address");
@@ -218,8 +230,8 @@ class AclManagerCertService : public AclManagerCert::Service {
 
   ::grpc::Status SendAclData(::grpc::ServerContext* context, const AclData* request,
                              ::google::protobuf::Empty* response) override {
-    common::Address peer;
-    common::Address::FromString(request->remote().address(), peer);
+    Address peer;
+    Address::FromString(request->remote().address(), peer);
     auto handle = find_connected_device_handle_by_address(peer);
     if (handle == kInvalidHandle) {
       return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Invalid address");
@@ -263,12 +275,12 @@ class AclManagerCertService : public AclManagerCert::Service {
   common::BidiQueueEnd<AclPacketBuilder, AclPacketView>* acl_queue_end_;
   os::EnqueueBuffer<AclPacketBuilder> acl_enqueue_buffer_{acl_queue_end_};
   mutable std::mutex mutex_;
-  std::set<common::Address> accepted_devices_;
-  std::map<uint16_t /* handle */, common::Address> connected_devices_;
+  std::set<Address> accepted_devices_;
+  std::map<uint16_t /* handle */, Address> connected_devices_;
 
   constexpr static uint16_t kInvalidHandle = 0xffff;
 
-  uint16_t find_connected_device_handle_by_address(common::Address address) {
+  uint16_t find_connected_device_handle_by_address(Address address) {
     for (auto device : connected_devices_) {
       if (device.second == address) {
         return device.first;
@@ -321,6 +333,7 @@ void AclManagerCertModule::ListDependencies(ModuleList* list) {
   ::bluetooth::grpc::GrpcFacadeModule::ListDependencies(list);
   list->add<Controller>();
   list->add<HciLayer>();
+  list->add<ClassicSecurityManager>();
 }
 
 void AclManagerCertModule::Start() {
