@@ -40,8 +40,6 @@ struct ClassicSecurityManager::impl {
     handler_ = classic_security_manager_.GetHandler();
     hci_layer_->RegisterEventHandler(EventCode::IO_CAPABILITY_REQUEST,
                                      Bind(&impl::on_request_event, common::Unretained(this)), handler_);
-    hci_layer_->RegisterEventHandler(EventCode::AUTHENTICATION_COMPLETE,
-                                     Bind(&impl::on_authentication_complete, common::Unretained(this)), handler_);
     hci_layer_->RegisterEventHandler(EventCode::LINK_KEY_REQUEST,
                                      Bind(&impl::on_request_event, common::Unretained(this)), handler_);
     hci_layer_->RegisterEventHandler(EventCode::PIN_CODE_REQUEST,
@@ -52,7 +50,6 @@ struct ClassicSecurityManager::impl {
 
   void Stop() {
     hci_layer_->UnregisterEventHandler(EventCode::IO_CAPABILITY_REQUEST);
-    hci_layer_->UnregisterEventHandler(EventCode::AUTHENTICATION_COMPLETE);
     handler_ = nullptr;
     hci_layer_ = nullptr;
   }
@@ -160,13 +157,8 @@ struct ClassicSecurityManager::impl {
                                common::BindOnce(&impl::on_command_complete, common::Unretained(this)), handler_);
   }
 
-  void write_stored_link_key(uint8_t num_keys_to_write, Address address, common::LinkKey link_key) {
-    // TODO send multi link key
-    std::array<uint8_t, 16> link_key_array;
-    std::copy(std::begin(link_key.link_key), std::end(link_key.link_key), std::begin(link_key_array));
-
-    std::unique_ptr<WriteStoredLinkKeyBuilder> packet =
-        WriteStoredLinkKeyBuilder::Create(num_keys_to_write, address, link_key_array);
+  void write_stored_link_key(std::vector<KeyAndAddress> keys) {
+    std::unique_ptr<WriteStoredLinkKeyBuilder> packet = WriteStoredLinkKeyBuilder::Create(keys);
     hci_layer_->EnqueueCommand(std::move(packet),
                                common::BindOnce(&impl::on_command_complete, common::Unretained(this)), handler_);
   }
@@ -220,14 +212,6 @@ struct ClassicSecurityManager::impl {
                                common::BindOnce(&impl::on_command_complete, common::Unretained(this)), handler_);
   }
 
-  void authentication_requested(uint16_t connection_handle) {
-    std::unique_ptr<AuthenticationRequestedBuilder> packet = AuthenticationRequestedBuilder::Create(connection_handle);
-    hci_layer_->EnqueueCommand(std::move(packet), common::BindOnce([](CommandStatusView status) {
-                                 LOG_DEBUG("CYDBG AuthenticationRequested command complete");
-                               }),
-                               handler_);
-  }
-
   // TODO remove
   void on_request_event(EventPacketView packet) {
     EventCode event_code = packet.GetEventCode();
@@ -238,11 +222,6 @@ struct ClassicSecurityManager::impl {
   void on_complete_event(EventPacketView packet) {
     EventCode event_code = packet.GetEventCode();
     LOG_DEBUG("receive complete event %d", (uint8_t)event_code);
-  }
-
-  // TODO remove
-  void on_authentication_complete(EventPacketView packet) {
-    LOG_DEBUG("on_authentication_complete");
   }
 
   void on_command_complete(CommandCompleteView status) {
@@ -330,9 +309,8 @@ void ClassicSecurityManager::ReadStoredLinkKey(Address address, ReadStoredLinkKe
   GetHandler()->Post(BindOnce(&impl::read_stored_link_key, common::Unretained(pimpl_.get()), address, read_all_flag));
 }
 
-void ClassicSecurityManager::WriteStoredLinkKey(uint8_t num_keys_to_write, Address address, common::LinkKey link_key) {
-  GetHandler()->Post(
-      BindOnce(&impl::write_stored_link_key, common::Unretained(pimpl_.get()), num_keys_to_write, address, link_key));
+void ClassicSecurityManager::WriteStoredLinkKey(std::vector<KeyAndAddress> keys) {
+  GetHandler()->Post(BindOnce(&impl::write_stored_link_key, common::Unretained(pimpl_.get()), keys));
 }
 
 void ClassicSecurityManager::DeleteStoredLinkKey(Address address, DeleteStoredLinkKeyDeleteAllFlag delete_all_flag) {
@@ -366,10 +344,6 @@ void ClassicSecurityManager::ReadLocalOobExtendedData() {
 
 void ClassicSecurityManager::ReadEncryptionKeySize(uint16_t connection_handle) {
   GetHandler()->Post(BindOnce(&impl::read_encryption_key_size, common::Unretained(pimpl_.get()), connection_handle));
-}
-
-void ClassicSecurityManager::AuthenticationRequested(uint16_t connection_handle) {
-  GetHandler()->Post(BindOnce(&impl::authentication_requested, common::Unretained(pimpl_.get()), connection_handle));
 }
 
 void ClassicSecurityManager::ListDependencies(ModuleList* list) {

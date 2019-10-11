@@ -34,11 +34,13 @@ class PayloadField : public PacketField {
 
   virtual std::string GetDataType() const override;
 
-  virtual void GenExtractor(std::ostream& s, Size start_offset, Size end_offset) const override;
+  virtual void GenExtractor(std::ostream& s, int num_leading_bits, bool for_struct) const override;
 
   virtual void GenGetter(std::ostream& s, Size start_offset, Size end_offset) const override;
 
   virtual bool GenBuilderParameter(std::ostream& s) const override;
+
+  virtual void GenBuilderParameterFromView(std::ostream& s) const override;
 
   virtual bool HasParameterValidator() const override;
 

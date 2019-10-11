@@ -58,6 +58,15 @@ class AclManagerCertService : public AclManagerCert::Service {
     hci_layer_->RegisterEventHandler(EventCode::CONNECTION_REQUEST,
                                      Bind(&AclManagerCertService::on_incoming_connection, common::Unretained(this)),
                                      handler_);
+    hci_layer_->RegisterEventHandler(
+        EventCode::CONNECTION_PACKET_TYPE_CHANGED,
+        Bind(&AclManagerCertService::on_connection_packet_type_changed, common::Unretained(this)), handler_);
+    hci_layer_->RegisterEventHandler(EventCode::QOS_SETUP_COMPLETE,
+                                     Bind(&AclManagerCertService::on_qos_setup_complete, common::Unretained(this)),
+                                     handler_);
+    hci_layer_->RegisterEventHandler(EventCode::ROLE_CHANGE,
+                                     Bind(&AclManagerCertService::on_role_change, common::Unretained(this)), handler_);
+
     controller_->RegisterCompletedAclPacketsCallback(common::Bind([](uint16_t, uint16_t) { /* TODO check */ }),
                                                      handler_);
     acl_queue_end_->RegisterDequeue(handler_,
@@ -139,14 +148,16 @@ class AclManagerCertService : public AclManagerCert::Service {
     }
   }
 
-  using EventStream = ::bluetooth::grpc::GrpcEventStream<AclData, AclPacketView>;
-
-  ::grpc::Status ReadLocalAddress(::grpc::ServerContext* context, const ::google::protobuf::Empty* request,
-                                  ::bluetooth::facade::BluetoothAddress* response) override {
-    auto address = controller_->GetControllerMacAddress().ToString();
-    response->set_address(address);
-    return ::grpc::Status::OK;
+  void on_connection_packet_type_changed(EventPacketView packet) { /*TODO*/
   }
+
+  void on_qos_setup_complete(EventPacketView packet) { /*TODO*/
+  }
+
+  void on_role_change(EventPacketView packet) { /*TODO*/
+  }
+
+  using EventStream = ::bluetooth::grpc::GrpcEventStream<AclData, AclPacketView>;
 
   ::grpc::Status SetPageScanMode(::grpc::ServerContext* context, const ::bluetooth::hci::cert::PageScanMode* request,
                                  ::google::protobuf::Empty* response) override {

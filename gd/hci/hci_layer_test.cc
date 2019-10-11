@@ -158,6 +158,26 @@ class DependsOnHci : public Module {
                          GetHandler());
   }
 
+  void SendSecurityCommandExpectingComplete(std::unique_ptr<SecurityCommandBuilder> command) {
+    if (security_interface_ == nullptr) {
+      security_interface_ = hci_->GetSecurityInterface(
+          common::Bind(&DependsOnHci::handle_event<EventPacketView>, common::Unretained(this)), GetHandler());
+    }
+    hci_->EnqueueCommand(std::move(command),
+                         common::Bind(&DependsOnHci::handle_event<CommandCompleteView>, common::Unretained(this)),
+                         GetHandler());
+  }
+
+  void SendLeSecurityCommandExpectingComplete(std::unique_ptr<LeSecurityCommandBuilder> command) {
+    if (le_security_interface_ == nullptr) {
+      le_security_interface_ = hci_->GetLeSecurityInterface(
+          common::Bind(&DependsOnHci::handle_event<LeMetaEventView>, common::Unretained(this)), GetHandler());
+    }
+    hci_->EnqueueCommand(std::move(command),
+                         common::Bind(&DependsOnHci::handle_event<CommandCompleteView>, common::Unretained(this)),
+                         GetHandler());
+  }
+
   void SendAclData(std::unique_ptr<AclPacketBuilder> acl) {
     outgoing_acl_.push(std::move(acl));
     auto queue_end = hci_->GetAclQueueEnd();
@@ -216,6 +236,8 @@ class DependsOnHci : public Module {
 
  private:
   HciLayer* hci_ = nullptr;
+  const SecurityInterface* security_interface_;
+  const LeSecurityInterface* le_security_interface_;
   std::list<EventPacketView> incoming_events_;
   std::list<AclPacketView> incoming_acl_packets_;
   std::unique_ptr<std::promise<void>> event_promise_;
@@ -318,7 +340,7 @@ TEST_F(HciTest, leMetaEvent) {
   ErrorCode status = ErrorCode::SUCCESS;
   uint16_t handle = 0x123;
   Role role = Role::MASTER;
-  PeerAddressType peer_address_type = PeerAddressType::RANDOM_DEVICE_OR_IDENTITY_ADDRESS;
+  AddressType peer_address_type = AddressType::PUBLIC_DEVICE_ADDRESS;
   Address peer_address = Address::kAny;
   uint16_t conn_interval = 0x0ABC;
   uint16_t conn_latency = 0x0123;
@@ -362,13 +384,14 @@ TEST_F(HciTest, noOpCredits) {
 
   // Send the response event
   ErrorCode error_code = ErrorCode::SUCCESS;
-  HciVersion hci_version = HciVersion::V_5_0;
-  uint16_t hci_subversion = 0x1234;
-  LmpVersion lmp_version = LmpVersion::V_4_2;
-  uint16_t manufacturer_name = 0xBAD;
-  uint16_t lmp_subversion = 0x5678;
-  hal->callbacks->hciEventReceived(GetPacketBytes(ReadLocalVersionInformationCompleteBuilder::Create(
-      num_packets, error_code, hci_version, hci_subversion, lmp_version, manufacturer_name, lmp_subversion)));
+  LocalVersionInformation local_version_information;
+  local_version_information.hci_version_ = HciVersion::V_5_0;
+  local_version_information.hci_revision_ = 0x1234;
+  local_version_information.lmp_version_ = LmpVersion::V_4_2;
+  local_version_information.manufacturer_name_ = 0xBAD;
+  local_version_information.lmp_subversion_ = 0x5678;
+  hal->callbacks->hciEventReceived(GetPacketBytes(
+      ReadLocalVersionInformationCompleteBuilder::Create(num_packets, error_code, local_version_information)));
 
   // Wait for the event
   auto event_status = event_future.wait_for(kTimeout);
@@ -408,13 +431,14 @@ TEST_F(HciTest, creditsTest) {
   // Send the response event
   uint8_t num_packets = 1;
   ErrorCode error_code = ErrorCode::SUCCESS;
-  HciVersion hci_version = HciVersion::V_5_0;
-  uint16_t hci_subversion = 0x1234;
-  LmpVersion lmp_version = LmpVersion::V_4_2;
-  uint16_t manufacturer_name = 0xBAD;
-  uint16_t lmp_subversion = 0x5678;
-  hal->callbacks->hciEventReceived(GetPacketBytes(ReadLocalVersionInformationCompleteBuilder::Create(
-      num_packets, error_code, hci_version, hci_subversion, lmp_version, manufacturer_name, lmp_subversion)));
+  LocalVersionInformation local_version_information;
+  local_version_information.hci_version_ = HciVersion::V_5_0;
+  local_version_information.hci_revision_ = 0x1234;
+  local_version_information.lmp_version_ = LmpVersion::V_4_2;
+  local_version_information.manufacturer_name_ = 0xBAD;
+  local_version_information.lmp_subversion_ = 0x5678;
+  hal->callbacks->hciEventReceived(GetPacketBytes(
+      ReadLocalVersionInformationCompleteBuilder::Create(num_packets, error_code, local_version_information)));
 
   // Wait for the event
   auto event_status = event_future.wait_for(kTimeout);
@@ -476,6 +500,66 @@ TEST_F(HciTest, creditsTest) {
   event = upper->GetReceivedEvent();
   ASSERT(ReadLocalSupportedFeaturesCompleteView::Create(CommandCompleteView::Create(EventPacketView::Create(event)))
              .IsValid());
+}
+
+TEST_F(HciTest, leSecurityInterfaceTest) {
+  // Send LeRand to the controller
+  auto command_future = hal->GetSentCommandFuture();
+  upper->SendLeSecurityCommandExpectingComplete(LeRandBuilder::Create());
+
+  auto command_sent_status = command_future.wait_for(kTimeout);
+  ASSERT_EQ(command_sent_status, std::future_status::ready);
+
+  // Check the command
+  auto sent_command = hal->GetSentCommand();
+  ASSERT_LT(0, sent_command.size());
+  LeRandView view = LeRandView::Create(LeSecurityCommandView::Create(CommandPacketView::Create(sent_command)));
+  ASSERT_TRUE(view.IsValid());
+
+  // Send a Command Complete to the host
+  auto event_future = upper->GetReceivedEventFuture();
+  uint8_t num_packets = 1;
+  ErrorCode status = ErrorCode::SUCCESS;
+  uint64_t rand = 0x0123456789abcdef;
+  hal->callbacks->hciEventReceived(GetPacketBytes(LeRandCompleteBuilder::Create(num_packets, status, rand)));
+
+  // Verify the event
+  auto event_status = event_future.wait_for(kTimeout);
+  ASSERT_EQ(event_status, std::future_status::ready);
+  auto event = upper->GetReceivedEvent();
+  ASSERT_TRUE(event.IsValid());
+  ASSERT_EQ(EventCode::COMMAND_COMPLETE, event.GetEventCode());
+  ASSERT_TRUE(LeRandCompleteView::Create(CommandCompleteView::Create(event)).IsValid());
+}
+
+TEST_F(HciTest, securityInterfacesTest) {
+  // Send WriteSimplePairingMode to the controller
+  auto command_future = hal->GetSentCommandFuture();
+  Enable enable = Enable::ENABLED;
+  upper->SendSecurityCommandExpectingComplete(WriteSimplePairingModeBuilder::Create(enable));
+
+  auto command_sent_status = command_future.wait_for(kTimeout);
+  ASSERT_EQ(command_sent_status, std::future_status::ready);
+
+  // Check the command
+  auto sent_command = hal->GetSentCommand();
+  ASSERT_LT(0, sent_command.size());
+  auto view = WriteSimplePairingModeView::Create(SecurityCommandView::Create(CommandPacketView::Create(sent_command)));
+  ASSERT_TRUE(view.IsValid());
+
+  // Send a Command Complete to the host
+  auto event_future = upper->GetReceivedEventFuture();
+  uint8_t num_packets = 1;
+  ErrorCode status = ErrorCode::SUCCESS;
+  hal->callbacks->hciEventReceived(GetPacketBytes(WriteSimplePairingModeCompleteBuilder::Create(num_packets, status)));
+
+  // Verify the event
+  auto event_status = event_future.wait_for(kTimeout);
+  ASSERT_EQ(event_status, std::future_status::ready);
+  auto event = upper->GetReceivedEvent();
+  ASSERT_TRUE(event.IsValid());
+  ASSERT_EQ(EventCode::COMMAND_COMPLETE, event.GetEventCode());
+  ASSERT_TRUE(WriteSimplePairingModeCompleteView::Create(CommandCompleteView::Create(event)).IsValid());
 }
 
 TEST_F(HciTest, createConnectionTest) {

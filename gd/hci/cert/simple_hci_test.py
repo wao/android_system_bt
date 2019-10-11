@@ -57,9 +57,9 @@ class SimpleHciTest(GdBaseTestClass):
             hci_cert_pb2.PageScanMode(enabled=True)
         )
 
-        dut_address = self.device_under_test.hci.ReadLocalAddress(empty_pb2.Empty()).address
+        dut_address = self.device_under_test.controller_read_only_property.ReadLocalAddress(empty_pb2.Empty()).address
         self.device_under_test.address = dut_address
-        cert_address = self.cert_device.hci.ReadLocalAddress(empty_pb2.Empty()).address
+        cert_address = self.cert_device.controller_read_only_property.ReadLocalAddress(empty_pb2.Empty()).address
         self.cert_device.address = cert_address
 
         self.dut_connection_complete_stream = self.device_under_test.hci.connection_complete_stream
@@ -158,10 +158,7 @@ class SimpleHciTest(GdBaseTestClass):
         self._connect_from_dut()
         self.dut_command_complete_stream.subscribe()
 
-        message = hci_facade_pb2.AuthenticationRequestedMessage(
-            connection_handle=self.connection_handle
-        )
-        self.device_under_test.hci_classic_security.AuthenticationRequested(message)
+        self.device_under_test.hci.AuthenticationRequested(self.cert_address)
 
         # Link request
         self.device_under_test.hci_classic_security.LinkKeyRequestNegativeReply(self.cert_address)
@@ -335,4 +332,15 @@ class SimpleHciTest(GdBaseTestClass):
         )
 
         self.dut_command_complete_stream.unsubscribe()
+        self._disconnect_from_dut()
+
+    def test_interal_hci_command(self):
+        self._connect_from_dut()
+        self.device_under_test.hci.TestInternalHciCommands(empty_pb2.Empty())
+        self.device_under_test.hci.TestInternalHciLeCommands(empty_pb2.Empty())
+        self._disconnect_from_dut()
+
+    def test_classic_connection_management_command(self):
+        self._connect_from_dut()
+        self.device_under_test.hci.TestClassicConnectionManagementCommands(self.cert_address)
         self._disconnect_from_dut()

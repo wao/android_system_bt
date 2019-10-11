@@ -19,7 +19,7 @@
 
 const std::string StructField::kFieldType = "StructField";
 
-StructField::StructField(std::string name, std::string type_name, int size, ParseLocation loc)
+StructField::StructField(std::string name, std::string type_name, Size size, ParseLocation loc)
     : PacketField(name, loc), type_name_(type_name), size_(size) {}
 
 const std::string& StructField::GetFieldType() const {
@@ -31,45 +31,30 @@ Size StructField::GetSize() const {
 }
 
 Size StructField::GetBuilderSize() const {
-  if (size_ != -1) {
-    return size_;
-  } else {
-    std::string ret = "(" + GetName() + "_.size() * 8) ";
-    return ret;
-  }
+  std::string ret = "(" + GetName() + "_.size() * 8)";
+  return ret;
 }
 
 std::string StructField::GetDataType() const {
   return type_name_;
 }
 
-void StructField::GenExtractor(std::ostream& s, Size start_offset, Size end_offset) const {
-  if (size_ != -1) {
-    GenBounds(s, start_offset, end_offset, Size(size_));
-  } else {
-    GenBounds(s, start_offset, end_offset, Size());
-  }
-  s << " auto subview = GetLittleEndianSubview(field_begin, field_end); ";
-  s << "auto it = subview.begin();";
-  s << "std::vector<" << GetDataType() << "> vec;";
-  s << GetDataType() << "::Parse(vec, it);";
+void StructField::GenExtractor(std::ostream& s, int, bool) const {
+  s << GetName() << "_it = ";
+  s << GetDataType() << "::Parse(" << GetName() << "_ptr, " << GetName() << "_it);";
 }
 
 void StructField::GenGetter(std::ostream& s, Size start_offset, Size end_offset) const {
-  if (size_ != -1) {
-    s << GetDataType() << " Get" << util::UnderscoreToCamelCase(GetName()) << "() const {";
-  } else {
-    s << "std::vector<" << GetDataType() << "> Get" << util::UnderscoreToCamelCase(GetName()) << "() const {";
-  }
+  s << GetDataType() << " Get" << util::UnderscoreToCamelCase(GetName()) << "() const {";
   s << "ASSERT(was_validated_);";
   s << "size_t end_index = size();";
-  GenExtractor(s, start_offset, end_offset);
+  s << "auto to_bound = begin();";
+  int num_leading_bits = GenBounds(s, start_offset, end_offset, GetSize());
+  s << GetDataType() << " " << GetName() << "_value;";
+  s << GetDataType() << "* " << GetName() << "_ptr = &" << GetName() << "_value;";
+  GenExtractor(s, num_leading_bits, false);
 
-  if (size_ != -1) {
-    s << "return vec[0];";
-  } else {
-    s << "return vec;";
-  }
+  s << "return " << GetName() << "_value;";
   s << "}\n";
 }
 

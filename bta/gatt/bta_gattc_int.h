@@ -71,9 +71,9 @@ typedef uint16_t tBTA_GATTC_INT_EVT;
 #define BTA_GATTC_CL_MAX 32
 #endif
 
-/* max known devices GATTC can support */
+/* max known devices GATTC can support in Bluetooth spec */
 #ifndef BTA_GATTC_KNOWN_SR_MAX
-#define BTA_GATTC_KNOWN_SR_MAX 10
+#define BTA_GATTC_KNOWN_SR_MAX 255
 #endif
 
 #define BTA_GATTC_CONN_MAX GATT_MAX_PHY_CHANNEL
@@ -426,8 +426,7 @@ extern tGATT_STATUS bta_gattc_discover_pri_service(uint16_t conn_id,
                                                    uint8_t disc_type);
 extern void bta_gattc_search_service(tBTA_GATTC_CLCB* p_clcb,
                                      bluetooth::Uuid* p_uuid);
-extern const std::vector<gatt::Service>* bta_gattc_get_services(
-    uint16_t conn_id);
+extern const std::list<gatt::Service>* bta_gattc_get_services(uint16_t conn_id);
 extern const gatt::Service* bta_gattc_get_service_for_handle(uint16_t conn_id,
                                                              uint16_t handle);
 const gatt::Characteristic* bta_gattc_get_characteristic_srcb(
