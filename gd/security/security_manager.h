@@ -15,26 +15,28 @@
  *  limitations under the License.
  *
  ******************************************************************************/
+
 #pragma once
 
-#include <array>
+#include "security/internal/security_manager_impl.h"
 
 namespace bluetooth {
-namespace smp {
+namespace security {
 
-struct EcdhPublicKey {
-  std::array<uint8_t, 32> x;
-  std::array<uint8_t, 32> y;
+class SecurityManager {
+ public:
+  // TODO: put SMP API methods here
+
+  friend class SecurityModule;
+
+ private:
+  SecurityManager(os::Handler* security_handler, internal::SecurityManagerImpl* security_manager_impl)
+      : security_handler_(security_handler), security_manager_impl_(security_manager_impl) {}
+
+  os::Handler* security_handler_ = nullptr;
+  internal::SecurityManagerImpl* security_manager_impl_;
+  DISALLOW_COPY_AND_ASSIGN(SecurityManager);
 };
 
-/* this generates private and public Eliptic Curve Diffie Helman keys */
-std::pair<std::array<uint8_t, 32>, EcdhPublicKey> GenerateECDHKeyPair();
-
-/* This function validates that the given public key (point) lays on the special
- * Bluetooth curve */
-bool ValidateECDHPoint(EcdhPublicKey pk);
-
-std::array<uint8_t, 32> ComputeDHKey(std::array<uint8_t, 32> my_private_key, EcdhPublicKey remote_public_key);
-
-}  // namespace smp
+}  // namespace security
 }  // namespace bluetooth

@@ -549,6 +549,7 @@ packet ConnectionManagementCommand : CommandPacket { _payload_, }
 packet SecurityCommand : CommandPacket { _payload_, }
 packet ScoConnectionCommand : CommandPacket { _payload_, }
 packet LeAdvertisingCommand : CommandPacket { _payload_, }
+packet LeScanningCommand : CommandPacket { _payload_, }
 packet LeConnectionManagementCommand : CommandPacket { _payload_, }
 packet LeSecurityCommand : CommandPacket { _payload_, }
 packet VendorCommand : CommandPacket { _payload_, }
@@ -728,7 +729,11 @@ packet InquiryCancelComplete : CommandComplete (command_op_code = INQUIRY_CANCEL
 }
 
 packet PeriodicInquiryMode : DiscoveryCommand (op_code = PERIODIC_INQUIRY_MODE) {
-  _payload_,  // placeholder (unimplemented)
+  max_period_length : 16, // Range 0x0003 to 0xffff (times 1.28s)
+  min_period_length : 16, // Range 0x0002 to 0xfffe (times 1.28s)
+  lap : Lap,
+  inquiry_length : 8, // 0x1 - 0x30 (times 1.28s)
+  num_responses : 8, // 0x00 unlimited
 }
 
 packet PeriodicInquiryModeComplete : CommandComplete (command_op_code = PERIODIC_INQUIRY_MODE) {
@@ -1445,7 +1450,11 @@ packet ReadPageTimeoutComplete : CommandComplete (command_op_code = READ_PAGE_TI
 }
 
 packet WritePageTimeout : DiscoveryCommand (op_code = WRITE_PAGE_TIMEOUT) {
-  _payload_,  // placeholder (unimplemented)
+  page_timeout : 16,
+}
+
+packet WritePageTimeoutComplete : CommandComplete (command_op_code = WRITE_PAGE_TIMEOUT) {
+  status : ErrorCode,
 }
 
 enum ScanEnable : 8 {
@@ -2286,7 +2295,7 @@ enum LeSetScanningFilterPolicy : 8 {
   WHITE_LIST_AND_INITIATORS_IDENTITY = 0x03,
 }
 
-packet LeSetScanParameters : LeAdvertisingCommand (op_code = LE_SET_SCAN_PARAMETERS) {
+packet LeSetScanParameters : LeScanningCommand (op_code = LE_SET_SCAN_PARAMETERS) {
   le_scan_type : LeScanType,
   le_scan_interval : 16, // 0x0004-0x4000 Default 0x10 (10ms)
   le_scan_window : 16, // Default 0x10 (10ms)
@@ -2298,7 +2307,7 @@ packet LeSetScanParametersComplete : CommandComplete (command_op_code = LE_SET_S
   status : ErrorCode,
 }
 
-packet LeSetScanEnable : LeAdvertisingCommand (op_code = LE_SET_SCAN_ENABLE) {
+packet LeSetScanEnable : LeScanningCommand (op_code = LE_SET_SCAN_ENABLE) {
   le_scan_enable : Enable,
   filter_duplicates : Enable,
 }

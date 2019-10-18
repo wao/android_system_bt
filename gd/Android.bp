@@ -109,6 +109,7 @@ cc_library {
         ":BluetoothHalSources",
         ":BluetoothHciSources",
         ":BluetoothL2capSources",
+        ":BluetoothNeighborSources",
         ":BluetoothPacketSources",
         ":BluetoothShimSources",
         ":BluetoothSmpSources",
@@ -246,6 +247,7 @@ cc_test {
         ":BluetoothCryptoToolboxTestSources",
         ":BluetoothHciTestSources",
         ":BluetoothL2capTestSources",
+        ":BluetoothNeighborTestSources",
         ":BluetoothPacketTestSources",
         ":BluetoothSmpTestSources",
     ],
@@ -310,12 +312,12 @@ genrule {
     srcs: [
         "hci/hci_packets.pdl",
         "l2cap/l2cap_packets.pdl",
-        "smp/smp_packets.pdl",
+        "security/smp_packets.pdl",
     ],
     out: [
         "hci/hci_packets.h",
         "l2cap/l2cap_packets.h",
-        "smp/smp_packets.h",
+        "security/smp_packets.h",
     ],
 }
 
