@@ -17,31 +17,28 @@
 #pragma once
 
 #include <cstdint>
+#include <forward_list>
+#include <iterator>
+#include <memory>
+#include <vector>
 
-#include "packets/link_layer/link_layer_packet_view.h"
-#include "packets/packet_view.h"
+#include "packet/base_packet_builder.h"
+#include "packet/raw_builder.h"
 
-namespace test_vendor_lib {
-namespace packets {
+namespace bluetooth {
+namespace hci {
 
-class PageRejectView : public PacketView<true> {
+class AclFragmenter {
  public:
-  PageRejectView(const PageRejectView&) = default;
-  virtual ~PageRejectView() = default;
+  AclFragmenter(size_t mtu, std::unique_ptr<packet::BasePacketBuilder> input);
+  virtual ~AclFragmenter() = default;
 
-  static PageRejectView GetPageReject(const LinkLayerPacketView& view) {
-    ASSERT(view.GetType() == Link::PacketType::PAGE_REJECT);
-    return PageRejectView(view.GetPayload());
-  }
-
-  uint8_t GetReason() {
-    return at(0);
-  }
+  std::vector<std::unique_ptr<packet::RawBuilder>> GetFragments();
 
  private:
-  PageRejectView() = delete;
-  PageRejectView(const PacketView<true>& view) : PacketView(view) {}
+  size_t mtu_;
+  std::unique_ptr<packet::BasePacketBuilder> packet_;
 };
 
-}  // namespace packets
-}  // namespace test_vendor_lib
+}  // namespace hci
+}  // namespace bluetooth

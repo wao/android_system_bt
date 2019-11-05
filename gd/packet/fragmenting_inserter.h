@@ -17,34 +17,30 @@
 #pragma once
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
+#include <vector>
 
-#include "packets/packet_builder.h"
+#include "packet/bit_inserter.h"
+#include "packet/raw_builder.h"
 
-namespace test_vendor_lib {
-namespace packets {
+namespace bluetooth {
+namespace packet {
 
-class PageRejectBuilder : public PacketBuilder<true> {
+class FragmentingInserter : public BitInserter {
  public:
-  virtual ~PageRejectBuilder() = default;
+  FragmentingInserter(size_t mtu, std::back_insert_iterator<std::vector<std::unique_ptr<RawBuilder>>> iterator);
 
-  static std::unique_ptr<PageRejectBuilder> Create(uint8_t reason) {
-    return std::unique_ptr<PageRejectBuilder>(new PageRejectBuilder(reason));
-  }
+  void insert_bits(uint8_t byte, size_t num_bits) override;
 
-  virtual size_t size() const override {
-    return sizeof(reason_);
-  }
+  void finalize();
 
  protected:
-  virtual void Serialize(std::back_insert_iterator<std::vector<uint8_t>> it) const override {
-    insert(reason_, it);
-  }
-
- private:
-  explicit PageRejectBuilder(uint8_t reason) : reason_(reason) {}
-  uint8_t reason_;
+  std::vector<uint8_t> to_construct_bit_inserter_;
+  size_t mtu_;
+  std::unique_ptr<RawBuilder> curr_packet_;
+  std::back_insert_iterator<std::vector<std::unique_ptr<RawBuilder>>> iterator_;
 };
 
-}  // namespace packets
-}  // namespace test_vendor_lib
+}  // namespace packet
+}  // namespace bluetooth
