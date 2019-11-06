@@ -34,6 +34,26 @@ bluetooth::shim::IController* bluetooth::shim::GetController() {
   return GetGabeldorscheStack()->GetController();
 }
 
+bluetooth::shim::IConnectability* bluetooth::shim::GetConnectability() {
+  return GetGabeldorscheStack()->GetConnectability();
+}
+
+bluetooth::shim::IDiscoverability* bluetooth::shim::GetDiscoverability() {
+  return GetGabeldorscheStack()->GetDiscoverability();
+}
+
+bluetooth::shim::IInquiry* bluetooth::shim::GetInquiry() {
+  return GetGabeldorscheStack()->GetInquiry();
+}
+
 bluetooth::shim::IHciLayer* bluetooth::shim::GetHciLayer() {
   return GetGabeldorscheStack()->GetHciLayer();
+}
+
+bluetooth::shim::IL2cap* bluetooth::shim::GetL2cap() {
+  return GetGabeldorscheStack()->GetL2cap();
+}
+
+bluetooth::shim::IPage* bluetooth::shim::GetPage() {
+  return GetGabeldorscheStack()->GetPage();
 }

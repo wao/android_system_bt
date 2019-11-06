@@ -28,7 +28,6 @@ cc_defaults {
         "-DLOG_NDEBUG=1",
         "-DGOOGLE_PROTOBUF_NO_RTTI",
         "-Wno-unused-parameter",
-        "-Wno-implicit-fallthrough",
         "-Wno-unused-result",
     ],
     conlyflags: [
@@ -109,9 +108,10 @@ cc_library {
         ":BluetoothHalSources",
         ":BluetoothHciSources",
         ":BluetoothL2capSources",
+        ":BluetoothNeighborSources",
         ":BluetoothPacketSources",
         ":BluetoothShimSources",
-        ":BluetoothSmpSources",
+        ":BluetoothSecuritySources",
     ],
     generated_headers: [
         "BluetoothGeneratedPackets_h",
@@ -246,8 +246,10 @@ cc_test {
         ":BluetoothCryptoToolboxTestSources",
         ":BluetoothHciTestSources",
         ":BluetoothL2capTestSources",
+        ":BluetoothNeighborTestSources",
         ":BluetoothPacketTestSources",
-        ":BluetoothSmpTestSources",
+        ":BluetoothSecurityTestSources",
+        ":BluetoothShimTestSources",
     ],
     generated_headers: [
         "BluetoothGeneratedPackets_h",
@@ -283,6 +285,35 @@ cc_test {
         address: true,
         cfi: true,
     },
+}
+
+cc_fuzz {
+  name: "bluetooth_gd_fuzz_test",
+  defaults: ["gd_defaults"],
+  srcs: [
+    "fuzz_test.cc",
+    ":BluetoothHciFuzzTestSources",
+    ":BluetoothL2capFuzzTestSources",
+  ],
+  static_libs: [
+    "libbluetooth_gd",
+    "libchrome",
+    "libgmock",
+    "libgtest",
+  ],
+  host_supported: true,
+  generated_headers: [
+    "BluetoothGeneratedPackets_h",
+  ],
+  target: {
+    android: {
+        shared_libs: [
+            "android.hardware.bluetooth@1.0",
+            "libhidlbase",
+            "libutils",
+        ],
+    },
+  },
 }
 
 cc_benchmark {

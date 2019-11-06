@@ -305,7 +305,7 @@ class AclManagerNoCallbacksTest : public ::testing::Test {
         connection_promise_.reset();
       }
     }
-    MOCK_METHOD2(OnConnectFail, void(Address, ErrorCode reason));
+    MOCK_METHOD(void, OnConnectFail, (Address, ErrorCode reason), (override));
 
     std::list<std::shared_ptr<AclConnection>> connections_;
     std::unique_ptr<std::promise<void>> connection_promise_;
@@ -313,14 +313,14 @@ class AclManagerNoCallbacksTest : public ::testing::Test {
 
   class MockLeConnectionCallbacks : public LeConnectionCallbacks {
    public:
-    void OnLeConnectSuccess(std::unique_ptr<AclConnection> connection) override {
+    void OnLeConnectSuccess(AddressWithType address_with_type, std::unique_ptr<AclConnection> connection) override {
       le_connections_.push_back(std::move(connection));
       if (le_connection_promise_ != nullptr) {
         le_connection_promise_->set_value();
         le_connection_promise_.reset();
       }
     }
-    MOCK_METHOD3(OnLeConnectFail, void(Address, AddressType, ErrorCode reason));
+    MOCK_METHOD(void, OnLeConnectFail, (AddressWithType, ErrorCode reason), (override));
 
     std::list<std::shared_ptr<AclConnection>> le_connections_;
     std::unique_ptr<std::promise<void>> le_connection_promise_;
@@ -328,9 +328,9 @@ class AclManagerNoCallbacksTest : public ::testing::Test {
 
   class MockAclManagerCallbacks : public AclManagerCallbacks {
    public:
-    MOCK_METHOD2(OnMasterLinkKeyComplete, void(uint16_t connection_handle, KeyFlag key_flag));
-    MOCK_METHOD2(OnRoleChange, void(Address bd_addr, Role new_role));
-    MOCK_METHOD1(OnReadDefaultLinkPolicySettingsComplete, void(uint16_t default_link_policy_settings));
+    MOCK_METHOD(void, OnMasterLinkKeyComplete, (uint16_t connection_handle, KeyFlag key_flag), (override));
+    MOCK_METHOD(void, OnRoleChange, (Address bd_addr, Role new_role), (override));
+    MOCK_METHOD(void, OnReadDefaultLinkPolicySettingsComplete, (uint16_t default_link_policy_settings), (override));
   } mock_acl_manager_callbacks_;
 };
 
@@ -463,7 +463,8 @@ TEST_F(AclManagerTest, invoke_registered_callback_connection_complete_fail) {
 }
 
 TEST_F(AclManagerTest, invoke_registered_callback_le_connection_complete_success) {
-  acl_manager_->CreateLeConnection(remote, AddressType::PUBLIC_DEVICE_ADDRESS);
+  AddressWithType remote_with_type(remote, AddressType::PUBLIC_DEVICE_ADDRESS);
+  acl_manager_->CreateLeConnection(remote_with_type);
 
   auto packet = test_hci_layer_->GetCommandPacket(OpCode::LE_CREATE_CONNECTION);
   auto le_connection_management_command_view = LeConnectionManagementCommandView::Create(packet);
@@ -486,7 +487,8 @@ TEST_F(AclManagerTest, invoke_registered_callback_le_connection_complete_success
 }
 
 TEST_F(AclManagerTest, invoke_registered_callback_le_connection_complete_fail) {
-  acl_manager_->CreateLeConnection(remote, AddressType::PUBLIC_DEVICE_ADDRESS);
+  AddressWithType remote_with_type(remote, AddressType::PUBLIC_DEVICE_ADDRESS);
+  acl_manager_->CreateLeConnection(remote_with_type);
 
   auto packet = test_hci_layer_->GetCommandPacket(OpCode::LE_CREATE_CONNECTION);
   auto le_connection_management_command_view = LeConnectionManagementCommandView::Create(packet);
@@ -495,8 +497,8 @@ TEST_F(AclManagerTest, invoke_registered_callback_le_connection_complete_fail) {
   EXPECT_EQ(command_view.GetPeerAddress(), remote);
   EXPECT_EQ(command_view.GetPeerAddressType(), AddressType::PUBLIC_DEVICE_ADDRESS);
 
-  EXPECT_CALL(mock_le_connection_callbacks_, OnLeConnectFail(remote, AddressType::PUBLIC_DEVICE_ADDRESS,
-                                                             ErrorCode::CONNECTION_REJECTED_LIMITED_RESOURCES));
+  EXPECT_CALL(mock_le_connection_callbacks_,
+              OnLeConnectFail(remote_with_type, ErrorCode::CONNECTION_REJECTED_LIMITED_RESOURCES));
   test_hci_layer_->IncomingLeMetaEvent(LeConnectionCompleteBuilder::Create(
       ErrorCode::CONNECTION_REJECTED_LIMITED_RESOURCES, 0x123, Role::SLAVE, AddressType::PUBLIC_DEVICE_ADDRESS, remote,
       0x0100, 0x0010, 0x0011, MasterClockAccuracy::PPM_30));
@@ -674,17 +676,6 @@ TEST_F(AclManagerTest, acl_send_data_credits) {
   connection->Disconnect(DisconnectReason::AUTHENTICATION_FAILURE);
 }
 
-TEST_F(AclManagerWithConnectionTest, send_master_link_key) {
-  acl_manager_->MasterLinkKey(KeyFlag::TEMPORARY);
-  auto packet = test_hci_layer_->GetCommandPacket(OpCode::MASTER_LINK_KEY);
-  auto command_view = MasterLinkKeyView::Create(packet);
-  ASSERT(command_view.IsValid());
-  EXPECT_EQ(command_view.GetKeyFlag(), KeyFlag::TEMPORARY);
-
-  EXPECT_CALL(mock_acl_manager_callbacks_, OnMasterLinkKeyComplete(0x123, KeyFlag::TEMPORARY));
-  test_hci_layer_->IncomingEvent(MasterLinkKeyCompleteBuilder::Create(ErrorCode::SUCCESS, 0x123, KeyFlag::TEMPORARY));
-}
-
 TEST_F(AclManagerWithConnectionTest, send_switch_role) {
   acl_manager_->SwitchRole(connection_->GetAddress(), Role::SLAVE);
   auto packet = test_hci_layer_->GetCommandPacket(OpCode::SWITCH_ROLE);
@@ -740,28 +731,6 @@ TEST_F(AclManagerWithConnectionTest, send_authentication_requested) {
 
   EXPECT_CALL(mock_connection_management_callbacks_, OnAuthenticationComplete);
   test_hci_layer_->IncomingEvent(AuthenticationCompleteBuilder::Create(ErrorCode::SUCCESS, handle_));
-}
-
-TEST_F(AclManagerWithConnectionTest, send_set_connection_encryption) {
-  connection_->SetConnectionEncryption(Enable::ENABLED);
-  auto packet = test_hci_layer_->GetCommandPacket(OpCode::SET_CONNECTION_ENCRYPTION);
-  auto command_view = SetConnectionEncryptionView::Create(packet);
-  ASSERT(command_view.IsValid());
-  EXPECT_EQ(command_view.GetEncryptionEnable(), Enable::ENABLED);
-
-  EXPECT_CALL(mock_connection_management_callbacks_, OnEncryptionChange(EncryptionEnabled::BR_EDR_AES_CCM));
-  test_hci_layer_->IncomingEvent(
-      EncryptionChangeBuilder::Create(ErrorCode::SUCCESS, handle_, EncryptionEnabled::BR_EDR_AES_CCM));
-}
-
-TEST_F(AclManagerWithConnectionTest, send_change_connection_link_key) {
-  connection_->ChangeConnectionLinkKey();
-  auto packet = test_hci_layer_->GetCommandPacket(OpCode::CHANGE_CONNECTION_LINK_KEY);
-  auto command_view = ChangeConnectionLinkKeyView::Create(packet);
-  ASSERT(command_view.IsValid());
-
-  EXPECT_CALL(mock_connection_management_callbacks_, OnChangeConnectionLinkKeyComplete);
-  test_hci_layer_->IncomingEvent(ChangeConnectionLinkKeyCompleteBuilder::Create(ErrorCode::SUCCESS, handle_));
 }
 
 TEST_F(AclManagerWithConnectionTest, send_read_clock_offset) {

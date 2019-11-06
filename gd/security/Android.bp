@@ -1,5 +1,5 @@
 filegroup {
-    name: "BluetoothSmpSources",
+    name: "BluetoothSecuritySources",
     srcs: [
         "ecc/multprecision.cc",
         "ecc/p_256_ecc_pp.cc",
@@ -7,16 +7,20 @@ filegroup {
         "pairing_handler_le.cc",
         "pairing_handler_le_legacy.cc",
         "pairing_handler_le_secure_connections.cc",
+        "security_manager.cc",
+        "internal/security_manager_impl.cc",
         "security_module.cc",
-    ]
+        ":BluetoothSecurityChannelSources",
+    ],
 }
 
 filegroup {
-    name: "BluetoothSmpTestSources",
+    name: "BluetoothSecurityTestSources",
     srcs: [
         "ecc/multipoint_test.cc",
         "pairing_handler_le_unittest.cc",
         "test/fake_l2cap_test.cc",
         "test/pairing_handler_le_pair_test.cc",
-    ]
+        ":BluetoothSecurityChannelTestSources",
+    ],
 }

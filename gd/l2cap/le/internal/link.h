@@ -41,16 +41,18 @@ class Link {
     ASSERT(acl_connection_ != nullptr);
     ASSERT(scheduler_ != nullptr);
     ASSERT(parameter_provider_ != nullptr);
-    acl_connection_->RegisterDisconnectCallback(common::BindOnce(&Link::OnAclDisconnected, common::Unretained(this)),
-                                                l2cap_handler_);
     link_idle_disconnect_alarm_.Schedule(common::BindOnce(&Link::Disconnect, common::Unretained(this)),
                                          parameter_provider_->GetLeLinkIdleDisconnectTimeout());
   }
 
   virtual ~Link() = default;
 
-  inline virtual hci::Address GetDevice() {
-    return acl_connection_->GetAddress();
+  inline virtual hci::AddressWithType GetDevice() {
+    return {acl_connection_->GetAddress(), acl_connection_->GetAddressType()};
+  }
+
+  inline virtual hci::Role GetRole() {
+    return acl_connection_->GetRole();
   }
 
   // ACL methods
