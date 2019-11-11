@@ -51,6 +51,10 @@ class Link {
     return {acl_connection_->GetAddress(), acl_connection_->GetAddressType()};
   }
 
+  inline virtual hci::Role GetRole() {
+    return acl_connection_->GetRole();
+  }
+
   // ACL methods
 
   virtual void OnAclDisconnected(hci::ErrorCode status) {
@@ -65,7 +69,7 @@ class Link {
 
   virtual std::shared_ptr<FixedChannelImpl> AllocateFixedChannel(Cid cid, SecurityPolicy security_policy) {
     auto channel = fixed_channel_allocator_.AllocateChannel(cid, security_policy);
-    scheduler_->AttachChannel(cid, channel->GetQueueDownEnd());
+    scheduler_->AttachChannel(cid, channel->GetQueueDownEnd(), cid);
     return channel;
   }
 

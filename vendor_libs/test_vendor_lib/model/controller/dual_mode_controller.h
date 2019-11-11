@@ -271,6 +271,9 @@ class DualModeController : public Device {
   // 7.3.79
   void HciWriteLeHostSupport(packets::PacketView<true> args);
 
+  // 7.3.92
+  void HciWriteSecureConnectionHostSupport(packets::PacketView<true> args);
+
   // Informational Parameters Commands
   // Bluetooth Core Specification Version 4.2 Volume 2 Part E 7.4
 
@@ -297,6 +300,9 @@ class DualModeController : public Device {
 
   // Status Parameters Commands
   // Bluetooth Core Specification Version 4.2 Volume 2 Part E 7.5
+
+  // 7.5.7
+  void HciReadEncryptionKeySize(packets::PacketView<true> args);
 
   // Test Commands
   // Bluetooth Core Specification Version 4.2 Volume 2 Part E 7.7
@@ -372,6 +378,18 @@ class DualModeController : public Device {
 
   // 7.8.27
   void HciLeReadSupportedStates(packets::PacketView<true> args);
+
+  // 7.8.38
+  void HciLeAddDeviceToResolvingList(packets::PacketView<true> args);
+
+  // 7.8.39
+  void HciLeRemoveDeviceFromResolvingList(packets::PacketView<true> args);
+
+  // 7.8.40
+  void HciLeClearResolvingList(packets::PacketView<true> args);
+
+  // 7.8.77
+  void HciLeSetPrivacyMode(packets::PacketView<true> args);
 
   // Vendor-specific Commands
 
