@@ -21,7 +21,7 @@
 #include "main/shim/shim.h"
 #include "osi/include/log.h"
 
-static bluetooth::shim::L2cap shim_l2cap;
+static bluetooth::legacy::shim::L2cap shim_l2cap;
 
 /**
  * Classic Service Registration APIs
@@ -60,7 +60,7 @@ uint16_t bluetooth::shim::L2CA_Register(uint16_t client_psm,
   LOG_INFO(LOG_TAG, "%s classic client_psm:%hd psm:%hd", __func__, client_psm,
            psm);
 
-  shim_l2cap.Register(psm, callbacks, enable_snoop);
+  shim_l2cap.RegisterService(psm, callbacks, enable_snoop);
 
   return client_psm;
 }
@@ -116,7 +116,7 @@ uint16_t bluetooth::shim::L2CA_ErtmConnectReq(uint16_t psm,
                                               tL2CAP_ERTM_INFO* p_ertm_info) {
   CHECK(p_ertm_info == nullptr)
       << "UNIMPLEMENTED set enhanced retransmission mode config";
-  return shim_l2cap.Connect(psm, raw_address);
+  return shim_l2cap.CreateConnection(psm, raw_address);
 }
 
 uint16_t bluetooth::shim::L2CA_ConnectReq(uint16_t psm,
@@ -143,24 +143,20 @@ bool bluetooth::shim::L2CA_ConnectRsp(const RawAddress& p_bd_addr, uint8_t id,
                                               status, NULL);
 }
 
-bool bluetooth::shim::L2CA_ConfigReq(uint16_t cid, tL2CAP_CFG_INFO* p_cfg) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s cid:%hd p_cfg:%p", __func__, cid, p_cfg);
-  return false;
+bool bluetooth::shim::L2CA_ConfigReq(uint16_t cid, tL2CAP_CFG_INFO* cfg_info) {
+  return shim_l2cap.ConfigRequest(cid, cfg_info);
 }
 
-bool bluetooth::shim::L2CA_ConfigRsp(uint16_t cid, tL2CAP_CFG_INFO* p_cfg) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s cid:%hd p_cfg:%p", __func__, cid, p_cfg);
-  return false;
+bool bluetooth::shim::L2CA_ConfigRsp(uint16_t cid, tL2CAP_CFG_INFO* cfg_info) {
+  return shim_l2cap.ConfigResponse(cid, cfg_info);
 }
 
 bool bluetooth::shim::L2CA_DisconnectReq(uint16_t cid) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s cid:%hd ", __func__, cid);
-  return false;
+  return shim_l2cap.DisconnectRequest(cid);
 }
 
 bool bluetooth::shim::L2CA_DisconnectRsp(uint16_t cid) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s cid:%hd ", __func__, cid);
-  return false;
+  return shim_l2cap.DisconnectResponse(cid);
 }
 
 /**

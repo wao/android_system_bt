@@ -30,6 +30,8 @@
 namespace bluetooth {
 namespace hci {
 
+constexpr uint16_t kQualcommDebugHandle = 0xedc;
+
 using common::Bind;
 using common::BindOnce;
 
@@ -85,15 +87,8 @@ struct AclManager::impl {
     hci_layer_->RegisterEventHandler(EventCode::CONNECTION_PACKET_TYPE_CHANGED,
                                      Bind(&impl::on_connection_packet_type_changed, common::Unretained(this)),
                                      handler_);
-    hci_layer_->RegisterEventHandler(EventCode::MASTER_LINK_KEY_COMPLETE,
-                                     Bind(&impl::on_master_link_key_complete, common::Unretained(this)), handler_);
     hci_layer_->RegisterEventHandler(EventCode::AUTHENTICATION_COMPLETE,
                                      Bind(&impl::on_authentication_complete, common::Unretained(this)), handler_);
-    hci_layer_->RegisterEventHandler(EventCode::ENCRYPTION_CHANGE,
-                                     Bind(&impl::on_encryption_change, common::Unretained(this)), handler_);
-    hci_layer_->RegisterEventHandler(EventCode::CHANGE_CONNECTION_LINK_KEY_COMPLETE,
-                                     Bind(&impl::on_change_connection_link_key_complete, common::Unretained(this)),
-                                     handler_);
     hci_layer_->RegisterEventHandler(EventCode::READ_CLOCK_OFFSET_COMPLETE,
                                      Bind(&impl::on_read_clock_offset_complete, common::Unretained(this)), handler_);
     hci_layer_->RegisterEventHandler(EventCode::MODE_CHANGE, Bind(&impl::on_mode_change, common::Unretained(this)),
@@ -228,6 +223,9 @@ struct AclManager::impl {
       return;
     }
     uint16_t handle = packet->GetHandle();
+    if (handle == kQualcommDebugHandle) {
+      return;
+    }
     auto connection_pair = acl_connections_.find(handle);
     if (connection_pair == acl_connections_.end()) {
       LOG_INFO("Dropping packet of size %zu to unknown connection 0x%0hx", packet->size(), handle);
