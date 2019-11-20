@@ -18,14 +18,9 @@ cc_library_static {
         "hci/acl_packet_view.cc",
         "hci/command_packet_builder.cc",
         "hci/command_packet_view.cc",
-        "hci/event_packet_builder.cc",
-        "hci/event_payload_builder.cc",
         "hci/hci_packet_builder.cc",
-        "hci/le_meta_event_builder.cc",
         "hci/sco_packet_builder.cc",
         "hci/sco_packet_view.cc",
-        "link_layer/link_layer_packet_builder.cc",
-        "link_layer/link_layer_packet_view.cc",
     ],
     cflags: [
         "-fvisibility=hidden",
@@ -56,11 +51,10 @@ cc_test_host {
         "clang_coverage_bin",
     ],
     srcs: [
-        "test/link_layer_packet_builder_test.cc",
         "test/packet_builder_test.cc",
         "test/packet_view_test.cc",
         "hci/test/acl_builder_test.cc",
-        "hci/test/event_builder_test.cc",
+        ":BluetoothHciClassSources",
     ],
     header_libs: [
         "libbluetooth_headers",

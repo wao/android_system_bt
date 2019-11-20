@@ -30,6 +30,8 @@
 namespace bluetooth {
 namespace hci {
 
+constexpr uint16_t kQualcommDebugHandle = 0xedc;
+
 using common::Bind;
 using common::BindOnce;
 
@@ -54,7 +56,7 @@ struct AclManager::acl_connection {
 };
 
 struct AclManager::impl {
-  impl(AclManager& acl_manager) : acl_manager_(acl_manager) {}
+  impl(const AclManager& acl_manager) : acl_manager_(acl_manager) {}
 
   void Start() {
     hci_layer_ = acl_manager_.GetDependency<HciLayer>();
@@ -221,6 +223,9 @@ struct AclManager::impl {
       return;
     }
     uint16_t handle = packet->GetHandle();
+    if (handle == kQualcommDebugHandle) {
+      return;
+    }
     auto connection_pair = acl_connections_.find(handle);
     if (connection_pair == acl_connections_.end()) {
       LOG_INFO("Dropping packet of size %zu to unknown connection 0x%0hx", packet->size(), handle);
@@ -1575,7 +1580,7 @@ struct AclManager::impl {
     handler_->Post(BindOnce(&impl::cleanup, common::Unretained(this), handle));
   }
 
-  AclManager& acl_manager_;
+  const AclManager& acl_manager_;
 
   Controller* controller_ = nullptr;
   uint16_t max_acl_packet_credits_ = 0;
@@ -1792,6 +1797,10 @@ void AclManager::Start() {
 
 void AclManager::Stop() {
   pimpl_->Stop();
+}
+
+std::string AclManager::ToString() const {
+  return "Acl Manager";
 }
 
 const ModuleFactory AclManager::Factory = ModuleFactory([]() { return new AclManager(); });

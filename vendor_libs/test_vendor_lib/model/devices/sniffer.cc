@@ -39,7 +39,7 @@ void Sniffer::Initialize(const vector<std::string>& args) {
 
 void Sniffer::TimerTick() {}
 
-void Sniffer::IncomingPacket(packets::LinkLayerPacketView packet) {
+void Sniffer::IncomingPacket(model::packets::LinkLayerPacketView packet) {
   Address source = packet.GetSourceAddress();
   Address dest = packet.GetDestinationAddress();
   bool match_source = device_to_sniff_ == source;
@@ -47,8 +47,10 @@ void Sniffer::IncomingPacket(packets::LinkLayerPacketView packet) {
   if (!match_source && !match_dest) {
     return;
   }
-  LOG_INFO("%s %s -> %s (Type %d)", (match_source ? (match_dest ? "<->" : "<--") : "-->"), source.ToString().c_str(),
-           dest.ToString().c_str(), static_cast<int>(packet.GetType()));
+  LOG_INFO("%s %s -> %s (Type %s)",
+           (match_source ? (match_dest ? "<->" : "<--") : "-->"),
+           source.ToString().c_str(), dest.ToString().c_str(),
+           model::packets::PacketTypeText(packet.GetType()).c_str());
 }
 
 }  // namespace test_vendor_lib

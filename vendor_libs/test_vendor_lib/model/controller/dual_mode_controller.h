@@ -24,13 +24,16 @@
 #include <vector>
 
 #include "base/time/time.h"
+#include "hci/address.h"
+#include "hci/hci_packets.h"
 #include "link_layer_controller.h"
 #include "model/devices/device.h"
 #include "model/setup/async_manager.h"
 #include "security_manager.h"
-#include "types/address.h"
 
 namespace test_vendor_lib {
+
+using ::bluetooth::hci::Address;
 
 // Emulates a dual mode BR/EDR + LE controller by maintaining the link layer
 // state machine detailed in the Bluetooth Core Specification Version 4.2,
@@ -60,7 +63,8 @@ class DualModeController : public Device {
 
   virtual std::string GetTypeString() const override;
 
-  virtual void IncomingPacket(packets::LinkLayerPacketView incoming) override;
+  virtual void IncomingPacket(
+      model::packets::LinkLayerPacketView incoming) override;
 
   virtual void TimerTick() override;
 
@@ -68,6 +72,7 @@ class DualModeController : public Device {
   void HandleAcl(std::shared_ptr<std::vector<uint8_t>> acl_packet);
   void HandleCommand(std::shared_ptr<std::vector<uint8_t>> command_packet);
   void HandleSco(std::shared_ptr<std::vector<uint8_t>> sco_packet);
+  void HandleIso(std::shared_ptr<std::vector<uint8_t>> iso_packet);
 
   // Set the callbacks for scheduling tasks.
   void RegisterTaskScheduler(std::function<AsyncTaskId(std::chrono::milliseconds, const TaskCallback&)> evtScheduler);
@@ -79,11 +84,20 @@ class DualModeController : public Device {
   void RegisterTaskCancel(std::function<void(AsyncTaskId)> cancel);
 
   // Set the callbacks for sending packets to the HCI.
-  void RegisterEventChannel(const std::function<void(std::shared_ptr<std::vector<uint8_t>>)>& send_event);
+  void RegisterEventChannel(
+      const std::function<void(std::shared_ptr<std::vector<uint8_t>>)>&
+          send_event);
 
   void RegisterAclChannel(const std::function<void(std::shared_ptr<std::vector<uint8_t>>)>& send_acl);
 
   void RegisterScoChannel(const std::function<void(std::shared_ptr<std::vector<uint8_t>>)>& send_sco);
+
+  void RegisterIsoChannel(
+      const std::function<void(std::shared_ptr<std::vector<uint8_t>>)>&
+          send_iso);
+
+  // Set the device's address.
+  void SetAddress(Address address) override;
 
   // Controller commands. For error codes, see the Bluetooth Core Specification,
   // Version 4.2, Volume 2, Part D (page 370).
@@ -419,26 +433,27 @@ class DualModeController : public Device {
   void SendCommandComplete(hci::OpCode command_opcode, const std::vector<uint8_t>& return_parameters) const;
 
   // Sends a command complete event with no return parameters.
-  void SendCommandCompleteSuccess(hci::OpCode command_opcode) const;
+  void SendCommandCompleteSuccess(bluetooth::hci::OpCode command_opcode) const;
 
   void SendCommandCompleteUnknownOpCodeEvent(uint16_t command_opcode) const;
 
   // Sends a command complete event with no return parameters.
-  void SendCommandCompleteOnlyStatus(hci::OpCode command_opcode, hci::Status status) const;
-
-  void SendCommandCompleteStatusAndAddress(hci::OpCode command_opcode, hci::Status status,
-                                           const Address& address) const;
+  void SendCommandCompleteOnlyStatus(bluetooth::hci::OpCode command_opcode,
+                                     bluetooth::hci::ErrorCode status) const;
 
   // Creates a command status event and sends it back to the HCI.
-  void SendCommandStatus(hci::Status status, hci::OpCode command_opcode) const;
+  void SendCommandStatus(bluetooth::hci::ErrorCode status,
+                         bluetooth::hci::OpCode command_opcode) const;
 
   // Sends a command status event with default event parameters.
-  void SendCommandStatusSuccess(hci::OpCode command_opcode) const;
+  void SendCommandStatusSuccess(bluetooth::hci::OpCode command_opcode) const;
 
   // Callbacks to send packets back to the HCI.
   std::function<void(std::shared_ptr<std::vector<uint8_t>>)> send_acl_;
-  std::function<void(std::shared_ptr<std::vector<uint8_t>>)> send_event_;
+  std::function<void(std::shared_ptr<bluetooth::hci::EventPacketBuilder>)>
+      send_event_;
   std::function<void(std::shared_ptr<std::vector<uint8_t>>)> send_sco_;
+  std::function<void(std::shared_ptr<std::vector<uint8_t>>)> send_iso_;
 
   // Maintains the commands to be registered and used in the HciHandler object.
   // Keys are command opcodes and values are the callbacks to handle each

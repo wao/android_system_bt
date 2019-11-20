@@ -32,16 +32,18 @@ CarKit::CarKit() : Device(kCarKitPropertiesFile) {
 
   // Stub in packet handling for now
   link_layer_controller_.RegisterAclChannel([](std::shared_ptr<std::vector<uint8_t>>) {});
-  link_layer_controller_.RegisterEventChannel([](std::shared_ptr<std::vector<uint8_t>>) {});
+  link_layer_controller_.RegisterEventChannel(
+      [](std::shared_ptr<bluetooth::hci::EventPacketBuilder>) {});
   link_layer_controller_.RegisterScoChannel([](std::shared_ptr<std::vector<uint8_t>>) {});
   link_layer_controller_.RegisterRemoteChannel(
-      [this](std::shared_ptr<packets::LinkLayerPacketBuilder> packet, Phy::Type phy_type) {
+      [this](std::shared_ptr<model::packets::LinkLayerPacketBuilder> packet,
+             Phy::Type phy_type) {
         CarKit::SendLinkLayerPacket(packet, phy_type);
       });
 
   properties_.SetPageScanRepetitionMode(0);
   properties_.SetClassOfDevice(0x600420);
-  properties_.SetSupportedFeatures(0x8779ff9bfe8defff);
+  properties_.SetExtendedFeatures(0x8779ff9bfe8defff, 0);
   properties_.SetExtendedInquiryData({
       16,  // length
       9,   // Type: Device Name
@@ -90,7 +92,7 @@ void CarKit::TimerTick() {
   link_layer_controller_.TimerTick();
 }
 
-void CarKit::IncomingPacket(packets::LinkLayerPacketView packet) {
+void CarKit::IncomingPacket(model::packets::LinkLayerPacketView packet) {
   LOG_WARN("Incoming Packet");
   link_layer_controller_.IncomingPacket(packet);
 }

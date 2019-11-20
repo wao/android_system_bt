@@ -52,18 +52,18 @@ class L2cap {
  public:
   void RegisterService(uint16_t psm, const tL2CAP_APPL_INFO* callbacks,
                        bool enable_snoop);
+  void UnregisterService(uint16_t psm);
+
   uint16_t CreateConnection(uint16_t psm, const RawAddress& raw_address);
-  void OnConnectionReady(
-      uint16_t psm, uint16_t cid,
-      std::function<void(std::function<void(uint16_t cid)>)> func);
 
   bool Write(uint16_t cid, BT_HDR* bt_hdr);
   bool WriteFlushable(uint16_t cid, BT_HDR* bt_hdr);
   bool WriteNonFlushable(uint16_t cid, BT_HDR* bt_hdr);
-  bool IsCongested(uint16_t cid) const;
 
-  bool SetCallbacks(uint16_t cid, const tL2CAP_APPL_INFO* callbacks);
-  void ClearCallbacks(uint16_t cid);
+  void OnLocalInitiatedConnectionCreated(std::string string_address,
+                                         uint16_t psm, uint16_t cid);
+  void OnRemoteInitiatedConnectionCreated(std::string string_addresss,
+                                          uint16_t psm, uint16_t cid);
 
   uint16_t GetNextDynamicClassicPsm();
   uint16_t GetNextDynamicLePsm();
@@ -82,9 +82,6 @@ class L2cap {
   bool DisconnectRequest(uint16_t cid);
   bool DisconnectResponse(uint16_t cid);
 
-  void Test(void* context);
-  void Test2();
-
   L2cap();
 
   PsmData& Classic();
@@ -92,9 +89,12 @@ class L2cap {
 
  private:
   uint16_t GetNextVirtualPsm(uint16_t real_psm);
+  bool SetCallbacks(uint16_t cid, const tL2CAP_APPL_INFO* callbacks);
 
   PsmData classic_;
   PsmData le_;
+
+  bool ConnectionExists(uint16_t cid) const;
 
   uint16_t classic_dynamic_psm_;
   uint16_t le_dynamic_psm_;
