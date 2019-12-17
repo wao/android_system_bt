@@ -14,30 +14,43 @@
  * limitations under the License.
  */
 
-#include <string>
 #include <unordered_map>
 
 #include "common/bind.h"
-#include "l2cap/cid.h"
-#include "l2cap/classic/internal/dynamic_channel_impl.h"
 #include "l2cap/internal/basic_mode_channel_data_controller.h"
 #include "l2cap/internal/enhanced_retransmission_mode_channel_data_controller.h"
+#include "l2cap/internal/le_credit_based_channel_data_controller.h"
 #include "l2cap/internal/scheduler.h"
 #include "l2cap/internal/sender.h"
 #include "os/handler.h"
 #include "os/log.h"
-#include "os/queue.h"
-#include "packet/base_packet_builder.h"
 
 namespace bluetooth {
 namespace l2cap {
 namespace internal {
 
-Sender::Sender(os::Handler* handler, Scheduler* scheduler, std::shared_ptr<ChannelImpl> channel)
-    : handler_(handler), queue_end_(channel->GetQueueDownEnd()), scheduler_(scheduler), channel_id_(channel->GetCid()),
-      remote_channel_id_(channel->GetRemoteCid()),
+Sender::Sender(os::Handler* handler, ILink* link, Scheduler* scheduler, std::shared_ptr<ChannelImpl> channel)
+    : handler_(handler), link_(link), queue_end_(channel->GetQueueDownEnd()), scheduler_(scheduler),
+      channel_id_(channel->GetCid()), remote_channel_id_(channel->GetRemoteCid()),
       data_controller_(std::make_unique<BasicModeDataController>(channel_id_, remote_channel_id_, queue_end_, handler_,
                                                                  scheduler_)) {
+  try_register_dequeue();
+}
+
+Sender::Sender(os::Handler* handler, ILink* link, Scheduler* scheduler, std::shared_ptr<ChannelImpl> channel,
+               ChannelMode mode)
+    : handler_(handler), link_(link), queue_end_(channel->GetQueueDownEnd()), scheduler_(scheduler),
+      channel_id_(channel->GetCid()), remote_channel_id_(channel->GetRemoteCid()) {
+  if (mode == ChannelMode::BASIC) {
+    data_controller_ =
+        std::make_unique<BasicModeDataController>(channel_id_, remote_channel_id_, queue_end_, handler_, scheduler_);
+  } else if (mode == ChannelMode::ERTM) {
+    data_controller_ =
+        std::make_unique<ErtmController>(link_, channel_id_, remote_channel_id_, queue_end_, handler_, scheduler_);
+  } else if (mode == ChannelMode::LE_CREDIT_BASED) {
+    data_controller_ = std::make_unique<LeCreditBasedDataController>(link_, channel_id_, remote_channel_id_, queue_end_,
+                                                                     handler_, scheduler_);
+  }
   try_register_dequeue();
 }
 
@@ -53,22 +66,6 @@ void Sender::OnPacketSent() {
 
 std::unique_ptr<Sender::UpperDequeue> Sender::GetNextPacket() {
   return data_controller_->GetNextPacket();
-}
-
-void Sender::SetChannelRetransmissionFlowControlMode(RetransmissionAndFlowControlModeOption mode) {
-  if (mode_ == mode) {
-    return;
-  }
-  if (mode_ == RetransmissionAndFlowControlModeOption::L2CAP_BASIC) {
-    data_controller_ =
-        std::make_unique<BasicModeDataController>(channel_id_, remote_channel_id_, queue_end_, handler_, scheduler_);
-    return;
-  }
-  if (mode == RetransmissionAndFlowControlModeOption::ENHANCED_RETRANSMISSION) {
-    data_controller_ =
-        std::make_unique<ErtmController>(channel_id_, remote_channel_id_, queue_end_, handler_, scheduler_);
-    return;
-  }
 }
 
 DataController* Sender::GetDataController() {
@@ -89,6 +86,25 @@ void Sender::dequeue_callback() {
   data_controller_->OnSdu(std::move(packet));
   queue_end_->UnregisterDequeue();
   is_dequeue_registered_ = false;
+}
+
+void Sender::UpdateClassicConfiguration(classic::internal::ChannelConfigurationState config) {
+  auto mode = config.retransmission_and_flow_control_mode_;
+  if (mode == mode_) {
+    return;
+  }
+  if (mode == RetransmissionAndFlowControlModeOption::L2CAP_BASIC) {
+    data_controller_ =
+        std::make_unique<BasicModeDataController>(channel_id_, remote_channel_id_, queue_end_, handler_, scheduler_);
+    return;
+  }
+  if (mode == RetransmissionAndFlowControlModeOption::ENHANCED_RETRANSMISSION) {
+    data_controller_ =
+        std::make_unique<ErtmController>(link_, channel_id_, remote_channel_id_, queue_end_, handler_, scheduler_);
+    data_controller_->SetRetransmissionAndFlowControlOptions(config.local_retransmission_and_flow_control_);
+    data_controller_->EnableFcs(config.fcs_type_ == FcsType::DEFAULT);
+    return;
+  }
 }
 
 }  // namespace internal

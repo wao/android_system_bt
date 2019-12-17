@@ -1,4 +1,4 @@
-/******************************************************************************
+/*
  *
  *  Copyright 2019 The Android Open Source Project
  *
@@ -14,29 +14,35 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ */
 
 #pragma once
 
 #include <memory>
+#include <utility>
 
-#include "hci/device.h"
+#include "crypto_toolbox/crypto_toolbox.h"
+#include "hci/address_with_type.h"
 
 namespace bluetooth {
 namespace security {
 namespace record {
 
-enum BondState { NOT_BONDED, PAIRING, BONDED };
+enum BondState { NOT_BONDED, PAIRING, PAIRED, BONDED };
 
 class SecurityRecord {
  public:
-  SecurityRecord(std::shared_ptr<hci::Device> device) : device_(device), state_(NOT_BONDED) {}
+  explicit SecurityRecord(hci::AddressWithType address) : pseudo_address_(address), state_(NOT_BONDED) {}
 
   /**
    * Returns true if the device is bonded to another device
    */
   bool IsBonded() {
     return state_ == BONDED;
+  }
+
+  bool IsPaired() {
+    return state_ == PAIRED;
   }
 
   /**
@@ -46,13 +52,39 @@ class SecurityRecord {
     return state_ == PAIRING;
   }
 
-  std::shared_ptr<hci::Device> GetDevice() {
-    return device_;
+  void SetLinkKey(std::array<uint8_t, 16> link_key, hci::KeyType key_type) {
+    link_key_ = link_key;
+    key_type_ = key_type;
+  }
+
+  std::array<uint8_t, 16> GetLinkKey() {
+    return link_key_;
+  }
+
+  hci::KeyType GetKeyType() {
+    return key_type_;
+  }
+
+  hci::AddressWithType GetPseudoAddress() {
+    return pseudo_address_;
   }
 
  private:
-  const std::shared_ptr<hci::Device> device_;
+  /* First address we have ever seen this device with, that we used to create bond */
+  const hci::AddressWithType pseudo_address_;
+
+  /* Identity Address */
+  std::optional<hci::AddressWithType> identity_address_;
+
   BondState state_;
+  std::array<uint8_t, 16> link_key_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  hci::KeyType key_type_ = hci::KeyType::DEBUG_COMBINATION;
+
+  std::optional<crypto_toolbox::Octet16> ltk;
+  std::optional<uint16_t> ediv;
+  std::optional<std::array<uint8_t, 8>> rand;
+  std::optional<crypto_toolbox::Octet16> irk;
+  std::optional<crypto_toolbox::Octet16> signature_key;
 };
 
 }  // namespace record

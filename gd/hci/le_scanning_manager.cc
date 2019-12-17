@@ -29,6 +29,9 @@
 namespace bluetooth {
 namespace hci {
 
+constexpr uint16_t kDefaultLeScanWindow = 4800;
+constexpr uint16_t kDefaultLeScanInterval = 4800;
+
 const ModuleFactory LeScanningManager::Factory = ModuleFactory([]() { return new LeScanningManager(); });
 
 enum class ScanApiType {
@@ -72,7 +75,7 @@ struct LeScanningManager::impl {
         break;
       case hci::SubeventCode::SCAN_TIMEOUT:
         if (registered_callback_ != nullptr) {
-          registered_callback_->handler->Post(
+          registered_callback_->Handler()->Post(
               common::BindOnce(&LeScanningManagerCallbacks::on_timeout, common::Unretained(registered_callback_)));
           registered_callback_ = nullptr;
         }
@@ -102,17 +105,24 @@ struct LeScanningManager::impl {
     for (const ReportStructType& report : report_vector) {
       param.push_back(std::shared_ptr<LeReport>(static_cast<LeReport*>(new ReportType(report))));
     }
-    registered_callback_->handler->Post(common::BindOnce(&LeScanningManagerCallbacks::on_advertisements,
-                                                         common::Unretained(registered_callback_), param));
+    registered_callback_->Handler()->Post(common::BindOnce(&LeScanningManagerCallbacks::on_advertisements,
+                                                           common::Unretained(registered_callback_), param));
   }
 
   void configure_scan() {
+    std::vector<PhyScanParameters> parameter_vector;
+    PhyScanParameters phy_scan_parameters;
+    phy_scan_parameters.le_scan_window_ = kDefaultLeScanWindow;
+    phy_scan_parameters.le_scan_interval_ = kDefaultLeScanInterval;
+    phy_scan_parameters.le_scan_type_ = LeScanType::ACTIVE;
+    parameter_vector.push_back(phy_scan_parameters);
+    uint8_t phys_in_use = 1;
+
     switch (api_type_) {
       case ScanApiType::LE_5_0:
-        le_scanning_interface_->EnqueueCommand(
-            hci::LeSetExtendedScanParametersBuilder::Create(LeScanType::ACTIVE, interval_ms_, window_ms_,
-                                                            own_address_type_, filter_policy_),
-            common::BindOnce(impl::check_status), module_handler_);
+        le_scanning_interface_->EnqueueCommand(hci::LeSetExtendedScanParametersBuilder::Create(
+                                                   own_address_type_, filter_policy_, phys_in_use, parameter_vector),
+                                               common::BindOnce(impl::check_status), module_handler_);
         break;
       case ScanApiType::ANDROID_HCI:
         le_scanning_interface_->EnqueueCommand(
@@ -152,21 +162,21 @@ struct LeScanningManager::impl {
     if (registered_callback_ == nullptr) {
       return;
     }
-    registered_callback_->handler->Post(std::move(on_stopped));
+    registered_callback_->Handler()->Post(std::move(on_stopped));
     switch (api_type_) {
       case ScanApiType::LE_5_0:
         le_scanning_interface_->EnqueueCommand(
             hci::LeSetExtendedScanEnableBuilder::Create(Enable::DISABLED,
                                                         FilterDuplicates::DISABLED /* filter duplicates */, 0, 0),
             common::BindOnce(impl::check_status), module_handler_);
-        registered_callback_->handler = nullptr;
+        registered_callback_ = nullptr;
         break;
       case ScanApiType::ANDROID_HCI:
       case ScanApiType::LE_4_0:
         le_scanning_interface_->EnqueueCommand(
             hci::LeSetScanEnableBuilder::Create(Enable::DISABLED, Enable::DISABLED /* filter duplicates */),
             common::BindOnce(impl::check_status), module_handler_);
-        registered_callback_->handler = nullptr;
+        registered_callback_ = nullptr;
         break;
     }
   }

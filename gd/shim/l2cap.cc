@@ -174,7 +174,7 @@ struct ConnectionInterfaceManager {
 
   void ConnectionOpened(ConnectionOpenCallback on_open, hci::Address address, l2cap::Psm psm,
                         ConnectionInterfaceDescriptor cid) {
-    LOG_DEBUG("%s address:%s psm:%hd cid:%hd", __func__, address.ToString().c_str(), psm, cid);
+    LOG_DEBUG("address:%s psm:%hd cid:%hd", address.ToString().c_str(), psm, cid);
     handler_->Post(common::BindOnce(&ConnectionInterfaceManager::GeneralCallback, common::Unretained(this), on_open,
                                     address, psm, cid));
     // TODO(cmanton) queue this pending connection address/psm tuple up for deletion
@@ -182,7 +182,7 @@ struct ConnectionInterfaceManager {
   }
 
   void ConnectionFailed(hci::Address address, l2cap::Psm psm) {
-    LOG_DEBUG("%s Connection Failed", __func__);
+    LOG_DEBUG("Connection Failed");
     // TODO(cmanton) queue this pending connection address/psm tuple up for deletion
     // There may be multiple, so only remove one
   }
@@ -396,11 +396,13 @@ void L2cap::impl::RegisterService(l2cap::Psm psm, ConnectionOpenCallback on_open
       std::make_shared<ServiceInterface>(&connection_interface_manager_, psm, on_open, std::move(completed));
   psm_to_service_interface_map_.emplace(psm, service_interface);
 
+  // TODO(cmanton): Use the configuration option from user
   service_interface->RegisterService(
       [this](l2cap::Psm psm, l2cap::SecurityPolicy security_policy,
              l2cap::classic::DynamicChannelManager::OnRegistrationCompleteCallback on_registration_complete,
              l2cap::classic::DynamicChannelManager::OnConnectionOpenCallback on_connection_open) {
-        bool rc = dynamic_channel_manager_->RegisterService(psm, security_policy, std::move(on_registration_complete),
+        bool rc = dynamic_channel_manager_->RegisterService(psm, l2cap::classic::DynamicChannelConfigurationOption(),
+                                                            security_policy, std::move(on_registration_complete),
                                                             on_connection_open, handler_);
         ASSERT_LOG(rc == true, "Failed to register classic service");
       });
@@ -418,9 +420,10 @@ void L2cap::impl::CreateConnection(l2cap::Psm psm, hci::Address address, Connect
   // TODO(cmanton) hash psm/address pair into unordered map for pending_connection
   // This is ok for now
   psm_to_pending_connection_map_[psm] = pending_connection;
-
+  // TODO(cmanton): Add ERTM mode support by changing configuratio_option in ConnectChannel()
   bool rc = dynamic_channel_manager_->ConnectChannel(
-      address, psm, common::Bind(&PendingConnection::OnConnectionOpen, common::Unretained(pending_connection.get())),
+      address, l2cap::classic::DynamicChannelConfigurationOption(), psm,
+      common::Bind(&PendingConnection::OnConnectionOpen, common::Unretained(pending_connection.get())),
       common::BindOnce(&PendingConnection::OnConnectionFailure, common::Unretained(pending_connection.get())),
       handler_);
   ASSERT_LOG(rc == true, "Failed to create classic connection");

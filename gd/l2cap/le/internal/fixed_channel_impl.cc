@@ -35,7 +35,6 @@ hci::Role FixedChannelImpl::GetRole() const {
 FixedChannelImpl::FixedChannelImpl(Cid cid, Link* link, os::Handler* l2cap_handler)
     : cid_(cid), device_(link->GetDevice()), link_(link), l2cap_handler_(l2cap_handler) {
   ASSERT_LOG(cid_ >= kFirstFixedChannel && cid_ <= kLastFixedChannel, "Invalid cid: %d", cid_);
-  ASSERT(!device_.GetAddress().IsEmpty());
   ASSERT(link_ != nullptr);
   ASSERT(l2cap_handler_ != nullptr);
 }
@@ -106,12 +105,6 @@ Cid FixedChannelImpl::GetCid() const {
 Cid FixedChannelImpl::GetRemoteCid() const {
   return cid_;
 }
-
-RetransmissionAndFlowControlModeOption FixedChannelImpl::GetChannelMode() const {
-  return RetransmissionAndFlowControlModeOption::L2CAP_BASIC;
-}
-
-void FixedChannelImpl::SetChannelMode(RetransmissionAndFlowControlModeOption option) {}
 
 }  // namespace internal
 }  // namespace le

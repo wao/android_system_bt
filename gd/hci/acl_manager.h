@@ -143,6 +143,11 @@ class AclConnection {
   virtual bool ReadRssi();
   virtual bool ReadClock(WhichClock which_clock);
 
+  // LE ACL Method
+  virtual bool LeConnectionUpdate(uint16_t conn_interval_min, uint16_t conn_interval_max, uint16_t conn_latency,
+                                  uint16_t supervision_timeout, common::OnceCallback<void(ErrorCode)> done_callback,
+                                  os::Handler* handler);
+
   // Ask AclManager to clean me up. Must invoke after on_disconnect is called
   virtual void Finish();
 
@@ -151,7 +156,7 @@ class AclConnection {
  private:
   friend AclManager;
   AclConnection(const AclManager* manager, uint16_t handle, Address address)
-      : manager_(manager), handle_(handle), address_(address) {}
+      : manager_(manager), handle_(handle), address_(address), address_type_(AddressType::PUBLIC_DEVICE_ADDRESS) {}
   AclConnection(const AclManager* manager, uint16_t handle, Address address, AddressType address_type, Role role)
       : manager_(manager), handle_(handle), address_(address), address_type_(address_type), role_(role) {}
   const AclManager* manager_;

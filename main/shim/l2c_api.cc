@@ -209,26 +209,9 @@ bool bluetooth::shim::L2CA_SetConnectionCallbacks(
   return false;
 }
 
-uint8_t bluetooth::shim::L2CA_DataWriteEx(uint16_t cid, BT_HDR* bt_hdr,
-                                          uint16_t flags) {
-  bool write_success = false;
-  switch (flags) {
-    case L2CAP_FLUSHABLE_CH_BASED:
-      write_success = shim_l2cap.Write(cid, bt_hdr);
-      break;
-    case L2CAP_FLUSHABLE_PKT:
-      write_success = shim_l2cap.WriteFlushable(cid, bt_hdr);
-      break;
-    case L2CAP_NON_FLUSHABLE_PKT:
-      write_success = shim_l2cap.WriteNonFlushable(cid, bt_hdr);
-      break;
-  }
-  return write_success ? L2CAP_DW_SUCCESS : L2CAP_DW_FAILED;
-}
-
 uint8_t bluetooth::shim::L2CA_DataWrite(uint16_t cid, BT_HDR* p_data) {
-  return bluetooth::shim::L2CA_DataWriteEx(cid, p_data,
-                                           L2CAP_FLUSHABLE_CH_BASED);
+  bool write_success = shim_l2cap.Write(cid, p_data);
+  return write_success ? L2CAP_DW_SUCCESS : L2CAP_DW_FAILED;
 }
 
 /**
@@ -237,23 +220,6 @@ uint8_t bluetooth::shim::L2CA_DataWrite(uint16_t cid, BT_HDR* p_data) {
 uint8_t bluetooth::shim::L2CA_SetDesireRole(uint8_t new_role) {
   LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
   return 0;
-}
-
-/**
- * Ping APIs
- */
-bool bluetooth::shim::L2CA_Ping(const RawAddress& p_bd_addr,
-                                tL2CA_ECHO_RSP_CB* p_callback) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s addr:%s p_callback:%p", __func__,
-           p_bd_addr.ToString().c_str(), p_callback);
-  return false;
-}
-
-bool bluetooth::shim::L2CA_Echo(const RawAddress& p_bd_addr, BT_HDR* p_data,
-                                tL2CA_ECHO_DATA_CB* p_callback) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s addr:%s p_callback:%p", __func__,
-           p_bd_addr.ToString().c_str(), p_callback);
-  return false;
 }
 
 /**
@@ -287,12 +253,6 @@ bool bluetooth::shim::L2CA_SetFlushTimeout(const RawAddress& bd_addr,
 bool bluetooth::shim::L2CA_GetPeerFeatures(const RawAddress& bd_addr,
                                            uint32_t* p_ext_feat,
                                            uint8_t* p_chnl_mask) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
-  return false;
-}
-
-bool bluetooth::shim::L2CA_GetBDAddrbyHandle(uint16_t handle,
-                                             RawAddress& bd_addr) {
   LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
   return false;
 }
@@ -333,24 +293,6 @@ bool bluetooth::shim::L2CA_RemoveFixedChnl(uint16_t fixed_cid,
 }
 
 /**
- * Channel Configuration API
- */
-bool bluetooth::shim::L2CA_GetCurrentConfig(
-    uint16_t lcid, tL2CAP_CFG_INFO** pp_our_cfg,
-    tL2CAP_CH_CFG_BITS* p_our_cfg_bits, tL2CAP_CFG_INFO** pp_peer_cfg,
-    tL2CAP_CH_CFG_BITS* p_peer_cfg_bits) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
-  return false;
-}
-
-bool bluetooth::shim::L2CA_GetConnectionConfig(uint16_t lcid, uint16_t* mtu,
-                                               uint16_t* rcid,
-                                               uint16_t* handle) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
-  return false;
-}
-
-/**
  * Channel hygiene APIs
  */
 bool bluetooth::shim::L2CA_GetIdentifiers(uint16_t lcid, uint16_t* rcid,
@@ -365,33 +307,10 @@ bool bluetooth::shim::L2CA_SetIdleTimeout(uint16_t cid, uint16_t timeout,
   return false;
 }
 
-bool bluetooth::shim::L2CA_FlowControl(uint16_t cid, bool data_enabled) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
-  return false;
-}
-
-bool bluetooth::shim::L2CA_SendTestSFrame(uint16_t cid, uint8_t sup_type,
-                                          uint8_t back_track) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
-  return false;
-}
-
 bool bluetooth::shim::L2CA_SetTxPriority(uint16_t cid,
                                          tL2CAP_CHNL_PRIORITY priority) {
   LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
   return false;
-}
-
-bool bluetooth::shim::L2CA_SetChnlDataRate(uint16_t cid,
-                                           tL2CAP_CHNL_DATA_RATE tx,
-                                           tL2CAP_CHNL_DATA_RATE rx) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
-  return false;
-}
-
-uint8_t bluetooth::shim::L2CA_GetChnlFcrMode(uint16_t lcid) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
-  return 0;
 }
 
 bool bluetooth::shim::L2CA_SetFixedChannelTout(const RawAddress& rem_bda,
@@ -411,13 +330,4 @@ uint16_t bluetooth::shim::L2CA_FlushChannel(uint16_t lcid,
                                             uint16_t num_to_flush) {
   LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
   return 0;
-}
-
-/**
- * Misc APIs
- */
-bool bluetooth::shim::L2CA_RegForNoCPEvt(tL2CA_NOCP_CB* p_cb,
-                                         const RawAddress& p_bda) {
-  LOG_INFO(LOG_TAG, "UNIMPLEMENTED %s", __func__);
-  return false;
 }

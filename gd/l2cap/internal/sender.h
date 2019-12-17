@@ -23,8 +23,11 @@
 #include "common/bind.h"
 #include "data_controller.h"
 #include "l2cap/cid.h"
+#include "l2cap/classic/internal/channel_configuration_state.h"
 #include "l2cap/internal/channel_impl.h"
 #include "l2cap/internal/data_controller.h"
+#include "l2cap/l2cap_packets.h"
+#include "l2cap/mtu.h"
 #include "os/handler.h"
 #include "os/queue.h"
 #include "packet/base_packet_builder.h"
@@ -34,6 +37,7 @@ namespace bluetooth {
 namespace l2cap {
 namespace internal {
 class Scheduler;
+class ILink;
 
 /**
  * A middle layer between L2CAP channel and outgoing packet scheduler.
@@ -45,7 +49,15 @@ class Sender {
   using UpperDequeue = packet::BasePacketBuilder;
   using UpperQueueDownEnd = common::BidiQueueEnd<UpperEnqueue, UpperDequeue>;
 
-  Sender(os::Handler* handler, Scheduler* scheduler, std::shared_ptr<ChannelImpl> channel);
+  enum class ChannelMode {
+    BASIC = 0,
+    ERTM = 3,
+    LE_CREDIT_BASED = 10,
+  };
+
+  Sender(os::Handler* handler, ILink* link, Scheduler* scheduler, std::shared_ptr<ChannelImpl> channel);
+  Sender(os::Handler* handler, ILink* link, Scheduler* scheduler, std::shared_ptr<ChannelImpl> channel,
+         ChannelMode mode);
   ~Sender();
 
   /**
@@ -59,12 +71,12 @@ class Sender {
    */
   std::unique_ptr<UpperDequeue> GetNextPacket();
 
-  void SetChannelRetransmissionFlowControlMode(RetransmissionAndFlowControlModeOption mode);
-
+  void UpdateClassicConfiguration(classic::internal::ChannelConfigurationState config);
   DataController* GetDataController();
 
  private:
   os::Handler* handler_;
+  ILink* link_;
   UpperQueueDownEnd* queue_end_;
   Scheduler* scheduler_;
   const Cid channel_id_;

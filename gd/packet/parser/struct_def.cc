@@ -89,18 +89,29 @@ void StructDef::GenParse(std::ostream& s) const {
     s << "{ return struct_begin_it.Subrange(0,0);}";
   }
 
+  Size total_bits{0};
+  for (const auto& field : fields_) {
+    if (field->GetFieldType() != ReservedField::kFieldType && field->GetFieldType() != BodyField::kFieldType &&
+        field->GetFieldType() != FixedScalarField::kFieldType && field->GetFieldType() != SizeField::kFieldType &&
+        field->GetFieldType() != ChecksumStartField::kFieldType && field->GetFieldType() != ChecksumField::kFieldType &&
+        field->GetFieldType() != CountField::kFieldType) {
+      total_bits += field->GetSize().bits();
+    }
+  }
+  s << "{";
+  s << "if (to_bound.NumBytesRemaining() < " << total_bits.bytes() << ")";
+  if (!fields_.HasBody()) {
+    s << "{ return to_bound.Subrange(to_bound.NumBytesRemaining(),0);}";
+  } else {
+    s << "{ return {};}";
+  }
+  s << "}";
   for (const auto& field : fields_) {
     if (field->GetFieldType() != ReservedField::kFieldType && field->GetFieldType() != BodyField::kFieldType &&
         field->GetFieldType() != FixedScalarField::kFieldType && field->GetFieldType() != SizeField::kFieldType &&
         field->GetFieldType() != ChecksumStartField::kFieldType && field->GetFieldType() != ChecksumField::kFieldType &&
         field->GetFieldType() != CountField::kFieldType) {
       s << "{";
-      s << "if (to_bound.NumBytesRemaining() < " << field->GetSize().bytes() << ")";
-      if (!fields_.HasBody()) {
-        s << "{ return to_bound.Subrange(to_bound.NumBytesRemaining(),0);}";
-      } else {
-        s << "{ return {};}";
-      }
       int num_leading_bits =
           field->GenBounds(s, GetStructOffsetForField(field->GetName()), Size(), field->GetStructSize());
       s << "auto " << field->GetName() << "_ptr = &to_fill->" << field->GetName() << "_;";
@@ -193,8 +204,19 @@ void StructDef::GenDefinitionPybind11(std::ostream& s) const {
   }
   s << ">(m, \"" << name_ << "\")";
   s << ".def(py::init<>())";
-  s << ".def(\"Serialize\", &" << GetTypeName() << "::Serialize)";
+  s << ".def(\"Serialize\", [](" << GetTypeName() << "& obj){";
+  s << "std::vector<uint8_t> bytes;";
+  s << "BitInserter bi(bytes);";
+  s << "obj.Serialize(bi);";
+  s << "return bytes;})";
   s << ".def(\"Parse\", &" << name_ << "::Parse)";
+  s << ".def(\"size\", &" << name_ << "::size)";
+  for (const auto& field : fields_) {
+    if (field->GetBuilderParameterType().empty()) {
+      continue;
+    }
+    s << ".def_readwrite(\"" << field->GetName() << "\", &" << name_ << "::" << field->GetName() << "_)";
+  }
   s << ";\n";
 }
 
