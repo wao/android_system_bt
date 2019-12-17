@@ -50,7 +50,6 @@
 #include "device/include/interop.h"
 #include "hcidefs.h"
 #include "hcimsgs.h"
-#include "log/log.h"
 #include "l2c_int.h"
 #include "osi/include/log.h"
 #include "osi/include/osi.h"
@@ -826,7 +825,8 @@ void btm_use_preferred_conn_params(const RawAddress& bda) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_or_alloc_dev(bda);
 
   /* If there are any preferred connection parameters, set them now */
-  if ((p_dev_rec->conn_params.min_conn_int >= BTM_BLE_CONN_INT_MIN) &&
+  if ((p_lcb != NULL) && (p_dev_rec != NULL) &&
+      (p_dev_rec->conn_params.min_conn_int >= BTM_BLE_CONN_INT_MIN) &&
       (p_dev_rec->conn_params.min_conn_int <= BTM_BLE_CONN_INT_MAX) &&
       (p_dev_rec->conn_params.max_conn_int >= BTM_BLE_CONN_INT_MIN) &&
       (p_dev_rec->conn_params.max_conn_int <= BTM_BLE_CONN_INT_MAX) &&
@@ -1120,11 +1120,17 @@ void btm_read_remote_ext_features_complete(uint8_t* p, uint8_t evt_len) {
     return;
   }
 
-  if (page_num > max_page) {
+  if (page_num > HCI_EXT_FEATURES_PAGE_MAX) {
     android_errorWriteLog(0x534e4554, "141552859");
     BTM_TRACE_ERROR("btm_read_remote_ext_features_complete num_page=%d invalid",
                     page_num);
     return;
+  }
+
+  if (page_num > max_page) {
+    BTM_TRACE_WARNING(
+        "btm_read_remote_ext_features_complete num_page=%d, max_page=%d "
+        "invalid", page_num, max_page);
   }
 
   p_acl_cb = &btm_cb.acl_db[acl_idx];
