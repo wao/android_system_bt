@@ -16,11 +16,16 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
 
+#include "main/shim/timer.h"
+#include "osi/include/alarm.h"
+#include "osi/include/future.h"
 #include "stack/include/btm_api_types.h"
 
 //
@@ -33,9 +38,9 @@ static constexpr int kLimitedDiscoverableMode = 1;  // BTM_LIMITED_DISCOVERABLE
 static constexpr int kGeneralDiscoverableMode = 2;  // BTM_GENERAL_DISCOVERABLE
 
 /* Inquiry modes */
-static constexpr int kInquiryModeOff = 0;      // BTM_INQUIRY_NONE
-static constexpr int kGeneralInquiryMode = 1;  // BTM_GENERAL_INQUIRY
-static constexpr int kLimitedInquiryMode = 2;  // BTM_LIMITED_INQUIRY
+static constexpr uint8_t kInquiryModeOff = 0;      // BTM_INQUIRY_NONE
+static constexpr uint8_t kGeneralInquiryMode = 1;  // BTM_GENERAL_INQUIRY
+static constexpr uint8_t kLimitedInquiryMode = 2;  // BTM_LIMITED_INQUIRY
 
 /* Connectable modes */
 static constexpr int kConnectibleModeOff = 0;  // BTM_NON_CONNECTABLE
@@ -59,6 +64,9 @@ static constexpr uint8_t kPhyConnectionNone = 0x00;
 static constexpr uint8_t kPhyConnectionLe1M = 0x01;
 static constexpr uint8_t kPhyConnectionLe2M = 0x02;
 static constexpr uint8_t kPhyConnectionLeCoded = 0x03;
+
+using LegacyInquiryCompleteCallback =
+    std::function<void(uint16_t status, uint8_t inquiry_mode)>;
 
 using DiscoverabilityState = struct {
   int mode;
@@ -132,9 +140,18 @@ class Btm {
   ~Btm() = default;
 
   // Inquiry result callbacks
-  void OnInquiryResult(std::vector<const uint8_t> result);
-  void OnInquiryResultWithRssi(std::vector<const uint8_t> result);
-  void OnExtendedInquiryResult(std::vector<const uint8_t> result);
+  void OnInquiryResult(std::string string_address, uint8_t page_scan_rep_mode,
+                       std::string string_class_of_device,
+                       uint16_t clock_offset);
+  void OnInquiryResultWithRssi(std::string string_address,
+                               uint8_t page_scan_rep_mode,
+                               std::string string_class_of_device,
+                               uint16_t clock_offset, int8_t rssi);
+  void OnExtendedInquiryResult(std::string string_address,
+                               uint8_t page_scan_rep_mode,
+                               std::string string_class_of_device,
+                               uint16_t clock_offset, int8_t rssi,
+                               const uint8_t* gap_data, size_t gap_data_len);
   void OnInquiryComplete(uint16_t status);
 
   // Inquiry API
@@ -151,7 +168,8 @@ class Btm {
   void SetStandardInquiryScan();
   bool IsInterlacedScanSupported() const;
 
-  bool StartInquiry(uint8_t mode, uint8_t duration, uint8_t max_responses);
+  bool StartInquiry(uint8_t mode, uint8_t duration, uint8_t max_responses,
+                    LegacyInquiryCompleteCallback inquiry_complete_callback);
   void CancelInquiry();
   bool IsInquiryActive() const;
   bool IsGeneralInquiryActive() const;
@@ -209,15 +227,30 @@ class Btm {
 
   size_t GetNumberOfAdvertisingInstances() const;
 
+  void SetObservingTimer(uint64_t duration_ms, std::function<void()>);
+  void CancelObservingTimer();
+  void SetScanningTimer(uint64_t duration_ms, std::function<void()>);
+  void CancelScanningTimer();
+
+  // Lifecycle
+  static void StartUp(Btm* btm);
+  static void ShutDown(Btm* btm);
+
  private:
   ReadRemoteName le_read_remote_name_;
   ReadRemoteName classic_read_remote_name_;
+
+  Timer* observing_timer_{nullptr};
+  Timer* scanning_timer_{nullptr};
+
+  LegacyInquiryCompleteCallback legacy_inquiry_complete_callback_{};
+
+  uint8_t active_inquiry_mode_ = 0;
+
   // TODO(cmanton) abort if there is no classic acl link up
   bool CheckClassicAclLink(const RawAddress& raw_address) { return true; }
   bool CheckLeAclLink(const RawAddress& raw_address) { return true; }
   void StartScanning(bool use_active_scanning);
-
-  int inquiry_mode_ = 0;
 };
 
 }  // namespace shim
