@@ -19,14 +19,17 @@
 #pragma once
 
 #include <optional>
+#include <variant>
 
 #include "common/bidi_queue.h"
 #include "common/callback.h"
 #include "crypto_toolbox/crypto_toolbox.h"
+#include "hci/address_with_type.h"
 #include "hci/le_security_interface.h"
 #include "os/handler.h"
 #include "packet/base_packet_builder.h"
 #include "packet/packet_view.h"
+#include "security/ecdh_keys.h"
 #include "security/pairing_failure.h"
 #include "security/smp_packets.h"
 #include "security/ui.h"
@@ -42,7 +45,7 @@ using DistributedKeys =
 
 /* This class represents the result of pairing, as returned from Pairing Handler */
 struct PairingResult {
-  Address connection_address;
+  hci::AddressWithType connection_address;
   DistributedKeys distributed_keys;
 };
 
@@ -62,8 +65,7 @@ struct MyOobData {
 /* This structure is filled and send to PairingHandlerLe to initiate the Pairing process with remote device */
 struct InitialInformations {
   hci::Role my_role;
-  Address my_connection_address;
-  uint8_t my_connection_address_type;
+  hci::AddressWithType my_connection_address;
 
   /* My capabilities, as in pairing request/response */
   struct {
@@ -78,8 +80,7 @@ struct InitialInformations {
   /* was it remote device that initiated the Pairing ? */
   bool remotely_initiated;
   uint16_t connection_handle;
-  Address remote_connection_address;
-  uint8_t remote_connection_address_type;
+  hci::AddressWithType remote_connection_address;
   std::string remote_name;
 
   /* contains pairing request, if the pairing was remotely initiated */

@@ -28,10 +28,17 @@ namespace l2cap {
 namespace le {
 namespace internal {
 
+hci::Role FixedChannelImpl::GetRole() const {
+  return link_->GetRole();
+}
+
+hci::AclConnection* FixedChannelImpl::GetAclConnection() const {
+  return link_->GetAclConnection();
+}
+
 FixedChannelImpl::FixedChannelImpl(Cid cid, Link* link, os::Handler* l2cap_handler)
     : cid_(cid), device_(link->GetDevice()), link_(link), l2cap_handler_(l2cap_handler) {
   ASSERT_LOG(cid_ >= kFirstFixedChannel && cid_ <= kLastFixedChannel, "Invalid cid: %d", cid_);
-  ASSERT(!device_.IsEmpty());
   ASSERT(link_ != nullptr);
   ASSERT(l2cap_handler_ != nullptr);
 }
@@ -93,6 +100,14 @@ void FixedChannelImpl::Release() {
   }
   acquired_ = false;
   link_->RefreshRefCount();
+}
+
+Cid FixedChannelImpl::GetCid() const {
+  return cid_;
+}
+
+Cid FixedChannelImpl::GetRemoteCid() const {
+  return cid_;
 }
 
 }  // namespace internal

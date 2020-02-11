@@ -50,6 +50,10 @@ struct L2capClassicModule::impl {
                                       &dynamic_channel_service_manager_impl_, &parameter_provider_};
 };
 
+L2capClassicModule::L2capClassicModule() {}
+
+L2capClassicModule::~L2capClassicModule() {}
+
 void L2capClassicModule::ListDependencies(ModuleList* list) {
   list->add<hci::AclManager>();
 }
@@ -60,6 +64,10 @@ void L2capClassicModule::Start() {
 
 void L2capClassicModule::Stop() {
   pimpl_.reset();
+}
+
+std::string L2capClassicModule::ToString() const {
+  return "L2cap Classic Module";
 }
 
 std::unique_ptr<FixedChannelManager> L2capClassicModule::GetFixedChannelManager() {

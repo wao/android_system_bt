@@ -38,8 +38,19 @@ namespace shim {
 future_t* StartGabeldorscheStack();
 future_t* StopGabeldorscheStack();
 
+bluetooth::shim::IAdvertising* GetAdvertising();
 bluetooth::shim::IController* GetController();
+bluetooth::shim::IDiscoverability* GetDiscoverability();
+bluetooth::shim::IConnectability* GetConnectability();
+bluetooth::shim::IDumpsys* GetDumpsys();
+bluetooth::shim::IInquiry* GetInquiry();
 bluetooth::shim::IHciLayer* GetHciLayer();
+bluetooth::shim::IL2cap* GetL2cap();
+bluetooth::shim::IName* GetName();
+bluetooth::shim::IPage* GetPage();
+bluetooth::shim::IScanning* GetScanning();
+bluetooth::shim::ISecurity* GetSecurity();
+bluetooth::shim::IStorage* GetStorage();
 
 }  // namespace shim
 }  // namespace bluetooth

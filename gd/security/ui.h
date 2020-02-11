@@ -18,7 +18,10 @@
 
 #pragma once
 
-#include "hci/address.h"
+#include "hci/address_with_type.h"
+
+namespace bluetooth {
+namespace security {
 
 // Through this interface we talk to the user, asking for confirmations/acceptance.
 class UI {
@@ -26,11 +29,11 @@ class UI {
   virtual ~UI(){};
 
   /* Remote device tries to initiate pairing, ask user to confirm */
-  virtual void DisplayPairingPrompt(const bluetooth::hci::Address& address, std::string& name) = 0;
+  virtual void DisplayPairingPrompt(const bluetooth::hci::AddressWithType& address, std::string& name) = 0;
 
   /* Remove the pairing prompt from DisplayPairingPrompt, i.e. remote device disconnected, or some application requested
    * bond with this device */
-  virtual void CancelPairingPrompt(const bluetooth::hci::Address& address) = 0;
+  virtual void CancelPairingPrompt(const bluetooth::hci::AddressWithType& address) = 0;
 
   /* Display value for Comprision */
   virtual void DisplayConfirmValue(uint32_t numeric_value) = 0;
@@ -56,3 +59,6 @@ class UICallbacks {
   /* User typed the value displayed on the other device. This is either Passkey or the Confirm value */
   virtual void OnPasskeyEntry(const bluetooth::hci::Address& address, uint32_t passkey) = 0;
 };
+
+}  // namespace security
+}  // namespace bluetooth

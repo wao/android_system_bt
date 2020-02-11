@@ -4,6 +4,7 @@ filegroup {
             "connectability.cc",
             "discoverability.cc",
             "inquiry.cc",
+            "name.cc",
             "page.cc",
             "scan.cc",
     ],
@@ -12,6 +13,13 @@ filegroup {
 filegroup {
     name: "BluetoothNeighborTestSources",
     srcs: [
+            "inquiry_test.cc",
     ],
 }
 
+filegroup {
+    name: "BluetoothFacade_neighbor",
+    srcs: [
+        "facade/facade.cc",
+    ],
+}

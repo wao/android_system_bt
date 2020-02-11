@@ -19,6 +19,8 @@
 #include "common/bidi_queue.h"
 #include "l2cap/cid.h"
 #include "l2cap/classic/fixed_channel.h"
+#include "l2cap/internal/channel_impl.h"
+#include "l2cap/l2cap_packets.h"
 #include "os/handler.h"
 #include "os/log.h"
 
@@ -29,14 +31,14 @@ namespace internal {
 
 class Link;
 
-class FixedChannelImpl {
+class FixedChannelImpl : public l2cap::internal::ChannelImpl {
  public:
   FixedChannelImpl(Cid cid, Link* link, os::Handler* l2cap_handler);
 
   virtual ~FixedChannelImpl() = default;
 
   hci::Address GetDevice() const {
-    return device_;
+    return device_.GetAddress();
   }
 
   virtual void RegisterOnCloseCallback(os::Handler* user_handler, FixedChannel::OnCloseCallback on_close_callback);
@@ -65,12 +67,20 @@ class FixedChannelImpl {
     return channel_queue_.GetDownEnd();
   }
 
+  Cid GetCid() const {
+    return cid_;
+  }
+
+  Cid GetRemoteCid() const {
+    return cid_;
+  }
+
  private:
   // Constructor states
   // For logging purpose only
   const Cid cid_;
   // For logging purpose only
-  const hci::Address device_;
+  const hci::AddressWithType device_;
   // Needed to handle Acquire() and Release()
   Link* link_;
   os::Handler* l2cap_handler_;

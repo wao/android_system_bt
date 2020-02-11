@@ -20,7 +20,6 @@
 #include "hci/address.h"
 #include "l2cap/classic/internal/link.h"
 #include "l2cap/internal/scheduler_fifo.h"
-#include "os/handler.h"
 #include "os/log.h"
 
 #include "l2cap/classic/internal/link_manager.h"
@@ -53,6 +52,9 @@ void LinkManager::ConnectFixedChannelServices(hci::Address device,
         // This channel is already allocated for this link, do not allocated twice
         continue;
       }
+      if (fixed_channel_service.first == kClassicPairingTriggerCid) {
+        this->TriggerPairing(link);
+      }
       // Allocate channel for newly registered fixed channels
       auto fixed_channel_impl = link->AllocateFixedChannel(fixed_channel_service.first, SecurityPolicy());
       fixed_channel_service.second->NotifyChannelCreation(
@@ -82,14 +84,28 @@ void LinkManager::ConnectFixedChannelServices(hci::Address device,
   acl_manager_->CreateConnection(device);
 }
 
-void LinkManager::ConnectDynamicChannelServices(hci::Address device,
-                                                PendingDynamicChannelConnection pending_dynamic_channel_connection,
-                                                Psm psm) {
-  // TODO: if there is no link, establish link. Otherwise send command.
+void LinkManager::ConnectDynamicChannelServices(
+    hci::Address device, Link::PendingDynamicChannelConnection pending_dynamic_channel_connection, Psm psm) {
   auto* link = GetLink(device);
-  if (link != nullptr) {
+  if (link == nullptr) {
+    acl_manager_->CreateConnection(device);
+    if (pending_dynamic_channels_.find(device) != pending_dynamic_channels_.end()) {
+      pending_dynamic_channels_[device].push_back(psm);
+      pending_dynamic_channels_callbacks_[device].push_back(std::move(pending_dynamic_channel_connection));
+    } else {
+      pending_dynamic_channels_[device] = {psm};
+      pending_dynamic_channels_callbacks_[device].push_back(std::move(pending_dynamic_channel_connection));
+    }
     return;
   }
+  if (dynamic_channel_service_manager_->GetService(psm)->GetSecurityPolicy().RequiresAuthentication() &&
+      !link->IsAuthenticated()) {
+    link->AddChannelPendingingAuthentication(
+        {psm, link->ReserveDynamicChannel(), std::move(pending_dynamic_channel_connection)});
+    link->Authenticate();
+    return;
+  }
+  link->SendConnectionRequest(psm, link->ReserveDynamicChannel(), std::move(pending_dynamic_channel_connection));
 }
 
 Link* LinkManager::GetLink(const hci::Address device) {
@@ -99,22 +115,47 @@ Link* LinkManager::GetLink(const hci::Address device) {
   return &links_.find(device)->second;
 }
 
+void LinkManager::TriggerPairing(Link* link) {
+  link->Authenticate();
+  link->ReadRemoteVersionInformation();
+  link->ReadRemoteSupportedFeatures();
+  link->ReadRemoteExtendedFeatures();
+  link->ReadClockOffset();
+}
+
 void LinkManager::OnConnectSuccess(std::unique_ptr<hci::AclConnection> acl_connection) {
   // Same link should not be connected twice
   hci::Address device = acl_connection->GetAddress();
   ASSERT_LOG(GetLink(device) == nullptr, "%s is connected twice without disconnection",
              acl_connection->GetAddress().ToString().c_str());
-  auto* link_queue_up_end = acl_connection->GetAclQueueEnd();
-  links_.try_emplace(device, l2cap_handler_, std::move(acl_connection),
-                     std::make_unique<l2cap::internal::Fifo>(link_queue_up_end, l2cap_handler_), parameter_provider_,
+  // Register ACL disconnection callback in LinkManager so that we can clean up link resource properly
+  acl_connection->RegisterDisconnectCallback(
+      common::BindOnce(&LinkManager::OnDisconnect, common::Unretained(this), device), l2cap_handler_);
+  links_.try_emplace(device, l2cap_handler_, std::move(acl_connection), parameter_provider_,
                      dynamic_channel_service_manager_, fixed_channel_service_manager_);
   auto* link = GetLink(device);
+  ASSERT(link != nullptr);
+  link->SendInformationRequest(InformationRequestInfoType::EXTENDED_FEATURES_SUPPORTED);
+  link->SendInformationRequest(InformationRequestInfoType::FIXED_CHANNELS_SUPPORTED);
+
   // Allocate and distribute channels for all registered fixed channel services
   auto fixed_channel_services = fixed_channel_service_manager_->GetRegisteredServices();
   for (auto& fixed_channel_service : fixed_channel_services) {
     auto fixed_channel_impl = link->AllocateFixedChannel(fixed_channel_service.first, SecurityPolicy());
     fixed_channel_service.second->NotifyChannelCreation(
         std::make_unique<FixedChannel>(fixed_channel_impl, l2cap_handler_));
+    if (fixed_channel_service.first == kClassicPairingTriggerCid) {
+      this->TriggerPairing(link);
+    }
+  }
+  if (pending_dynamic_channels_.find(device) != pending_dynamic_channels_.end()) {
+    for (Psm psm : pending_dynamic_channels_[device]) {
+      auto& callbacks = pending_dynamic_channels_callbacks_[device].front();
+      link->SendConnectionRequest(psm, link->ReserveDynamicChannel(), std::move(callbacks));
+      pending_dynamic_channels_callbacks_[device].pop_front();
+    }
+    pending_dynamic_channels_.erase(device);
+    pending_dynamic_channels_callbacks_.erase(device);
   }
   // Remove device from pending links list, if any
   auto pending_link = pending_links_.find(device);
@@ -131,7 +172,18 @@ void LinkManager::OnConnectFail(hci::Address device, hci::ErrorCode reason) {
   auto pending_link = pending_links_.find(device);
   if (pending_link == pending_links_.end()) {
     // There is no pending link, exit
-    LOG_DEBUG("Connection to %s failed without a pending link", device.ToString().c_str());
+    LOG_DEBUG("Connection to %s failed without a pending link; reason: %s", device.ToString().c_str(),
+              hci::ErrorCodeText(reason).c_str());
+    if (pending_dynamic_channels_callbacks_.find(device) != pending_dynamic_channels_callbacks_.end()) {
+      for (Link::PendingDynamicChannelConnection& callbacks : pending_dynamic_channels_callbacks_[device]) {
+        callbacks.handler_->Post(common::BindOnce(std::move(callbacks.on_fail_callback_),
+                                                  DynamicChannelManager::ConnectionResult{
+                                                      .hci_error = hci::ErrorCode::CONNECTION_TIMEOUT,
+                                                  }));
+      }
+      pending_dynamic_channels_.erase(device);
+      pending_dynamic_channels_callbacks_.erase(device);
+    }
     return;
   }
   for (auto& pending_fixed_channel_connection : pending_link->second.pending_fixed_channel_connections_) {

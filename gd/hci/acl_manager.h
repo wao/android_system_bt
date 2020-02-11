@@ -21,6 +21,7 @@
 #include "common/bidi_queue.h"
 #include "common/callback.h"
 #include "hci/address.h"
+#include "hci/address_with_type.h"
 #include "hci/hci_layer.h"
 #include "hci/hci_packets.h"
 #include "module.h"
@@ -82,7 +83,8 @@ class ConnectionManagementCallbacks {
 
 class AclConnection {
  public:
-  AclConnection() : manager_(nullptr), handle_(0), address_(Address::kEmpty){};
+  AclConnection()
+      : manager_(nullptr), handle_(0), address_(Address::kEmpty), address_type_(AddressType::PUBLIC_DEVICE_ADDRESS){};
   virtual ~AclConnection() = default;
 
   virtual Address GetAddress() const {
@@ -97,11 +99,19 @@ class AclConnection {
     return handle_;
   }
 
+  /* This return role for LE devices only, for Classic, please see |RoleDiscovery| method.
+   * TODO: split AclConnection for LE and Classic
+   */
+  Role GetRole() const {
+    return role_;
+  }
+
   using Queue = common::BidiQueue<PacketView<kLittleEndian>, BasePacketBuilder>;
   using QueueUpEnd = common::BidiQueueEnd<BasePacketBuilder, PacketView<kLittleEndian>>;
   using QueueDownEnd = common::BidiQueueEnd<PacketView<kLittleEndian>, BasePacketBuilder>;
   virtual QueueUpEnd* GetAclQueueEnd() const;
   virtual void RegisterCallbacks(ConnectionManagementCallbacks* callbacks, os::Handler* handler);
+  virtual void UnregisterCallbacks(ConnectionManagementCallbacks* callbacks);
   virtual void RegisterDisconnectCallback(common::OnceCallback<void(ErrorCode)> on_disconnect, os::Handler* handler);
   virtual bool Disconnect(DisconnectReason reason);
   virtual bool ChangeConnectionPacketType(uint16_t packet_type);
@@ -133,6 +143,14 @@ class AclConnection {
   virtual bool ReadAfhChannelMap();
   virtual bool ReadRssi();
   virtual bool ReadClock(WhichClock which_clock);
+  virtual bool ReadRemoteVersionInformation();
+  virtual bool ReadRemoteSupportedFeatures();
+  virtual bool ReadRemoteExtendedFeatures();
+
+  // LE ACL Method
+  virtual bool LeConnectionUpdate(uint16_t conn_interval_min, uint16_t conn_interval_max, uint16_t conn_latency,
+                                  uint16_t supervision_timeout, common::OnceCallback<void(ErrorCode)> done_callback,
+                                  os::Handler* handler);
 
   // Ask AclManager to clean me up. Must invoke after on_disconnect is called
   virtual void Finish();
@@ -141,14 +159,15 @@ class AclConnection {
 
  private:
   friend AclManager;
-  AclConnection(AclManager* manager, uint16_t handle, Address address)
-      : manager_(manager), handle_(handle), address_(address) {}
-  AclConnection(AclManager* manager, uint16_t handle, Address address, AddressType address_type)
-      : manager_(manager), handle_(handle), address_(address), address_type_(address_type) {}
-  AclManager* manager_;
+  AclConnection(const AclManager* manager, uint16_t handle, Address address)
+      : manager_(manager), handle_(handle), address_(address), address_type_(AddressType::PUBLIC_DEVICE_ADDRESS) {}
+  AclConnection(const AclManager* manager, uint16_t handle, Address address, AddressType address_type, Role role)
+      : manager_(manager), handle_(handle), address_(address), address_type_(address_type), role_(role) {}
+  const AclManager* manager_;
   uint16_t handle_;
   Address address_;
   AddressType address_type_;
+  Role role_;
   DISALLOW_COPY_AND_ASSIGN(AclConnection);
 };
 
@@ -165,9 +184,10 @@ class LeConnectionCallbacks {
  public:
   virtual ~LeConnectionCallbacks() = default;
   // Invoked when controller sends Connection Complete event with Success error code
-  virtual void OnLeConnectSuccess(std::unique_ptr<AclConnection> /* , initiated_by_local ? */) = 0;
+  // AddressWithType is always equal to the object used in AclManager#CreateLeConnection
+  virtual void OnLeConnectSuccess(AddressWithType, std::unique_ptr<AclConnection> /* , initiated_by_local ? */) = 0;
   // Invoked when controller sends Connection Complete event with non-Success error code
-  virtual void OnLeConnectFail(Address, AddressType, ErrorCode reason) = 0;
+  virtual void OnLeConnectFail(AddressWithType, ErrorCode reason) = 0;
 };
 
 class AclManagerCallbacks {
@@ -201,11 +221,14 @@ class AclManager : public Module {
   // Should register only once when user module starts.
   virtual void RegisterAclManagerCallbacks(AclManagerCallbacks* callbacks, os::Handler* handler);
 
+  // Should register only once when user module starts.
+  virtual void RegisterLeAclManagerCallbacks(AclManagerCallbacks* callbacks, os::Handler* handler);
+
   // Generates OnConnectSuccess if connected, or OnConnectFail otherwise
   virtual void CreateConnection(Address address);
 
   // Generates OnLeConnectSuccess if connected, or OnLeConnectFail otherwise
-  virtual void CreateLeConnection(Address address, AddressType address_type);
+  virtual void CreateLeConnection(AddressWithType address_with_type);
 
   // Generates OnConnectFail with error code "terminated by local host 0x16" if cancelled, or OnConnectSuccess if not
   // successfully cancelled and already connected
@@ -224,6 +247,8 @@ class AclManager : public Module {
   void Start() override;
 
   void Stop() override;
+
+  std::string ToString() const override;
 
  private:
   friend AclConnection;

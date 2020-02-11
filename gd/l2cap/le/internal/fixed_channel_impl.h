@@ -18,6 +18,7 @@
 
 #include "common/bidi_queue.h"
 #include "l2cap/cid.h"
+#include "l2cap/internal/channel_impl.h"
 #include "l2cap/le/fixed_channel.h"
 #include "os/handler.h"
 #include "os/log.h"
@@ -29,15 +30,20 @@ namespace internal {
 
 class Link;
 
-class FixedChannelImpl {
+class FixedChannelImpl : public l2cap::internal::ChannelImpl {
  public:
   FixedChannelImpl(Cid cid, Link* link, os::Handler* l2cap_handler);
 
   virtual ~FixedChannelImpl() = default;
 
-  hci::Address GetDevice() const {
+  hci::AddressWithType GetDevice() const {
     return device_;
   }
+
+  /* Return the role we have in the associated link */
+  virtual hci::Role GetRole() const;
+
+  virtual hci::AclConnection* GetAclConnection() const;
 
   virtual void RegisterOnCloseCallback(os::Handler* user_handler, FixedChannel::OnCloseCallback on_close_callback);
 
@@ -49,6 +55,8 @@ class FixedChannelImpl {
     return acquired_;
   }
 
+  Cid GetCid() const override;
+  Cid GetRemoteCid() const override;
   virtual void OnClosed(hci::ErrorCode status);
 
   virtual std::string ToString() {
@@ -70,7 +78,7 @@ class FixedChannelImpl {
   // For logging purpose only
   const Cid cid_;
   // For logging purpose only
-  const hci::Address device_;
+  const hci::AddressWithType device_;
   // Needed to handle Acquire() and Release()
   Link* link_;
   os::Handler* l2cap_handler_;

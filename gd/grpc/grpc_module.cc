@@ -17,7 +17,6 @@
 #include "grpc/grpc_module.h"
 
 #include "os/log.h"
-#include "grpc/async_grpc.h"
 
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
@@ -53,7 +52,7 @@ void GrpcModule::StartServer(const std::string& address, int port) {
   ASSERT(server_ != nullptr);
 
   for (const auto& facade : facades_) {
-    facade->OnServerStarted(completion_queue_.get());
+    facade->OnServerStarted();
   }
 }
 
@@ -97,9 +96,11 @@ void GrpcModule::RunGrpcLoop() {
       LOG_INFO("gRPC is shutdown");
       break;
     }
-    auto* data = static_cast<GrpcAsyncEventCallback*>(tag);
-    (*data)(ok);
   }
+}
+
+std::string GrpcModule::ToString() const {
+  return "Grpc Module";
 }
 
 const ::bluetooth::ModuleFactory GrpcModule::Factory = ::bluetooth::ModuleFactory([]() {
@@ -117,6 +118,10 @@ void GrpcFacadeModule::Start() {
 
 void GrpcFacadeModule::Stop() {
   GetDependency<GrpcModule>()->Unregister(this);
+}
+
+std::string GrpcFacadeModule::ToString() const {
+  return "Grpc Facade Module";
 }
 
 }  // namespace grpc

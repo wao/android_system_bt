@@ -46,7 +46,14 @@ class FixedChannel {
     ASSERT(l2cap_handler_ != nullptr);
   }
 
-  hci::Address GetDevice() const;
+  hci::AddressWithType GetDevice() const;
+
+  /**
+   * Return the role we have in the associated link
+   */
+  hci::Role GetRole() const;
+
+  hci::AclConnection* GetAclConnection() const;
 
   /**
    * Register close callback. If close callback is registered, when a channel is closed, the channel's resource will

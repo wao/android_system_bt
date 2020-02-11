@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "l2cap/le/internal/fixed_channel_impl.h"
-
 #include "common/testing/bind_test_util.h"
+#include "hci/address_with_type.h"
 #include "l2cap/cid.h"
 #include "l2cap/internal/parameter_provider_mock.h"
 #include "l2cap/le/internal/link_mock.h"
@@ -29,6 +29,8 @@ namespace l2cap {
 namespace le {
 namespace internal {
 
+using hci::Address;
+using hci::AddressWithType;
 using l2cap::internal::testing::MockParameterProvider;
 using testing::MockLink;
 using ::testing::Return;
@@ -61,8 +63,9 @@ class L2capLeFixedChannelImplTest : public ::testing::Test {
 TEST_F(L2capLeFixedChannelImplTest, get_device) {
   MockParameterProvider mock_parameter_provider;
   MockLink mock_le_link(l2cap_handler_, &mock_parameter_provider);
-  hci::Address device{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}};
+  AddressWithType device{{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}}, hci::AddressType::PUBLIC_DEVICE_ADDRESS};
   EXPECT_CALL(mock_le_link, GetDevice()).WillRepeatedly(Return(device));
+  LOG_INFO("------------------");
   FixedChannelImpl fixed_channel_impl(kSmpBrCid, &mock_le_link, l2cap_handler_);
   EXPECT_EQ(device, fixed_channel_impl.GetDevice());
 }
@@ -70,7 +73,7 @@ TEST_F(L2capLeFixedChannelImplTest, get_device) {
 TEST_F(L2capLeFixedChannelImplTest, close_triggers_callback) {
   MockParameterProvider mock_parameter_provider;
   MockLink mock_le_link(l2cap_handler_, &mock_parameter_provider);
-  hci::Address device{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}};
+  AddressWithType device{{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}}, hci::AddressType::PUBLIC_DEVICE_ADDRESS};
   EXPECT_CALL(mock_le_link, GetDevice()).WillRepeatedly(Return(device));
   FixedChannelImpl fixed_channel_impl(kSmpBrCid, &mock_le_link, l2cap_handler_);
 
@@ -91,7 +94,7 @@ TEST_F(L2capLeFixedChannelImplTest, close_triggers_callback) {
 TEST_F(L2capLeFixedChannelImplTest, register_callback_after_close_should_call_immediately) {
   MockParameterProvider mock_parameter_provider;
   MockLink mock_le_link(l2cap_handler_, &mock_parameter_provider);
-  hci::Address device{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}};
+  AddressWithType device{{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}}, hci::AddressType::PUBLIC_DEVICE_ADDRESS};
   EXPECT_CALL(mock_le_link, GetDevice()).WillRepeatedly(Return(device));
   FixedChannelImpl fixed_channel_impl(kSmpBrCid, &mock_le_link, l2cap_handler_);
 
@@ -112,7 +115,7 @@ TEST_F(L2capLeFixedChannelImplTest, register_callback_after_close_should_call_im
 TEST_F(L2capLeFixedChannelImplTest, close_twice_should_fail) {
   MockParameterProvider mock_parameter_provider;
   MockLink mock_le_link(l2cap_handler_, &mock_parameter_provider);
-  hci::Address device{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}};
+  AddressWithType device{{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}}, hci::AddressType::PUBLIC_DEVICE_ADDRESS};
   EXPECT_CALL(mock_le_link, GetDevice()).WillRepeatedly(Return(device));
   FixedChannelImpl fixed_channel_impl(kSmpBrCid, &mock_le_link, l2cap_handler_);
 
@@ -136,7 +139,7 @@ TEST_F(L2capLeFixedChannelImplTest, close_twice_should_fail) {
 TEST_F(L2capLeFixedChannelImplTest, multiple_registeration_should_fail) {
   MockParameterProvider mock_parameter_provider;
   MockLink mock_le_link(l2cap_handler_, &mock_parameter_provider);
-  hci::Address device{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}};
+  AddressWithType device{{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}}, hci::AddressType::PUBLIC_DEVICE_ADDRESS};
   EXPECT_CALL(mock_le_link, GetDevice()).WillRepeatedly(Return(device));
   FixedChannelImpl fixed_channel_impl(kSmpBrCid, &mock_le_link, l2cap_handler_);
 
@@ -156,7 +159,7 @@ TEST_F(L2capLeFixedChannelImplTest, multiple_registeration_should_fail) {
 TEST_F(L2capLeFixedChannelImplTest, call_acquire_before_registeration_should_fail) {
   MockParameterProvider mock_parameter_provider;
   MockLink mock_le_link(l2cap_handler_, &mock_parameter_provider);
-  hci::Address device{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}};
+  AddressWithType device{{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}}, hci::AddressType::PUBLIC_DEVICE_ADDRESS};
   EXPECT_CALL(mock_le_link, GetDevice()).WillRepeatedly(Return(device));
   FixedChannelImpl fixed_channel_impl(kSmpBrCid, &mock_le_link, l2cap_handler_);
   EXPECT_DEATH(fixed_channel_impl.Acquire(), ".*Acquire.*");
@@ -165,7 +168,7 @@ TEST_F(L2capLeFixedChannelImplTest, call_acquire_before_registeration_should_fai
 TEST_F(L2capLeFixedChannelImplTest, call_release_before_registeration_should_fail) {
   MockParameterProvider mock_parameter_provider;
   MockLink mock_le_link(l2cap_handler_, &mock_parameter_provider);
-  hci::Address device{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}};
+  AddressWithType device{{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}}, hci::AddressType::PUBLIC_DEVICE_ADDRESS};
   EXPECT_CALL(mock_le_link, GetDevice()).WillRepeatedly(Return(device));
   FixedChannelImpl fixed_channel_impl(kSmpBrCid, &mock_le_link, l2cap_handler_);
   EXPECT_DEATH(fixed_channel_impl.Release(), ".*Release.*");
@@ -174,7 +177,7 @@ TEST_F(L2capLeFixedChannelImplTest, call_release_before_registeration_should_fai
 TEST_F(L2capLeFixedChannelImplTest, test_acquire_release_channel) {
   MockParameterProvider mock_parameter_provider;
   MockLink mock_le_link(l2cap_handler_, &mock_parameter_provider);
-  hci::Address device{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}};
+  AddressWithType device{{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}}, hci::AddressType::PUBLIC_DEVICE_ADDRESS};
   EXPECT_CALL(mock_le_link, GetDevice()).WillRepeatedly(Return(device));
   FixedChannelImpl fixed_channel_impl(kSmpBrCid, &mock_le_link, l2cap_handler_);
 
@@ -202,7 +205,7 @@ TEST_F(L2capLeFixedChannelImplTest, test_acquire_release_channel) {
 TEST_F(L2capLeFixedChannelImplTest, test_acquire_after_close) {
   MockParameterProvider mock_parameter_provider;
   MockLink mock_le_link(l2cap_handler_, &mock_parameter_provider);
-  hci::Address device{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}};
+  AddressWithType device{{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}}, hci::AddressType::PUBLIC_DEVICE_ADDRESS};
   EXPECT_CALL(mock_le_link, GetDevice()).WillRepeatedly(Return(device));
   FixedChannelImpl fixed_channel_impl(kSmpBrCid, &mock_le_link, l2cap_handler_);
 

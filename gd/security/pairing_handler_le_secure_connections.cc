@@ -134,11 +134,15 @@ Stage2ResultOrFailure PairingHandlerLe::DoSecureConnectionsStage2(const InitialI
   uint8_t b[7];
 
   if (IAmMaster(i)) {
-    memcpy(a, i.my_connection_address.address, 7);
-    memcpy(b, i.remote_connection_address.address, 7);
+    memcpy(a, i.my_connection_address.GetAddress().address, 6);
+    a[6] = (uint8_t)i.my_connection_address.GetAddressType();
+    memcpy(b, i.remote_connection_address.GetAddress().address, 6);
+    b[6] = (uint8_t)i.remote_connection_address.GetAddressType();
   } else {
-    memcpy(a, i.remote_connection_address.address, 7);
-    memcpy(b, i.my_connection_address.address, 7);
+    memcpy(a, i.remote_connection_address.GetAddress().address, 6);
+    a[6] = (uint8_t)i.remote_connection_address.GetAddressType();
+    memcpy(b, i.my_connection_address.GetAddress().address, 6);
+    b[6] = (uint8_t)i.my_connection_address.GetAddressType();
   }
 
   Octet16 ltk, mac_key;
@@ -410,7 +414,7 @@ Stage1ResultOrFailure PairingHandlerLe::SecureConnectionsNumericComparison(const
 
 Stage1ResultOrFailure PairingHandlerLe::SecureConnectionsJustWorks(const InitialInformations& i,
                                                                    const EcdhPublicKey& PKa, const EcdhPublicKey& PKb) {
-  Octet16 Ca, Cb, Na, Nb, ra, rb;
+  Octet16 Cb, Na, Nb, ra, rb;
 
   ra = rb = {0};
 
@@ -433,13 +437,13 @@ Stage1ResultOrFailure PairingHandlerLe::SecureConnectionsJustWorks(const Initial
     }
     Nb = std::get<PairingRandomView>(random).GetRandomValue();
 
-    // Compute confirm
-    Ca = crypto_toolbox::f4((uint8_t*)PKb.x.data(), (uint8_t*)PKa.x.data(), Nb, 0);
+    // Compute Cb locally
+    Octet16 Cb_local = crypto_toolbox::f4((uint8_t*)PKb.x.data(), (uint8_t*)PKa.x.data(), Nb, 0);
 
-    if (Ca != Cb) {
-      LOG_INFO("Ca != Cb, aborting!");
+    if (Cb_local != Cb) {
+      LOG_INFO("Cb_local != Cb, aborting!");
       SendL2capPacket(i, PairingFailedBuilder::Create(PairingFailedReason::CONFIRM_VALUE_FAILED));
-      return PairingFailure("Ca != Cb");
+      return PairingFailure("Cb_local != Cb");
     }
   } else {
     Nb = GenerateRandom<16>();

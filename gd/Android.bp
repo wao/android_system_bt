@@ -28,7 +28,6 @@ cc_defaults {
         "-DLOG_NDEBUG=1",
         "-DGOOGLE_PROTOBUF_NO_RTTI",
         "-Wno-unused-parameter",
-        "-Wno-implicit-fallthrough",
         "-Wno-unused-result",
     ],
     conlyflags: [
@@ -104,6 +103,7 @@ cc_library {
     srcs: [
         "stack_manager.cc",
         "module.cc",
+        ":BluetoothAttSources",
         ":BluetoothCommonSources",
         ":BluetoothCryptoToolboxSources",
         ":BluetoothHalSources",
@@ -112,7 +112,8 @@ cc_library {
         ":BluetoothNeighborSources",
         ":BluetoothPacketSources",
         ":BluetoothShimSources",
-        ":BluetoothSmpSources",
+        ":BluetoothSecuritySources",
+        ":BluetoothStorageSources",
     ],
     generated_headers: [
         "BluetoothGeneratedPackets_h",
@@ -136,6 +137,8 @@ cc_binary {
         ":BluetoothFacade_hci_hal",
         ":BluetoothFacade_hci_layer",
         ":BluetoothFacade_l2cap_layer",
+        ":BluetoothFacade_neighbor",
+        ":BluetoothFacade_security_layer",
     ],
     generated_headers: [
         "BluetoothGeneratedPackets_h",
@@ -160,6 +163,11 @@ cc_binary {
                 "libutils",
             ],
         },
+        host: {
+            required: [
+                "root-canal",
+            ],
+        },
     },
     sanitize: {
         address: true,
@@ -177,8 +185,6 @@ cc_binary {
         "cert/grpc_root_server.cc",
         "cert/read_only_property_server.cc",
         "grpc/grpc_module.cc",
-        ":BluetoothCertSource_hci_hal",
-        ":BluetoothCertSource_hci_layer",
         ":BluetoothCertSource_l2cap_layer",
     ],
     generated_headers: [
@@ -243,13 +249,16 @@ cc_test {
     srcs: [
         "module_unittest.cc",
         "stack_manager_unittest.cc",
+        ":BluetoothAttTestSources",
         ":BluetoothCommonTestSources",
         ":BluetoothCryptoToolboxTestSources",
         ":BluetoothHciTestSources",
         ":BluetoothL2capTestSources",
         ":BluetoothNeighborTestSources",
         ":BluetoothPacketTestSources",
-        ":BluetoothSmpTestSources",
+        ":BluetoothSecurityTestSources",
+        ":BluetoothShimTestSources",
+        ":BluetoothStorageTestSources",
     ],
     generated_headers: [
         "BluetoothGeneratedPackets_h",
@@ -287,6 +296,35 @@ cc_test {
     },
 }
 
+cc_fuzz {
+  name: "bluetooth_gd_fuzz_test",
+  defaults: ["gd_defaults"],
+  srcs: [
+    "fuzz_test.cc",
+    ":BluetoothHciFuzzTestSources",
+    ":BluetoothL2capFuzzTestSources",
+  ],
+  static_libs: [
+    "libbluetooth_gd",
+    "libchrome",
+    "libgmock",
+    "libgtest",
+  ],
+  host_supported: true,
+  generated_headers: [
+    "BluetoothGeneratedPackets_h",
+  ],
+  target: {
+    android: {
+        shared_libs: [
+            "android.hardware.bluetooth@1.0",
+            "libhidlbase",
+            "libutils",
+        ],
+    },
+  },
+}
+
 cc_benchmark {
     name: "bluetooth_benchmark_gd",
     defaults: ["gd_defaults"],
@@ -301,6 +339,14 @@ cc_benchmark {
     shared_libs: [
         "libchrome",
     ],
+}
+
+filegroup {
+    name: "BluetoothHciClassSources",
+    srcs: [
+        "hci/address.cc",
+        "hci/class_of_device.cc",
+        ],
 }
 
 genrule {
@@ -321,14 +367,54 @@ genrule {
     ],
 }
 
+genrule {
+    name: "BluetoothGeneratedPackets_python3_cc",
+    tools: [
+        "bluetooth_packetgen",
+    ],
+    cmd: "$(location bluetooth_packetgen) --include=system/bt/gd --out=$(genDir) --num_shards=5 $(in)",
+    srcs: [
+        "hci/hci_packets.pdl",
+        "l2cap/l2cap_packets.pdl",
+        "security/smp_packets.pdl",
+    ],
+    out: [
+        "hci/hci_packets_python3.cc",
+        "hci/hci_packets_python3_shard_0.cc",
+        "hci/hci_packets_python3_shard_1.cc",
+        "hci/hci_packets_python3_shard_2.cc",
+        "hci/hci_packets_python3_shard_3.cc",
+        "hci/hci_packets_python3_shard_4.cc",
+        "l2cap/l2cap_packets_python3.cc",
+        "l2cap/l2cap_packets_python3_shard_0.cc",
+        "l2cap/l2cap_packets_python3_shard_1.cc",
+        "l2cap/l2cap_packets_python3_shard_2.cc",
+        "l2cap/l2cap_packets_python3_shard_3.cc",
+        "l2cap/l2cap_packets_python3_shard_4.cc",
+        "security/smp_packets_python3.cc",
+        "security/smp_packets_python3_shard_0.cc",
+        "security/smp_packets_python3_shard_1.cc",
+        "security/smp_packets_python3_shard_2.cc",
+        "security/smp_packets_python3_shard_3.cc",
+        "security/smp_packets_python3_shard_4.cc",
+    ],
+}
+
 filegroup {
     name: "BluetoothFacadeProto",
     srcs: [
         "facade/common.proto",
         "facade/rootservice.proto",
         "hal/facade.proto",
-        "hci/facade.proto",
+        "hci/facade/facade.proto",
+        "hci/facade/acl_manager_facade.proto",
+        "hci/facade/controller_facade.proto",
+        "hci/facade/le_acl_manager_facade.proto",
+        "hci/facade/le_advertising_manager_facade.proto",
+        "hci/facade/le_scanning_manager_facade.proto",
+        "neighbor/facade/facade.proto",
         "l2cap/classic/facade.proto",
+        "security/facade.proto",
     ],
 }
 
@@ -349,10 +435,24 @@ genrule {
         "facade/rootservice.pb.h",
         "hal/facade.grpc.pb.h",
         "hal/facade.pb.h",
-        "hci/facade.grpc.pb.h",
-        "hci/facade.pb.h",
+        "hci/facade/facade.grpc.pb.h",
+        "hci/facade/facade.pb.h",
+        "hci/facade/acl_manager_facade.grpc.pb.h",
+        "hci/facade/acl_manager_facade.pb.h",
+        "hci/facade/controller_facade.grpc.pb.h",
+        "hci/facade/controller_facade.pb.h",
+        "hci/facade/le_acl_manager_facade.grpc.pb.h",
+        "hci/facade/le_acl_manager_facade.pb.h",
+        "hci/facade/le_advertising_manager_facade.grpc.pb.h",
+        "hci/facade/le_advertising_manager_facade.pb.h",
+        "hci/facade/le_scanning_manager_facade.grpc.pb.h",
+        "hci/facade/le_scanning_manager_facade.pb.h",
         "l2cap/classic/facade.grpc.pb.h",
         "l2cap/classic/facade.pb.h",
+        "neighbor/facade/facade.grpc.pb.h",
+        "neighbor/facade/facade.pb.h",
+        "security/facade.grpc.pb.h",
+        "security/facade.pb.h",
     ],
 }
 
@@ -373,10 +473,24 @@ genrule {
         "facade/rootservice.pb.cc",
         "hal/facade.grpc.pb.cc",
         "hal/facade.pb.cc",
-        "hci/facade.grpc.pb.cc",
-        "hci/facade.pb.cc",
+        "hci/facade/facade.grpc.pb.cc",
+        "hci/facade/facade.pb.cc",
+        "hci/facade/acl_manager_facade.grpc.pb.cc",
+        "hci/facade/acl_manager_facade.pb.cc",
+        "hci/facade/controller_facade.grpc.pb.cc",
+        "hci/facade/controller_facade.pb.cc",
+        "hci/facade/le_acl_manager_facade.grpc.pb.cc",
+        "hci/facade/le_acl_manager_facade.pb.cc",
+        "hci/facade/le_advertising_manager_facade.grpc.pb.cc",
+        "hci/facade/le_advertising_manager_facade.pb.cc",
+        "hci/facade/le_scanning_manager_facade.grpc.pb.cc",
+        "hci/facade/le_scanning_manager_facade.pb.cc",
         "l2cap/classic/facade.grpc.pb.cc",
         "l2cap/classic/facade.pb.cc",
+        "neighbor/facade/facade.grpc.pb.cc",
+        "neighbor/facade/facade.pb.cc",
+        "security/facade.grpc.pb.cc",
+        "security/facade.pb.cc",
     ],
 }
 
@@ -385,54 +499,33 @@ genrule {
     tools: [
         "aprotoc",
         "protoc-gen-grpc-python-plugin",
+        "soong_zip",
     ],
     cmd: "$(location aprotoc) -Isystem/bt/gd -Iexternal/protobuf/src --plugin=protoc-gen-grpc=$(location protoc-gen-grpc-python-plugin) $(in) --grpc_out=$(genDir) --python_out=$(genDir); " +
         "touch $(genDir)/facade/__init__.py; " +
         "touch $(genDir)/hal/__init__.py; " +
-        "touch $(genDir)/hal/cert/__init__.py; " +
         "touch $(genDir)/hci/__init__.py; " +
-        "touch $(genDir)/hci/cert/__init__.py; " +
+        "touch $(genDir)/hci/facade/__init__.py; " +
         "touch $(genDir)/l2cap/classic/__init__.py; " +
-        "touch $(genDir)/l2cap/classic/cert/__init__.py; ",
+        "touch $(genDir)/l2cap/classic/cert/__init__.py; " +
+        "touch $(genDir)/neighbor/facade/__init__.py; " +
+        "touch $(genDir)/security/__init__.py; " +
+        "$(location soong_zip) -C $(genDir) -D $(genDir) -o $(out)",
     srcs: [
         ":BluetoothFacadeProto",
         ":BluetoothCertStackProto",
     ],
-    out: [
-        "cert/rootservice_pb2_grpc.py",
-        "cert/rootservice_pb2.py",
-        "facade/__init__.py",
-        "facade/common_pb2_grpc.py",
-        "facade/common_pb2.py",
-        "facade/rootservice_pb2_grpc.py",
-        "facade/rootservice_pb2.py",
-        "hal/__init__.py",
-        "hal/facade_pb2_grpc.py",
-        "hal/facade_pb2.py",
-        "hci/__init__.py",
-        "hci/facade_pb2_grpc.py",
-        "hci/facade_pb2.py",
-        "l2cap/classic/__init__.py",
-        "l2cap/classic/facade_pb2_grpc.py",
-        "l2cap/classic/facade_pb2.py",
-        "hal/cert/__init__.py",
-        "hal/cert/api_pb2_grpc.py",
-        "hal/cert/api_pb2.py",
-        "hci/cert/__init__.py",
-        "hci/cert/api_pb2_grpc.py",
-        "hci/cert/api_pb2.py",
-        "l2cap/classic/cert/__init__.py",
-        "l2cap/classic/cert/api_pb2_grpc.py",
-        "l2cap/classic/cert/api_pb2.py",
-    ],
+    out: ["bluetooth_cert_generated_py.zip"],
+    dist: {
+        targets: ["bluetooth_stack_with_facade"],
+    },
+
 }
 
 filegroup {
     name: "BluetoothCertStackProto",
     srcs: [
         "cert/rootservice.proto",
-        "hal/cert/api.proto",
-        "hci/cert/api.proto",
         "l2cap/classic/cert/api.proto",
     ],
 }
@@ -453,10 +546,6 @@ genrule {
         "cert/rootservice.pb.h",
         "facade/common.grpc.pb.h",
         "facade/common.pb.h",
-        "hal/cert/api.grpc.pb.h",
-        "hal/cert/api.pb.h",
-        "hci/cert/api.grpc.pb.h",
-        "hci/cert/api.pb.h",
         "l2cap/classic/cert/api.grpc.pb.h",
         "l2cap/classic/cert/api.pb.h",
     ],
@@ -478,11 +567,96 @@ genrule {
         "cert/rootservice.pb.cc",
         "facade/common.grpc.pb.cc",
         "facade/common.pb.cc",
-        "hal/cert/api.grpc.pb.cc",
-        "hal/cert/api.pb.cc",
-        "hci/cert/api.grpc.pb.cc",
-        "hci/cert/api.pb.cc",
         "l2cap/classic/cert/api.grpc.pb.cc",
         "l2cap/classic/cert/api.pb.cc",
     ],
+}
+
+cc_defaults {
+  name: "bluetooth_py3_native_extension_defaults",
+  include_dirs: [
+    "external/python/cpython3/Include",
+  ],
+  target: {
+      android: {
+          include_dirs: ["external/python/cpython3/android/bionic/pyconfig"],
+      },
+      android_arm: {
+          cflags: ["-DSOABI=\"cpython-38android-arm-android-bionic\""],
+          suffix: ".cpython-38android-arm-android-bionic",
+      },
+      android_arm64: {
+          cflags: ["-DSOABI=\"cpython-38android-arm64-android-bionic\""],
+          suffix: ".cpython-38android-arm64-android-bionic",
+      },
+      android_x86: {
+          cflags: ["-DSOABI=\"cpython-38android-x86-android-bionic\""],
+          suffix: ".cpython-38android-x86-android-bionic",
+      },
+      android_x86_64: {
+          cflags: ["-DSOABI=\"cpython-38android-x86_64-android-bionic\""],
+          suffix: ".cpython-38android-x86_64-android-bionic",
+      },
+      // Regenerate include dirs with android_regen.sh
+      darwin_x86_64: {
+          include_dirs: ["external/python/cpython3/android/darwin_x86_64/pyconfig"],
+          cflags: [
+              "-Wno-deprecated-declarations",
+              "-Wno-pointer-arith",
+              "-DSOABI=\"cpython-38android-x86_64-darwin\"",
+          ],
+          suffix: ".cpython-38android-x86_64-darwin",
+      },
+      linux_bionic: {
+          // NB linux_bionic is a 'host' architecture but it uses the bionic libc like 'android'
+          // targets so use the android pyconfig.
+          include_dirs: ["external/python/cpython3/android/bionic/pyconfig"],
+          cflags: ["-DSOABI=\"cpython-38android-x86_64-linux-bionic\""],
+          suffix: ".cpython-38android-x86_64-linux-bionic",
+      },
+      linux_glibc_x86: {
+          enabled: false,
+      },
+      linux_glibc_x86_64: {
+          include_dirs: ["external/python/cpython3/android/linux_x86_64/pyconfig"],
+          cflags: ["-DSOABI=\"cpython-38android-x86_64-linux-gnu\""],
+          // Commenting out the Linux suffix so that cpython-38-x86_64-linux-gnu
+          // Python 3.8 can also import the untagged .so library per PEP 3149
+          // Keep this change until Android py3-cmd can run ACTS, gRPC and can
+          // Export Python native symbols such as PyType_Type
+          // suffix: ".cpython-38android-x86_64-linux-gnu",
+      },
+      windows: {
+          enabled: false,
+      },
+  },
+  allow_undefined_symbols: true,
+}
+
+cc_library_host_shared {
+  name: "bluetooth_packets_python3",
+  defaults: [
+    "gd_defaults",
+    "bluetooth_py3_native_extension_defaults"
+  ],
+  srcs: [
+    "packet/python3_module.cc",
+    "l2cap/fcs.cc",
+    ":BluetoothPacketSources",
+    "hci/address.cc",
+    "hci/class_of_device.cc",
+  ],
+  generated_headers: [
+    "BluetoothGeneratedPackets_h",
+  ],
+  generated_sources: [
+    "BluetoothGeneratedPackets_python3_cc",
+  ],
+  header_libs: [
+    "pybind11_headers",
+  ],
+  cflags: [
+    "-fexceptions",
+  ],
+  rtti: true,
 }

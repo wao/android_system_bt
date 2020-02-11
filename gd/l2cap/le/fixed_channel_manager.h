@@ -18,7 +18,7 @@
 #include <string>
 
 #include "hci/acl_manager.h"
-#include "hci/address.h"
+#include "hci/address_with_type.h"
 #include "l2cap/cid.h"
 #include "l2cap/le/fixed_channel.h"
 #include "l2cap/le/fixed_channel_service.h"
@@ -50,9 +50,9 @@ class FixedChannelManager {
     hci::ErrorCode hci_error = hci::ErrorCode::SUCCESS;
   };
   /**
-   * OnConnectionFailureCallback(std::string failure_reason);
+   * OnConnectionFailureCallback(ConnectionResult failure_reason);
    */
-  using OnConnectionFailureCallback = common::OnceCallback<void(ConnectionResult result)>;
+  using OnConnectionFailureCallback = common::OnceCallback<void(ConnectionResult)>;
 
   /**
    * OnConnectionOpenCallback(FixedChannel channel);
@@ -96,14 +96,14 @@ class FixedChannelManager {
    * A module calling ConnectServices() must have called RegisterService() before.
    * The callback will come back from on_open_callback in the service that is registered
    *
-   * @param device: Remote device to make this connection.
+   * @param address_with_type: Remote device with type to make this connection.
    * @param address_type: Address type of remote device
    * @param on_fail_callback: A callback to indicate connection failure along with a status code.
    * @param handler: The handler context in which to execute the @callback parameters.
    *
    * Returns: true if connection was able to be initiated, false otherwise.
    */
-  bool ConnectServices(hci::Address device, hci::AddressType address_type, OnConnectionFailureCallback on_fail_callback,
+  bool ConnectServices(hci::AddressWithType address_with_type, OnConnectionFailureCallback on_fail_callback,
                        os::Handler* handler);
 
   /**

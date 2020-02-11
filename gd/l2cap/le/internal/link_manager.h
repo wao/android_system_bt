@@ -18,17 +18,18 @@
 
 #include <memory>
 #include <unordered_map>
+#include <utility>
 
 #include "os/handler.h"
 
+#include "hci/acl_manager.h"
+#include "hci/address.h"
+#include "hci/address_with_type.h"
 #include "l2cap/internal/parameter_provider.h"
 #include "l2cap/internal/scheduler.h"
 #include "l2cap/le/fixed_channel_manager.h"
 #include "l2cap/le/internal/fixed_channel_service_manager_impl.h"
 #include "l2cap/le/internal/link.h"
-
-#include "hci/acl_manager.h"
-#include "hci/address.h"
 
 namespace bluetooth {
 namespace l2cap {
@@ -39,7 +40,7 @@ class LinkManager : public hci::LeConnectionCallbacks {
  public:
   LinkManager(os::Handler* l2cap_handler, hci::AclManager* acl_manager, FixedChannelServiceManagerImpl* service_manager,
               l2cap::internal::ParameterProvider* parameter_provider)
-      : l2cap_handler_(l2cap_handler), acl_manager_(acl_manager), service_manager_(service_manager),
+      : l2cap_handler_(l2cap_handler), acl_manager_(acl_manager), fixed_channel_service_manager_(service_manager),
         parameter_provider_(parameter_provider) {
     acl_manager_->RegisterLeCallbacks(this, l2cap_handler_);
   }
@@ -55,26 +56,35 @@ class LinkManager : public hci::LeConnectionCallbacks {
 
   // ACL methods
 
-  Link* GetLink(hci::Address device);
-  void OnLeConnectSuccess(std::unique_ptr<hci::AclConnection> acl_connection) override;
-  void OnLeConnectFail(hci::Address device, hci::AddressType address_type, hci::ErrorCode reason) override;
-  void OnDisconnect(hci::Address device, hci::ErrorCode status);
+  Link* GetLink(hci::AddressWithType address_with_type);
+  void OnLeConnectSuccess(hci::AddressWithType connecting_address_with_type,
+                          std::unique_ptr<hci::AclConnection> acl_connection) override;
+  void OnLeConnectFail(hci::AddressWithType address_with_type, hci::ErrorCode reason) override;
+  void OnDisconnect(hci::AddressWithType address_with_type, hci::ErrorCode status);
 
   // FixedChannelManager methods
 
-  void ConnectFixedChannelServices(hci::Address device, hci::AddressType address_type,
+  void ConnectFixedChannelServices(hci::AddressWithType address_with_type,
                                    PendingFixedChannelConnection pending_fixed_channel_connection);
+
+  // DynamicChannelManager methods
+
+  void ConnectDynamicChannelServices(hci::AddressWithType device,
+                                     Link::PendingDynamicChannelConnection pending_dynamic_channel_connection, Psm psm);
 
  private:
   // Dependencies
   os::Handler* l2cap_handler_;
   hci::AclManager* acl_manager_;
-  FixedChannelServiceManagerImpl* service_manager_;
+  FixedChannelServiceManagerImpl* fixed_channel_service_manager_;
+  DynamicChannelServiceManagerImpl* dynamic_channel_service_manager_;
   l2cap::internal::ParameterProvider* parameter_provider_;
 
   // Internal states
-  std::unordered_map<hci::Address, PendingLink> pending_links_;
-  std::unordered_map<hci::Address, Link> links_;
+  std::unordered_map<hci::AddressWithType, PendingLink> pending_links_;
+  std::unordered_map<hci::AddressWithType, Link> links_;
+  std::unordered_map<hci::AddressWithType, std::list<std::pair<Psm, Link::PendingDynamicChannelConnection>>>
+      pending_dynamic_channels_;
   DISALLOW_COPY_AND_ASSIGN(LinkManager);
 };
 

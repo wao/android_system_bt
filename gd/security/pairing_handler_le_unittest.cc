@@ -120,8 +120,7 @@ class PairingHandlerUnitTest : public testing::Test {
 
 InitialInformations initial_informations{
     .my_role = hci::Role::MASTER,
-    .my_connection_address = {},
-    .my_connection_address_type = 0x00,
+    .my_connection_address = {{}, hci::AddressType::PUBLIC_DEVICE_ADDRESS},
 
     .myPairingCapabilities = {.io_capability = IoCapability::NO_INPUT_NO_OUTPUT,
                               .oob_data_flag = OobDataFlag::NOT_PRESENT,
@@ -131,8 +130,7 @@ InitialInformations initial_informations{
                               .responder_key_distribution = 0x03},
 
     .remotely_initiated = false,
-    .remote_connection_address = {},
-    .remote_connection_address_type = 0x01,
+    .remote_connection_address = {{}, hci::AddressType::RANDOM_DEVICE_ADDRESS},
     .ui_handler = &uiMock,
     .le_security_interface = &leSecurityMock,
     .OnPairingFinished = OnPairingFinished,
@@ -200,7 +198,7 @@ TEST_F(PairingHandlerUnitTest, test_secure_connections_just_works) {
   Octet16 Nb = PairingHandlerLe::GenerateRandom<16>();
 
   // Compute confirm
-  Octet16 Cb = crypto_toolbox::f4((uint8_t*)my_public_key.x.data(), (uint8_t*)public_key.x.data(), Nb, 0);
+  Octet16 Cb = crypto_toolbox::f4((uint8_t*)public_key.x.data(), (uint8_t*)my_public_key.x.data(), Nb, 0);
 
   pairing_handler->OnCommandView(BuilderToView(PairingConfirmBuilder::Create(Cb)));
 
@@ -211,18 +209,15 @@ TEST_F(PairingHandlerUnitTest, test_secure_connections_just_works) {
   prv.IsValid();
   Octet16 Na = prv.GetRandomValue();
 
-  // Compute Ca, compare
-  Octet16 Ca = crypto_toolbox::f4((uint8_t*)my_public_key.x.data(), (uint8_t*)public_key.x.data(), Na, 0);
-
-  EXPECT_EQ(Ca, Cb);
-
   pairing_handler->OnCommandView(BuilderToView(PairingRandomBuilder::Create(Nb)));
 
   // Start of authentication stage 2
   uint8_t a[7];
   uint8_t b[7];
-  memcpy(b, initial_informations.remote_connection_address.address, 7);
-  memcpy(a, initial_informations.my_connection_address.address, 7);
+  memcpy(b, initial_informations.remote_connection_address.GetAddress().address, 6);
+  b[6] = (uint8_t)initial_informations.remote_connection_address.GetAddressType();
+  memcpy(a, initial_informations.my_connection_address.GetAddress().address, 6);
+  a[6] = (uint8_t)initial_informations.my_connection_address.GetAddressType();
 
   Octet16 ltk, mac_key;
   crypto_toolbox::f5(dhkey.data(), Na, Nb, a, b, &mac_key, &ltk);
@@ -254,6 +249,7 @@ TEST_F(PairingHandlerUnitTest, test_secure_connections_just_works) {
 
 InitialInformations initial_informations_trsi{
     .my_role = hci::Role::MASTER,
+    .my_connection_address = hci::AddressWithType(),
 
     .myPairingCapabilities = {.io_capability = IoCapability::NO_INPUT_NO_OUTPUT,
                               .oob_data_flag = OobDataFlag::NOT_PRESENT,
@@ -263,6 +259,7 @@ InitialInformations initial_informations_trsi{
                               .responder_key_distribution = 0x03},
 
     .remotely_initiated = true,
+    .remote_connection_address = hci::AddressWithType(),
     .ui_handler = &uiMock,
     .le_security_interface = &leSecurityMock,
     .OnPairingFinished = OnPairingFinished,
@@ -289,6 +286,7 @@ TEST_F(PairingHandlerUnitTest, test_remote_slave_initiating) {
 
 InitialInformations initial_informations_trmi{
     .my_role = hci::Role::SLAVE,
+    .my_connection_address = hci::AddressWithType(),
 
     .myPairingCapabilities = {.io_capability = IoCapability::NO_INPUT_NO_OUTPUT,
                               .oob_data_flag = OobDataFlag::NOT_PRESENT,
@@ -298,6 +296,7 @@ InitialInformations initial_informations_trmi{
                               .responder_key_distribution = 0x03},
 
     .remotely_initiated = true,
+    .remote_connection_address = hci::AddressWithType(),
     .pairing_request = PairingRequestView::Create(BuilderToView(
         PairingRequestBuilder::Create(IoCapability::NO_INPUT_NO_OUTPUT, OobDataFlag::NOT_PRESENT,
                                       AuthReqMaskBondingFlag | AuthReqMaskMitm | AuthReqMaskSc, 16, 0x03, 0x03))),

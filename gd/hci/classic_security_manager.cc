@@ -46,6 +46,8 @@ struct ClassicSecurityManager::impl {
                                      Bind(&impl::on_request_event, common::Unretained(this)), handler_);
     hci_layer_->RegisterEventHandler(EventCode::ENCRYPTION_KEY_REFRESH_COMPLETE,
                                      Bind(&impl::on_complete_event, common::Unretained(this)), handler_);
+    hci_layer_->RegisterEventHandler(EventCode::LINK_KEY_NOTIFICATION,
+                                     Bind(&impl::on_link_key_notification, common::Unretained(this)), handler_);
   }
 
   void Stop() {
@@ -224,6 +226,12 @@ struct ClassicSecurityManager::impl {
     LOG_DEBUG("receive complete event %d", (uint8_t)event_code);
   }
 
+  void on_link_key_notification(EventPacketView packet) {
+    auto view = LinkKeyNotificationView::Create(packet);
+    ASSERT(view.IsValid());
+    LOG_DEBUG("receive link key notification, key type %d", (uint8_t)view.GetKeyType());
+  }
+
   void on_command_complete(CommandCompleteView status) {
     if (client_handler_ != nullptr) {
       client_handler_->Post(common::BindOnce(&ClassicSecurityCommandCallbacks::OnCommandComplete,
@@ -356,6 +364,10 @@ void ClassicSecurityManager::Start() {
 
 void ClassicSecurityManager::Stop() {
   pimpl_->Stop();
+}
+
+std::string ClassicSecurityManager::ToString() const {
+  return "Classic Security Manager";
 }
 
 const ModuleFactory ClassicSecurityManager::Factory = ModuleFactory([]() { return new ClassicSecurityManager(); });

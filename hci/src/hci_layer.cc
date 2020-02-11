@@ -36,10 +36,12 @@
 #include <mutex>
 
 #include "btcore/include/module.h"
+#include "btif/include/btif_bqr.h"
 #include "btsnoop.h"
 #include "buffer_allocator.h"
 #include "common/message_loop_thread.h"
 #include "common/metrics.h"
+#include "common/once_timer.h"
 #include "hci_inject.h"
 #include "hci_internals.h"
 #include "hcidefs.h"
@@ -55,6 +57,7 @@
 #define BT_HCI_TIMEOUT_TAG_NUM 1010000
 
 using bluetooth::common::MessageLoopThread;
+using bluetooth::common::OnceTimer;
 
 extern void hci_initialize();
 extern void hci_transmit(BT_HDR* packet);
@@ -85,6 +88,7 @@ typedef struct {
 static const uint32_t COMMAND_PENDING_TIMEOUT_MS = 2000;
 static const uint32_t COMMAND_PENDING_MUTEX_ACQUIRE_TIMEOUT_MS = 500;
 static const uint32_t COMMAND_TIMEOUT_RESTART_MS = 5000;
+static const uint32_t ROOT_INFLAMMED_RESTART_MS = 5000;
 static const int HCI_UNKNOWN_COMMAND_TIMED_OUT = 0x00ffffff;
 static const int HCI_STARTUP_TIMED_OUT = 0x00eeeeee;
 
@@ -111,7 +115,7 @@ static std::queue<base::Closure> command_queue;
 static alarm_t* command_response_timer;
 static list_t* commands_pending_response;
 static std::recursive_timed_mutex commands_pending_response_mutex;
-static alarm_t* hci_timeout_abort_timer;
+static OnceTimer abort_timer;
 
 // The hand-off point for data going to a higher layer, set by the higher layer
 static base::Callback<void(const base::Location&, BT_HDR*)> send_data_upwards;
@@ -135,6 +139,8 @@ static void transmit_fragment(BT_HDR* packet, bool send_transmit_finished);
 static void dispatch_reassembled(BT_HDR* packet);
 static void fragmenter_transmit_finished(BT_HDR* packet,
                                          bool all_fragments_sent);
+static bool filter_bqr_event(int16_t bqr_parameter_length,
+                             uint8_t* p_bqr_event);
 
 static const packet_fragmenter_callbacks_t packet_fragmenter_callbacks = {
     transmit_fragment, dispatch_reassembled, fragmenter_transmit_finished};
@@ -159,6 +165,19 @@ void acl_event_received(BT_HDR* packet) {
 void sco_data_received(BT_HDR* packet) {
   btsnoop->capture(packet, true);
   packet_fragmenter->reassemble_and_dispatch(packet);
+}
+
+void iso_data_received(BT_HDR* packet) {
+  btsnoop->capture(packet, true);
+  packet_fragmenter->reassemble_and_dispatch(packet);
+}
+
+void hal_service_died() {
+  if (abort_timer.IsScheduled()) {
+    LOG(ERROR) << "abort_timer is scheduled, wait for timeout";
+    return;
+  }
+  abort();
 }
 
 // Module lifecycle functions
@@ -259,12 +278,6 @@ static future_t* hci_module_shut_down() {
 
   packet_fragmenter->cleanup();
 
-  // Clean up abort timer, if it exists.
-  if (hci_timeout_abort_timer != NULL) {
-    alarm_free(hci_timeout_abort_timer);
-    hci_timeout_abort_timer = NULL;
-  }
-
   if (hci_firmware_log_fd != INVALID_FD) {
     hci_close_firmware_log_file(hci_firmware_log_fd);
     hci_firmware_log_fd = INVALID_FD;
@@ -356,6 +369,13 @@ static void startup_timer_expired(UNUSED_ATTR void* context) {
   LOG_ERROR(LOG_TAG, "%s", __func__);
 
   LOG_EVENT_INT(BT_HCI_TIMEOUT_TAG_NUM, HCI_STARTUP_TIMED_OUT);
+
+  hci_close();
+  if (abort_timer.IsScheduled()) {
+    LOG_ERROR(LOG_TAG, "%s: waiting for abort_timer", __func__);
+    return;
+  }
+
   abort();
 }
 
@@ -437,13 +457,19 @@ static void fragmenter_transmit_finished(BT_HDR* packet,
 }
 
 // Abort.  The chip has had time to write any debugging information.
-static void hci_timeout_abort(void* unused_data) {
+static void hci_timeout_abort(void) {
   LOG_ERROR(LOG_TAG, "%s restarting the Bluetooth process.", __func__);
   hci_close_firmware_log_file(hci_firmware_log_fd);
 
   // We shouldn't try to recover the stack from this command timeout.
   // If it's caused by a software bug, fix it. If it's a hardware bug, fix it.
   abort();
+}
+
+static void hci_root_inflamed_abort(uint8_t error_code,
+                                    uint8_t vendor_error_code) {
+  LOG(FATAL) << __func__ << ": error_code = " << std::to_string(error_code)
+             << ", vendor_error_code = " << std::to_string(vendor_error_code);
 }
 
 static void command_timed_out_log_info(void* original_wait_entry) {
@@ -495,7 +521,7 @@ static void command_timed_out(void* original_wait_entry) {
   }
 
   // Don't request a firmware dump for multiple hci timeouts
-  if (hci_timeout_abort_timer != NULL || hci_firmware_log_fd != INVALID_FD) {
+  if (hci_firmware_log_fd != INVALID_FD) {
     return;
   }
 
@@ -521,13 +547,13 @@ static void command_timed_out(void* original_wait_entry) {
   osi_free(bt_hdr);
   LOG_ERROR(LOG_TAG, "%s: Setting a timer to restart.", __func__);
 
-  hci_timeout_abort_timer = alarm_new("hci.hci_timeout_aborter");
-  if (!hci_timeout_abort_timer) {
+  // alarm_default_callbacks thread post to hci_thread.
+  if (!abort_timer.Schedule(
+          hci_thread.GetWeakPtr(), FROM_HERE, base::Bind(hci_timeout_abort),
+          base::TimeDelta::FromMilliseconds(COMMAND_TIMEOUT_RESTART_MS))) {
     LOG_ERROR(LOG_TAG, "%s unable to create an abort timer.", __func__);
     abort();
   }
-  alarm_set(hci_timeout_abort_timer, COMMAND_TIMEOUT_RESTART_MS,
-            hci_timeout_abort, nullptr);
 }
 
 // Event/packet receiving functions
@@ -548,6 +574,43 @@ void process_command_credits(int credits) {
     }
     command_queue.pop();
     command_credits--;
+  }
+}
+
+bool hci_is_root_inflammation_event_received() {
+  return abort_timer.IsScheduled();
+}
+
+void handle_root_inflammation_event(uint8_t error_code,
+                                    uint8_t vendor_error_code) {
+  LOG(ERROR) << __func__
+             << ": Root inflammation event! setting timer to restart.";
+  // TODO(ugoyu) Report to bluetooth metrics here
+  {
+    // Try to stop hci command and startup timers
+    std::unique_lock<std::recursive_timed_mutex> lock(
+        commands_pending_response_mutex, std::defer_lock);
+    if (lock.try_lock_for(std::chrono::milliseconds(
+            COMMAND_PENDING_MUTEX_ACQUIRE_TIMEOUT_MS))) {
+      if (alarm_is_scheduled(startup_timer)) {
+        alarm_cancel(startup_timer);
+      }
+      if (alarm_is_scheduled(command_response_timer)) {
+        alarm_cancel(command_response_timer);
+      }
+    } else {
+      LOG(ERROR) << __func__ << ": Failed to obtain mutex";
+    }
+  }
+
+  // HwBinder thread post to hci_thread
+  if (!hci_thread.IsRunning() ||
+      !abort_timer.Schedule(
+          hci_thread.GetWeakPtr(), FROM_HERE,
+          base::Bind(hci_root_inflamed_abort, error_code, vendor_error_code),
+          base::TimeDelta::FromMilliseconds(ROOT_INFLAMMED_RESTART_MS))) {
+    LOG(ERROR) << "Failed to schedule abort_timer or hci has already closed!";
+    hci_root_inflamed_abort(error_code, vendor_error_code);
   }
 }
 
@@ -614,15 +677,28 @@ static bool filter_incoming_event(BT_HDR* packet) {
     }
 
     goto intercepted;
-  } else if (event_code == HCI_VSE_SUBCODE_DEBUG_INFO_SUB_EVT) {
-    if (hci_firmware_log_fd == INVALID_FD)
-      hci_firmware_log_fd = hci_open_firmware_log_file();
+  } else if (event_code == HCI_VENDOR_SPECIFIC_EVT) {
+    uint8_t sub_event_code;
+    STREAM_TO_UINT8(sub_event_code, stream);
 
-    if (hci_firmware_log_fd != INVALID_FD)
-      hci_log_firmware_debug_packet(hci_firmware_log_fd, packet);
+    if (sub_event_code == HCI_VSE_SUBCODE_DEBUG_INFO_SUB_EVT) {
+      if (hci_firmware_log_fd == INVALID_FD)
+        hci_firmware_log_fd = hci_open_firmware_log_file();
 
-    buffer_allocator->free(packet);
-    return true;
+      if (hci_firmware_log_fd != INVALID_FD)
+        hci_log_firmware_debug_packet(hci_firmware_log_fd, packet);
+
+      buffer_allocator->free(packet);
+      return true;
+    } else if (sub_event_code == HCI_VSE_SUBCODE_BQR_SUB_EVT) {
+      // Excluding the HCI Event packet header and 1 octet sub-event code
+      int16_t bqr_parameter_length = packet->len - HCIE_PREAMBLE_SIZE - 1;
+      // The stream currently points to the BQR sub-event parameters
+      if (filter_bqr_event(bqr_parameter_length, stream)) {
+        buffer_allocator->free(packet);
+        return true;
+      }
+    }
   }
 
   return false;
@@ -693,6 +769,62 @@ static void update_command_response_timer(void) {
     alarm_set(command_response_timer, COMMAND_PENDING_TIMEOUT_MS,
               command_timed_out, list_front(commands_pending_response));
   }
+}
+
+// Returns true if the BQR event is handled and should not proceed to
+// higher layers.
+static bool filter_bqr_event(int16_t bqr_parameter_length,
+                             uint8_t* p_bqr_event) {
+  if (bqr_parameter_length <= 0) {
+    LOG(ERROR) << __func__ << ": Invalid parameter length : "
+               << std::to_string(bqr_parameter_length);
+    return true;
+  }
+
+  bool intercepted = false;
+  uint8_t quality_report_id = p_bqr_event[0];
+  switch (quality_report_id) {
+    case bluetooth::bqr::QUALITY_REPORT_ID_ROOT_INFLAMMATION:
+      if (bqr_parameter_length >=
+          bluetooth::bqr::kRootInflammationParamTotalLen) {
+        uint8_t error_code;
+        uint8_t vendor_error_code;
+        STREAM_TO_UINT8(quality_report_id, p_bqr_event);
+        STREAM_TO_UINT8(error_code, p_bqr_event);
+        STREAM_TO_UINT8(vendor_error_code, p_bqr_event);
+        handle_root_inflammation_event(error_code, vendor_error_code);
+      }
+      intercepted = true;
+      break;
+
+    case bluetooth::bqr::QUALITY_REPORT_ID_LMP_LL_MESSAGE_TRACE:
+      if (bqr_parameter_length >= bluetooth::bqr::kLogDumpParamTotalLen) {
+        bluetooth::bqr::DumpLmpLlMessage(bqr_parameter_length, p_bqr_event);
+      }
+      intercepted = true;
+      break;
+
+    case bluetooth::bqr::QUALITY_REPORT_ID_BT_SCHEDULING_TRACE:
+      if (bqr_parameter_length >= bluetooth::bqr::kLogDumpParamTotalLen) {
+        bluetooth::bqr::DumpBtScheduling(bqr_parameter_length, p_bqr_event);
+      }
+      intercepted = true;
+      break;
+
+    case bluetooth::bqr::QUALITY_REPORT_ID_CONTROLLER_DBG_INFO:
+      // TODO: Integrate with the HCI_VSE_SUBCODE_DEBUG_INFO_SUB_EVT
+      intercepted = true;
+      break;
+
+    case bluetooth::bqr::QUALITY_REPORT_ID_MONITOR_MODE:
+    case bluetooth::bqr::QUALITY_REPORT_ID_APPROACH_LSTO:
+    case bluetooth::bqr::QUALITY_REPORT_ID_A2DP_AUDIO_CHOPPY:
+    case bluetooth::bqr::QUALITY_REPORT_ID_SCO_VOICE_CHOPPY:
+    default:
+      break;
+  }
+
+  return intercepted;
 }
 
 static void init_layer_interface() {

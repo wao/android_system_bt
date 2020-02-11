@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define LOG_TAG "gd_shim"
+#define LOG_TAG "bt_gd_shim"
 
 #include <memory>
+#include <string>
 
 #include "common/bidi_queue.h"
 #include "hci/address.h"
@@ -29,13 +30,18 @@
 namespace bluetooth {
 namespace shim {
 
-const ModuleFactory Controller::Factory = ModuleFactory([]() { return new Controller(); });
+namespace {
+constexpr char kModuleName[] = "shim::Controller";
+constexpr uint64_t kEventMask = 0x3dbfffffffffffff;
+}  // namespace
 
 struct Controller::impl {
   impl(hci::Controller* hci_controller) : hci_controller_(hci_controller) {}
 
   hci::Controller* hci_controller_{nullptr};
 };
+
+const ModuleFactory Controller::Factory = ModuleFactory([]() { return new Controller(); });
 
 bool Controller::IsCommandSupported(int op_code) const {
   return pimpl_->hci_controller_->IsSupported((bluetooth::hci::OpCode)op_code);
@@ -85,6 +91,10 @@ uint64_t Controller::GetControllerLeSupportedStates() const {
   return pimpl_->hci_controller_->GetControllerLeSupportedStates();
 }
 
+uint8_t Controller::GetControllerLeNumberOfSupportedAdverisingSets() const {
+  return pimpl_->hci_controller_->GetControllerLeNumberOfSupportedAdverisingSets();
+}
+
 uint8_t Controller::GetControllerLocalExtendedFeaturesMaxPageNumber() const {
   return pimpl_->hci_controller_->GetControllerLocalExtendedFeaturesMaxPageNumber();
 }
@@ -99,10 +109,15 @@ void Controller::ListDependencies(ModuleList* list) {
 void Controller::Start() {
   LOG_INFO("%s Starting controller shim layer", __func__);
   pimpl_ = std::make_unique<impl>(GetDependency<hci::Controller>());
+  pimpl_->hci_controller_->SetEventMask(kEventMask);
 }
 
 void Controller::Stop() {
   pimpl_.reset();
+}
+
+std::string Controller::ToString() const {
+  return kModuleName;
 }
 
 }  // namespace shim

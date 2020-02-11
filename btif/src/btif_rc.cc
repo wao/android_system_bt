@@ -2939,11 +2939,12 @@ static void register_for_event_notification(btif_rc_supported_event_t* p_event,
     return;
   }
   // interval is only valid for AVRC_EVT_PLAY_POS_CHANGED
-  uint32_t interval = 0;
+  uint32_t interval_in_seconds = 0;
   if (p_event->event_id == AVRC_EVT_PLAY_POS_CHANGED) {
-    interval = 2000;
+    interval_in_seconds = 2;
   }
-  status = register_notification_cmd(p_transaction->lbl, p_event->event_id, interval, p_dev);
+  status = register_notification_cmd(p_transaction->lbl, p_event->event_id,
+                                     interval_in_seconds, p_dev);
   if (status != BT_STATUS_SUCCESS) {
     BTIF_TRACE_ERROR("%s: Error in Notification registration: %d", __func__,
                      status);
@@ -3055,7 +3056,8 @@ static void handle_get_capability_response(tBTA_AV_META_MSG* pmeta_msg,
           (p_rsp->param.event_id[xx] == AVRC_EVT_APP_SETTING_CHANGE) ||
           (p_rsp->param.event_id[xx] == AVRC_EVT_NOW_PLAYING_CHANGE) ||
           (p_rsp->param.event_id[xx] == AVRC_EVT_ADDR_PLAYER_CHANGE) ||
-          (p_rsp->param.event_id[xx] == AVRC_EVT_UIDS_CHANGE)) {
+          (p_rsp->param.event_id[xx] == AVRC_EVT_UIDS_CHANGE) ||
+          (p_rsp->param.event_id[xx] == AVRC_EVT_AVAL_PLAYERS_CHANGE)) {
         p_event = (btif_rc_supported_event_t*)osi_malloc(
             sizeof(btif_rc_supported_event_t));
         p_event->event_id = p_rsp->param.event_id[xx];
@@ -3152,11 +3154,10 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg,
           break;
         } else {
           uint8_t* p_data = p_rsp->param.track;
-          /* Update the UID for current track
-           * Attributes will be fetched after the AVRCP procedure
-           */
           BE_STREAM_TO_UINT64(p_dev->rc_playing_uid, p_data);
           get_play_status_cmd(p_dev);
+          get_element_attribute_cmd(AVRC_MAX_NUM_MEDIA_ATTR_ID, attr_list,
+                                    p_dev);
         }
         break;
 
@@ -3171,6 +3172,11 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg,
         break;
 
       case AVRC_EVT_AVAL_PLAYERS_CHANGE:
+        BTIF_TRACE_DEBUG("%s: AVRC_EVT_AVAL_PLAYERS_CHANGE", __func__);
+        do_in_jni_thread(
+            FROM_HERE,
+            base::Bind(bt_rc_ctrl_callbacks->available_player_changed_cb,
+                       p_dev->rc_addr));
         break;
 
       case AVRC_EVT_ADDR_PLAYER_CHANGE:
@@ -3809,6 +3815,10 @@ static void handle_get_playstatus_response(tBTA_AV_META_MSG* pmeta_msg,
 
 
   if (p_rsp->status == AVRC_STS_NO_ERROR) {
+    do_in_jni_thread(
+        FROM_HERE,
+        base::Bind(bt_rc_ctrl_callbacks->play_status_changed_cb, p_dev->rc_addr,
+                   (btrc_play_status_t)p_rsp->play_status));
     do_in_jni_thread(
         FROM_HERE,
         base::Bind(bt_rc_ctrl_callbacks->play_position_changed_cb,
