@@ -55,7 +55,7 @@ Sender::Sender(os::Handler* handler, ILink* link, Scheduler* scheduler, std::sha
 }
 
 Sender::~Sender() {
-  if (is_dequeue_registered_) {
+  if (is_dequeue_registered_.exchange(false)) {
     queue_end_->UnregisterDequeue();
   }
 }
@@ -73,19 +73,21 @@ DataController* Sender::GetDataController() {
 }
 
 void Sender::try_register_dequeue() {
-  if (is_dequeue_registered_) {
+  if (is_dequeue_registered_.exchange(true)) {
     return;
   }
   queue_end_->RegisterDequeue(handler_, common::Bind(&Sender::dequeue_callback, common::Unretained(this)));
-  is_dequeue_registered_ = true;
 }
 
+// From external context
 void Sender::dequeue_callback() {
   auto packet = queue_end_->TryDequeue();
   ASSERT(packet != nullptr);
-  data_controller_->OnSdu(std::move(packet));
-  queue_end_->UnregisterDequeue();
-  is_dequeue_registered_ = false;
+  handler_->Post(
+      common::BindOnce(&DataController::OnSdu, common::Unretained(data_controller_.get()), std::move(packet)));
+  if (is_dequeue_registered_.exchange(false)) {
+    queue_end_->UnregisterDequeue();
+  }
 }
 
 void Sender::UpdateClassicConfiguration(classic::internal::ChannelConfigurationState config) {
@@ -101,7 +103,9 @@ void Sender::UpdateClassicConfiguration(classic::internal::ChannelConfigurationS
   if (mode == RetransmissionAndFlowControlModeOption::ENHANCED_RETRANSMISSION) {
     data_controller_ =
         std::make_unique<ErtmController>(link_, channel_id_, remote_channel_id_, queue_end_, handler_, scheduler_);
-    data_controller_->SetRetransmissionAndFlowControlOptions(config.local_retransmission_and_flow_control_);
+    RetransmissionAndFlowControlConfigurationOption option = config.local_retransmission_and_flow_control_;
+    option.tx_window_size_ = config.remote_retransmission_and_flow_control_.tx_window_size_;
+    data_controller_->SetRetransmissionAndFlowControlOptions(option);
     data_controller_->EnableFcs(config.fcs_type_ == FcsType::DEFAULT);
     return;
   }
