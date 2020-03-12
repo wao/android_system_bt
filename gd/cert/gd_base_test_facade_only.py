@@ -14,6 +14,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
+from acts import asserts
 from acts.base_test import BaseTestClass
 from facade import rootservice_pb2 as facade_rootservice
 
@@ -23,7 +24,13 @@ import os
 import signal
 import subprocess
 
-ANDROID_BUILD_TOP = os.environ.get('ANDROID_BUILD_TOP')
+
+def is_subprocess_alive(process, timeout_seconds=1):
+    try:
+        process.wait(timeout=timeout_seconds)
+        return False
+    except subprocess.TimeoutExpired as exp:
+        return True
 
 
 class GdFacadeOnlyBaseTestClass(BaseTestClass):
@@ -42,8 +49,9 @@ class GdFacadeOnlyBaseTestClass(BaseTestClass):
             self.rootcanal_logs = open(rootcanal_logpath, 'w')
             rootcanal_config = self.controller_configs['rootcanal']
             rootcanal_hci_port = str(rootcanal_config.get("hci_port", "6402"))
-            android_host_out = os.environ.get('ANDROID_HOST_OUT')
-            rootcanal = android_host_out + "/nativetest64/root-canal/root-canal"
+            rootcanal = os.path.join(
+                os.getcwd(),
+                "out/host/linux-x86/nativetest64/root-canal/root-canal")
             self.rootcanal_process = subprocess.Popen(
                 [
                     rootcanal,
@@ -51,13 +59,18 @@ class GdFacadeOnlyBaseTestClass(BaseTestClass):
                     rootcanal_hci_port,
                     str(rootcanal_config.get("link_layer_port", "6403"))
                 ],
-                cwd=ANDROID_BUILD_TOP,
+                cwd=os.getcwd(),
                 env=os.environ.copy(),
                 stdout=self.rootcanal_logs,
                 stderr=self.rootcanal_logs)
+            asserts.assert_true(
+                self.rootcanal_process,
+                msg="Cannot start root-canal at " + str(rootcanal))
+            asserts.assert_true(
+                is_subprocess_alive(self.rootcanal_process),
+                msg="root-canal stopped immediately after running")
             for gd_device in gd_devices:
                 gd_device["rootcanal_port"] = rootcanal_hci_port
-
         self.register_controller(
             importlib.import_module('cert.gd_device'), builtin=True)
 

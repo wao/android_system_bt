@@ -34,11 +34,21 @@ esac
 done
 set -- "${POSITIONAL[@]}" # restore positional parameters
 
-unzip -o -q $ANDROID_BUILD_TOP/out/dist/bluetooth_cert_generated_py.zip \
-   -d $ANDROID_BUILD_TOP/out/dist/bluetooth_cert_generated_py
+BLUETOOTH_CERT_TEST_ENV=$ANDROID_BUILD_TOP/out/dist/bluetooth_cert_test_env
+rm -rf BLUETOOTH_CERT_TEST_ENV
+mkdir -p $BLUETOOTH_CERT_TEST_ENV
 
-PYTHONPATH=$PYTHONPATH:$ANDROID_BUILD_TOP/out/host/linux-x86/lib64:$ANDROID_BUILD_TOP/system/bt/gd:$ANDROID_BUILD_TOP/out/dist/bluetooth_cert_generated_py/system/bt/gd \
+unzip -o -q $ANDROID_BUILD_TOP/out/dist/bluetooth_cert_generated_py.zip \
+   -d $BLUETOOTH_CERT_TEST_ENV
+
+unzip -o -q $ANDROID_BUILD_TOP/out/dist/bluetooth_cert_test.zip \
+   -d $BLUETOOTH_CERT_TEST_ENV
+
+pushd .
+cd $ANDROID_BUILD_TOP
+PYTHONPATH=$BLUETOOTH_CERT_TEST_ENV/out/host/linux-x86/lib64:$BLUETOOTH_CERT_TEST_ENV/system/bt/gd:$PYTHONPATH \
     python3.8 `which act.py`\
       -c $TEST_CONFIG \
       $TEST_FILTER \
       -tp $ANDROID_BUILD_TOP/system/bt/gd
+popd
