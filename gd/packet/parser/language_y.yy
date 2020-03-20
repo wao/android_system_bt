@@ -22,14 +22,14 @@
 %parse-param { Declarations* decls }
 %lex-param { void* scanner }
 
-%pure-parser
 %glr-parser
 %skeleton "glr.cc"
 
 %expect-rr 0
 
 %debug
-%error-verbose
+%define parse.error verbose
+%locations
 %verbose
 
 %union {
@@ -617,6 +617,11 @@ size_field_definition
     {
       DEBUG() << "Size for payload defined\n";
       $$ = new SizeField("payload", $6, LOC);
+    }
+  | SIZE '(' BODY ')' ':' INTEGER
+    {
+      DEBUG() << "Size for body defined\n";
+      $$ = new SizeField("body", $6, LOC);
     }
   | COUNT '(' IDENTIFIER ')' ':' INTEGER
     {

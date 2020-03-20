@@ -44,8 +44,7 @@ class PacketField : public Loggable {
   // For most field types, this will be the same as GetSize();
   virtual Size GetStructSize() const;
 
-  // Get the type of the field to be used in the builders constructor and
-  // variables.
+  // Get the type of the field to be used in the member variables.
   virtual std::string GetDataType() const = 0;
 
   // Given an iterator {name}_it, extract the type.
@@ -106,6 +105,9 @@ class PacketField : public Loggable {
 
   // Get field of nested elements if this is a container field, nullptr if none
   virtual const PacketField* GetElementField() const;
+
+  // Return string representation of this field, that can be displayed for debugging or logging purposes
+  virtual void GenStringRepresentation(std::ostream& s, std::string accessor) const;
 
   std::string GetDebugName() const override;
 

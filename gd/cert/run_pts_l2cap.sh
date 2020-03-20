@@ -1,4 +1,5 @@
 #! /bin/bash
 
-# For bluetooth_packets_python3
-PYTHONPATH=$PYTHONPATH:$ANDROID_BUILD_TOP/out/host/linux-x86/lib64 python3.8 `which act.py` -c $ANDROID_BUILD_TOP/system/bt/gd/l2cap/pts/pts.json -tf $ANDROID_BUILD_TOP/system/bt/gd/l2cap/pts/pts_l2cap_testcase -tp $ANDROID_BUILD_TOP/system/bt/gd
+source $ANDROID_BUILD_TOP/system/bt/cert/run \
+  --test_config=$ANDROID_BUILD_TOP/system/bt/gd/cert/pts.json \
+  --test_file=$ANDROID_BUILD_TOP/system/bt/gd/cert/pts_l2cap_testcase

@@ -49,6 +49,7 @@
 #include "gattdefs.h"
 #include "l2c_int.h"
 #include "osi/include/log.h"
+#include "common/time_util.h"
 
 #include "main/shim/btm_api.h"
 #include "main/shim/shim.h"
@@ -87,6 +88,14 @@ class AdvertisingCache {
     return items.front().data;
   }
 
+  bool Exist(uint8_t addr_type, const RawAddress& addr) {
+    auto it = Find(addr_type, addr);
+    if (it != items.end()) {
+        return true;
+    }
+    return false;
+  }
+
   /* Append |data| for device |addr_type, addr| */
   const std::vector<uint8_t>& Append(uint8_t addr_type, const RawAddress& addr,
                                      std::vector<uint8_t> data) {
@@ -110,6 +119,10 @@ class AdvertisingCache {
     if (it != items.end()) {
       items.erase(it);
     }
+  }
+
+  void ClearAll() {
+    items.clear();
   }
 
  private:
@@ -447,6 +460,7 @@ tBTM_STATUS BTM_BleObserve(bool start, uint8_t duration,
     /* scan is not started */
     if (!BTM_BLE_IS_SCAN_ACTIVE(btm_cb.ble_ctr_cb.scan_activity)) {
       /* allow config of scan type */
+      cache.ClearAll();
       p_inq->scan_type = (p_inq->scan_type == BTM_BLE_SCAN_MODE_NONE)
                              ? BTM_BLE_SCAN_MODE_ACTI
                              : p_inq->scan_type;
@@ -1048,7 +1062,7 @@ void btm_ble_set_adv_flag(uint16_t connect_mode, uint16_t disc_mode) {
 
   btm_ble_update_dmt_flag_bits(&flag, connect_mode, disc_mode);
 
-  LOG_DEBUG(LOG_TAG, "disc_mode %04x", disc_mode);
+  LOG_DEBUG("disc_mode %04x", disc_mode);
   /* update discoverable flag */
   if (disc_mode & BTM_BLE_LIMITED_DISCOVERABLE) {
     flag &= ~BTM_BLE_GEN_DISC_FLAG;
@@ -1297,6 +1311,7 @@ tBTM_STATUS btm_ble_start_inquiry(uint8_t mode, uint8_t duration) {
   }
 
   if (!BTM_BLE_IS_SCAN_ACTIVE(p_ble_cb->scan_activity)) {
+    cache.ClearAll();
     btm_send_hci_set_scan_params(
         BTM_BLE_SCAN_MODE_ACTI, BTM_BLE_LOW_LATENCY_SCAN_INT,
         BTM_BLE_LOW_LATENCY_SCAN_WIN,
@@ -1305,6 +1320,7 @@ tBTM_STATUS btm_ble_start_inquiry(uint8_t mode, uint8_t duration) {
     /* enable IRK list */
     btm_ble_enable_resolving_list_for_platform(BTM_BLE_RL_SCAN);
 #endif
+    p_ble_cb->inq_var.scan_type = BTM_BLE_SCAN_MODE_ACTI;
     p_ble_cb->inq_var.scan_duplicate_filter = BTM_BLE_DUPLICATE_DISABLE;
     status = btm_ble_start_scan();
   } else if ((p_ble_cb->inq_var.scan_interval !=
@@ -1892,18 +1908,23 @@ void btm_ble_process_adv_pkt(uint8_t data_len, uint8_t* data) {
     btm_ble_process_adv_addr(bda, &addr_type);
 
     uint16_t event_type;
-    if (legacy_evt_type == 0x00) {  // ADV_IND;
-      event_type = 0x0013;
-    } else if (legacy_evt_type == 0x01) {  // ADV_DIRECT_IND;
-      event_type = 0x0015;
-    } else if (legacy_evt_type == 0x02) {  // ADV_SCAN_IND;
-      event_type = 0x0012;
-    } else if (legacy_evt_type == 0x03) {  // ADV_NONCONN_IND;
-      event_type = 0x0010;
-    } else if (legacy_evt_type == 0x04) {  // SCAN_RSP;
+    event_type = 1 << BLE_EVT_LEGACY_BIT;
+    if (legacy_evt_type == BTM_BLE_ADV_IND_EVT) {
+      event_type |= (1 << BLE_EVT_CONNECTABLE_BIT)|
+                    (1 << BLE_EVT_SCANNABLE_BIT);
+    } else if (legacy_evt_type == BTM_BLE_ADV_DIRECT_IND_EVT) {
+      event_type |= (1 << BLE_EVT_CONNECTABLE_BIT)|
+                    (1 << BLE_EVT_DIRECTED_BIT);
+    } else if (legacy_evt_type == BTM_BLE_ADV_SCAN_IND_EVT) {
+      event_type |= (1 << BLE_EVT_SCANNABLE_BIT);
+    } else if (legacy_evt_type == BTM_BLE_ADV_NONCONN_IND_EVT) {
+      event_type = (1 << BLE_EVT_LEGACY_BIT);//0x0010;
+    } else if (legacy_evt_type == BTM_BLE_SCAN_RSP_EVT) {  // SCAN_RSP;
       // We can't distinguish between "SCAN_RSP to an ADV_IND", and "SCAN_RSP to
       // an ADV_SCAN_IND", so always return "SCAN_RSP to an ADV_IND"
-      event_type = 0x001B;
+      event_type |= (1 << BLE_EVT_CONNECTABLE_BIT)|
+                    (1 << BLE_EVT_SCANNABLE_BIT)|
+                    (1 << BLE_EVT_SCAN_RESPONSE_BIT);
     } else {
       BTM_TRACE_ERROR(
           "Malformed LE Advertising Report Event - unsupported "
@@ -1937,11 +1958,19 @@ void btm_ble_process_adv_pkt_cont(uint16_t evt_type, uint8_t addr_type,
 
   bool is_scannable = ble_evt_type_is_scannable(evt_type);
   bool is_scan_resp = ble_evt_type_is_scan_resp(evt_type);
+  bool is_legacy = ble_evt_type_is_legacy(evt_type);
 
-  bool is_start =
-      ble_evt_type_is_legacy(evt_type) && is_scannable && !is_scan_resp;
+  // We might receive a legacy scan response without receving a ADV_IND
+  // or ADV_SCAN_IND before. Only parsing the scan response data which
+  // has no ad flag, the device will be set to DUMO mode. The createbond
+  // procedure will use the wrong device mode.
+  // In such case no necessary to report scan response
+  if(is_legacy && is_scan_resp && !cache.Exist(addr_type, bda))
+    return;
 
-  if (ble_evt_type_is_legacy(evt_type))
+  bool is_start = is_legacy && is_scannable && !is_scan_resp;
+
+  if (is_legacy)
     AdvertiseDataParser::RemoveTrailingZeros(tmp);
 
   // We might have send scan request to this device before, but didn't get the
@@ -1986,6 +2015,7 @@ void btm_ble_process_adv_pkt_cont(uint16_t evt_type, uint8_t addr_type,
       update = false;
     } else {
       /* if yes, skip it */
+      cache.Clear(addr_type, bda);
       return; /* assumption: one result per event */
     }
   }
@@ -1995,11 +2025,13 @@ void btm_ble_process_adv_pkt_cont(uint16_t evt_type, uint8_t addr_type,
     p_i = btm_inq_db_new(bda);
     if (p_i != NULL) {
       p_inq->inq_cmpl_info.num_resp++;
+      p_i->time_of_resp = bluetooth::common::time_get_os_boottime_ms();
     } else
       return;
   } else if (p_i->inq_count !=
              p_inq->inq_counter) /* first time seen in this inquiry */
   {
+    p_i->time_of_resp = bluetooth::common::time_get_os_boottime_ms();
     p_inq->inq_cmpl_info.num_resp++;
   }
 
@@ -2011,8 +2043,7 @@ void btm_ble_process_adv_pkt_cont(uint16_t evt_type, uint8_t addr_type,
   uint8_t result = btm_ble_is_discoverable(bda, adv_data);
   if (result == 0) {
     cache.Clear(addr_type, bda);
-    LOG_WARN(LOG_TAG,
-             "%s device no longer discoverable, discarding advertising packet",
+    LOG_WARN("%s device no longer discoverable, discarding advertising packet",
              __func__);
     return;
   }
