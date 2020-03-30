@@ -20,18 +20,17 @@ from bluetooth_packets_python3.l2cap_packets import CommandCode, LeCommandCode
 from bluetooth_packets_python3.l2cap_packets import ConnectionResponseResult
 from bluetooth_packets_python3.l2cap_packets import InformationRequestInfoType
 from bluetooth_packets_python3.l2cap_packets import LeCreditBasedConnectionResponseResult
-import logging
 
 
 class L2capMatchers(object):
 
     @staticmethod
-    def ConnectionResponse(scid):
-        return lambda packet: L2capMatchers._is_matching_connection_response(packet, scid)
+    def ConnectionRequest(psm):
+        return lambda packet: L2capMatchers._is_matching_connection_request(packet, psm)
 
     @staticmethod
-    def ConnectionRequest():
-        return lambda packet: L2capMatchers._is_control_frame_with_code(packet, CommandCode.CONNECTION_REQUEST)
+    def ConnectionResponse(scid):
+        return lambda packet: L2capMatchers._is_matching_connection_response(packet, scid)
 
     @staticmethod
     def ConfigurationResponse():
@@ -42,8 +41,8 @@ class L2capMatchers(object):
         return lambda packet: L2capMatchers._is_control_frame_with_code(packet, CommandCode.CONFIGURATION_REQUEST)
 
     @staticmethod
-    def DisconnectionRequest():
-        return lambda packet: L2capMatchers._is_control_frame_with_code(packet, CommandCode.DISCONNECTION_REQUEST)
+    def DisconnectionRequest(scid, dcid):
+        return lambda packet: L2capMatchers._is_matching_disconnection_request(packet, scid, dcid)
 
     @staticmethod
     def DisconnectionResponse(scid, dcid):
@@ -58,13 +57,27 @@ class L2capMatchers(object):
         return lambda packet: L2capMatchers._is_le_control_frame_with_code(packet, LeCommandCode.COMMAND_REJECT)
 
     @staticmethod
+    def LeConnectionParameterUpdateRequest():
+        return lambda packet: L2capMatchers._is_le_control_frame_with_code(packet, LeCommandCode.CONNECTION_PARAMETER_UPDATE_REQUEST)
+
+    @staticmethod
+    def LeConnectionParameterUpdateResponse(
+            result=l2cap_packets.ConnectionParameterUpdateResponseResult.
+            ACCEPTED):
+        return lambda packet: L2capMatchers._is_matching_connection_parameter_update_response(packet, result)
+
+    @staticmethod
     def CreditBasedConnectionRequest(psm):
         return lambda packet: L2capMatchers._is_matching_credit_based_connection_request(packet, psm)
 
     @staticmethod
     def CreditBasedConnectionResponse(
-            scid, result=LeCreditBasedConnectionResponseResult.SUCCESS):
-        return lambda packet: L2capMatchers._is_matching_credit_based_connection_response(packet, scid, result)
+            result=LeCreditBasedConnectionResponseResult.SUCCESS):
+        return lambda packet: L2capMatchers._is_matching_credit_based_connection_response(packet, result)
+
+    @staticmethod
+    def CreditBasedConnectionResponseUsedCid():
+        return lambda packet: L2capMatchers._is_matching_credit_based_connection_response(packet, LeCreditBasedConnectionResponseResult.SOURCE_CID_ALREADY_ALLOCATED) or L2capMatchers._is_le_control_frame_with_code(packet, LeCommandCode.COMMAND_REJECT)
 
     @staticmethod
     def LeDisconnectionRequest(scid, dcid):
@@ -73,6 +86,10 @@ class L2capMatchers(object):
     @staticmethod
     def LeDisconnectionResponse(scid, dcid):
         return lambda packet: L2capMatchers._is_matching_le_disconnection_response(packet, scid, dcid)
+
+    @staticmethod
+    def LeFlowControlCredit(cid):
+        return lambda packet: L2capMatchers._is_matching_le_flow_control_credit(packet, cid)
 
     @staticmethod
     def SFrame(req_seq=None, f=None, s=None, p=None):
@@ -104,6 +121,11 @@ class L2capMatchers(object):
     @staticmethod
     def PacketPayloadWithMatchingPsm(psm):
         return lambda packet: None if psm != packet.psm else packet
+
+    # this is a hack - should be removed
+    @staticmethod
+    def PacketPayloadWithMatchingCid(cid):
+        return lambda packet: None if cid != packet.fixed_cid else packet
 
     @staticmethod
     def ExtractBasicFrame(scid):
@@ -214,6 +236,15 @@ class L2capMatchers(object):
                                                         code) is not None
 
     @staticmethod
+    def _is_matching_connection_request(packet, psm):
+        frame = L2capMatchers.control_frame_with_code(
+            packet, CommandCode.CONNECTION_REQUEST)
+        if frame is None:
+            return False
+        request = l2cap_packets.ConnectionRequestView(frame)
+        return request.GetPsm() == psm
+
+    @staticmethod
     def _is_matching_connection_response(packet, scid):
         frame = L2capMatchers.control_frame_with_code(
             packet, CommandCode.CONNECTION_RESPONSE)
@@ -223,6 +254,16 @@ class L2capMatchers(object):
         return response.GetSourceCid() == scid and response.GetResult(
         ) == ConnectionResponseResult.SUCCESS and response.GetDestinationCid(
         ) != 0
+
+    @staticmethod
+    def _is_matching_disconnection_request(packet, scid, dcid):
+        frame = L2capMatchers.control_frame_with_code(
+            packet, CommandCode.DISCONNECTION_REQUEST)
+        if frame is None:
+            return False
+        request = l2cap_packets.DisconnectionRequestView(frame)
+        return request.GetSourceCid() == scid and request.GetDestinationCid(
+        ) == dcid
 
     @staticmethod
     def _is_matching_disconnection_response(packet, scid, dcid):
@@ -253,6 +294,15 @@ class L2capMatchers(object):
         request = l2cap_packets.LeDisconnectionRequestView(frame)
         return request.GetSourceCid() == scid and request.GetDestinationCid(
         ) == dcid
+
+    @staticmethod
+    def _is_matching_le_flow_control_credit(packet, cid):
+        frame = L2capMatchers.le_control_frame_with_code(
+            packet, LeCommandCode.LE_FLOW_CONTROL_CREDIT)
+        if frame is None:
+            return False
+        request = l2cap_packets.LeFlowControlCreditView(frame)
+        return request.GetCid() == cid
 
     @staticmethod
     def _information_response_with_type(packet, info_type):
@@ -287,6 +337,15 @@ class L2capMatchers(object):
         return True
 
     @staticmethod
+    def _is_matching_connection_parameter_update_response(packet, result):
+        frame = L2capMatchers.le_control_frame_with_code(
+            packet, LeCommandCode.CONNECTION_PARAMETER_UPDATE_RESPONSE)
+        if frame is None:
+            return False
+        return l2cap_packets.ConnectionParameterUpdateResponseView(
+            frame).GetResult() == result
+
+    @staticmethod
     def _is_matching_credit_based_connection_request(packet, psm):
         frame = L2capMatchers.le_control_frame_with_code(
             packet, LeCommandCode.LE_CREDIT_BASED_CONNECTION_REQUEST)
@@ -296,7 +355,7 @@ class L2capMatchers(object):
         return request.GetLePsm() == psm
 
     @staticmethod
-    def _is_matching_credit_based_connection_response(packet, scid, result):
+    def _is_matching_credit_based_connection_response(packet, result):
         frame = L2capMatchers.le_control_frame_with_code(
             packet, LeCommandCode.LE_CREDIT_BASED_CONNECTION_RESPONSE)
         if frame is None:

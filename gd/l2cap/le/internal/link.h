@@ -30,6 +30,7 @@
 #include "l2cap/le/internal/fixed_channel_impl.h"
 #include "l2cap/le/internal/fixed_channel_service_manager_impl.h"
 #include "l2cap/le/internal/signalling_manager.h"
+#include "l2cap/le/link_options.h"
 #include "os/alarm.h"
 
 namespace bluetooth {
@@ -72,8 +73,13 @@ class Link : public l2cap::internal::ILink {
   virtual void Disconnect();
 
   // Handles connection parameter update request from remote
-  virtual void UpdateConnectionParameter(SignalId signal_id, uint16_t conn_interval_min, uint16_t conn_interval_max,
-                                         uint16_t conn_latency, uint16_t supervision_timeout);
+  virtual void UpdateConnectionParameterFromRemote(SignalId signal_id, uint16_t conn_interval_min,
+                                                   uint16_t conn_interval_max, uint16_t conn_latency,
+                                                   uint16_t supervision_timeout);
+
+  virtual void SendConnectionParameterUpdate(uint16_t conn_interval_min, uint16_t conn_interval_max,
+                                             uint16_t conn_latency, uint16_t supervision_timeout,
+                                             uint16_t min_ce_length, uint16_t max_ce_length);
 
   // FixedChannel methods
 
@@ -98,8 +104,6 @@ class Link : public l2cap::internal::ILink {
   virtual std::shared_ptr<l2cap::internal::DynamicChannelImpl> AllocateReservedDynamicChannel(
       Cid reserved_cid, Psm psm, Cid remote_cid, SecurityPolicy security_policy);
 
-  virtual DynamicChannelConfigurationOption GetConfigurationForInitialConfiguration(Cid cid);
-
   virtual void FreeDynamicChannel(Cid cid);
 
   // Check how many channels are acquired or in use, if zero, start tear down timer, if non-zero, cancel tear down timer
@@ -118,6 +122,10 @@ class Link : public l2cap::internal::ILink {
 
   void SendLeCredit(Cid local_cid, uint16_t credit) override;
 
+  LinkOptions* GetLinkOptions() {
+    return &link_options_;
+  }
+
  private:
   os::Handler* l2cap_handler_;
   l2cap::internal::FixedChannelAllocator<FixedChannelImpl, Link> fixed_channel_allocator_{this, l2cap_handler_};
@@ -129,8 +137,12 @@ class Link : public l2cap::internal::ILink {
   LeSignallingManager signalling_manager_;
   std::unordered_map<Cid, PendingDynamicChannelConnection> local_cid_to_pending_dynamic_channel_connection_map_;
   os::Alarm link_idle_disconnect_alarm_{l2cap_handler_};
+  LinkOptions link_options_{acl_connection_.get(), this, l2cap_handler_};
   DISALLOW_COPY_AND_ASSIGN(Link);
 
+  // Received connection update complete from ACL manager. SignalId is bound to a valid number when we need to send a
+  // response to remote. If SignalId is bound to an invalid number, we don't send a response to remote, because the
+  // connection update request is not from remote LL slave.
   void on_connection_update_complete(SignalId signal_id, hci::ErrorCode error_code);
 };
 
