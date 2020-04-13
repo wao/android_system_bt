@@ -234,12 +234,6 @@ struct HciLayer::impl : public hal::HciHalCallbacks {
 
   void Stop() {
     hal_->unregisterIncomingPacketCallback();
-    UnregisterEventHandler(EventCode::COMMAND_COMPLETE);
-    UnregisterEventHandler(EventCode::COMMAND_STATUS);
-    UnregisterEventHandler(EventCode::LE_META_EVENT);
-    UnregisterEventHandler(EventCode::PAGE_SCAN_REPETITION_MODE_CHANGE);
-    UnregisterEventHandler(EventCode::MAX_SLOTS_CHANGE);
-    UnregisterEventHandler(EventCode::VENDOR_SPECIFIC);
 
     acl_queue_.GetDownEnd()->UnregisterDequeue();
     incoming_acl_packet_buffer_.Clear();
@@ -336,13 +330,13 @@ struct HciLayer::impl : public hal::HciHalCallbacks {
 
   void hci_event_received_handler(EventPacketView event) {
     EventCode event_code = event.GetEventCode();
-    ASSERT_LOG(event_handlers_.find(event_code) != event_handlers_.end(), "Unhandled event of type 0x%02hhx (%s)",
-               event_code, EventCodeText(event_code).c_str());
+    if (event_handlers_.find(event_code) == event_handlers_.end()) {
+      LOG_DEBUG("Dropping unregistered event of type 0x%02hhx (%s)", event_code, EventCodeText(event_code).c_str());
+      return;
+    }
     auto& registered = event_handlers_[event_code];
     if (registered.handler != nullptr) {
       registered.handler->Post(BindOnce(registered.event_handler, event));
-    } else {
-      LOG_DEBUG("Dropping unregistered event of type 0x%02hhx (%s)", event_code, EventCodeText(event_code).c_str());
     }
   }
 
@@ -576,6 +570,10 @@ const ModuleFactory HciLayer::Factory = ModuleFactory([]() { return new HciLayer
 
 void HciLayer::ListDependencies(ModuleList* list) {
   list->add<hal::HciHal>();
+}
+
+os::Handler* HciLayer::GetHciHandler() {
+  return GetHandler();
 }
 
 void HciLayer::Start() {
