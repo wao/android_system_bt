@@ -16,6 +16,7 @@
 
 #include "hal/fuzz/fuzz_hci_hal.h"
 #include "fuzz/helpers.h"
+#include "hci/fuzz/status_vs_complete_commands.h"
 
 namespace bluetooth {
 namespace hal {
@@ -30,61 +31,61 @@ void FuzzHciHal::unregisterIncomingPacketCallback() {
 }
 
 void FuzzHciHal::sendHciCommand(HciPacket packet) {
-  auto packetView = packet::PacketView<packet::kLittleEndian>(std::make_shared<std::vector<uint8_t>>(packet));
-  hci::CommandPacketView command = hci::CommandPacketView::Create(packetView);
+  hci::CommandPacketView command = hci::CommandPacketView::FromBytes(packet);
   if (!command.IsValid()) {
     return;
   }
 
   waiting_opcode_ = command.GetOpCode();
-  // TODO: expand list or find better way to associate opcodes needing status vs complete
-  waiting_for_status_ = waiting_opcode_ == hci::OpCode::RESET;
+  waiting_for_status_ = hci::fuzz::uses_command_status(waiting_opcode_);
 }
 
-bool FuzzHciHal::is_currently_valid_event(packet::PacketView<packet::kLittleEndian> packet) {
-  hci::EventPacketView event = hci::EventPacketView::Create(packet);
+void FuzzHciHal::injectHciEvent(std::vector<uint8_t> data) {
+  hci::EventPacketView event = hci::EventPacketView::FromBytes(data);
   if (!event.IsValid()) {
-    return false;
+    return;
   }
 
   hci::CommandCompleteView complete = hci::CommandCompleteView::Create(event);
   if (complete.IsValid()) {
     if (waiting_for_status_ || complete.GetCommandOpCode() != waiting_opcode_) {
-      return false;
+      return;
     }
   } else if (!waiting_for_status_) {
-    return false;
+    return;
   }
 
   hci::CommandStatusView status = hci::CommandStatusView::Create(event);
   if (status.IsValid()) {
     if (!waiting_for_status_ || status.GetCommandOpCode() != waiting_opcode_) {
-      return false;
+      return;
     }
   } else if (waiting_for_status_) {
-    return false;
+    return;
   }
 
-  return true;
+  callbacks_->hciEventReceived(data);
 }
 
-int FuzzHciHal::injectFuzzInput(const uint8_t* data, size_t size) {
-  const uint8_t separator[] = {0xDE, 0xAD, 0xBE, 0xEF};
-  auto inputs = ::bluetooth::fuzz::SplitInput(data, size, separator, sizeof(separator));
-  for (auto const& sdata : inputs) {
-    auto packet = packet::PacketView<packet::kLittleEndian>(std::make_shared<std::vector<uint8_t>>(sdata));
-    hci::AclPacketView aclPacket = hci::AclPacketView::Create(packet);
-    if (aclPacket.IsValid()) {
-      callbacks_->aclDataReceived(sdata);
-    }
-    if (is_currently_valid_event(packet)) {
-      callbacks_->hciEventReceived(sdata);
-    }
-
-    sentinel_work_item_.WaitUntilFinishedOn(GetHandler());
+void FuzzHciHal::injectAclData(std::vector<uint8_t> data) {
+  hci::AclPacketView aclPacket = hci::AclPacketView::FromBytes(data);
+  if (!aclPacket.IsValid()) {
+    return;
   }
-  return 0;
+
+  callbacks_->aclDataReceived(data);
 }
+
+void FuzzHciHal::injectScoData(std::vector<uint8_t> data) {
+  hci::ScoPacketView scoPacket = hci::ScoPacketView::FromBytes(data);
+  if (!scoPacket.IsValid()) {
+    return;
+  }
+
+  callbacks_->scoDataReceived(data);
+}
+
+const ModuleFactory FuzzHciHal::Factory = ModuleFactory([]() { return new FuzzHciHal(); });
 
 }  // namespace fuzz
 }  // namespace hal

@@ -1,5 +1,6 @@
 cc_defaults {
     name: "gd_defaults",
+    include_dirs: ["external/protobuf/src"],
     target: {
         android: {
             test_config_template: "AndroidTestTemplate.xml",
@@ -33,6 +34,7 @@ cc_defaults {
     conlyflags: [
         "-std=c99",
     ],
+    header_libs: ["jni_headers"],
     sanitize: {
         misc_undefined: ["bounds"],
     },
@@ -164,6 +166,9 @@ cc_library {
     name: "libbluetooth_gd_fuzzing",
     defaults: [
         "libbluetooth_gd_defaults",
+    ],
+    srcs: [
+        ":BluetoothOsSources_fuzz",
     ],
     cflags: [
         "-DFUZZ_TARGET",
@@ -312,6 +317,7 @@ cc_defaults {
     defaults: ["gd_defaults"],
     srcs: [
         ":BluetoothFuzzHelperSources",
+        ":BluetoothHciFuzzHelperSources",
     ],
     static_libs: [
         "libbluetooth_gd_fuzzing",
@@ -351,11 +357,19 @@ cc_fuzz {
 }
 
 cc_fuzz {
-    name: "bluetooth_gd_hci_fuzz_test",
+    name: "bluetooth_gd_hci_layer_fuzz_test",
     defaults: ["gd_fuzz_defaults"],
     srcs: [
         "hci/fuzz/hci_layer_fuzz_test.cc",
         ":BluetoothHalFuzzSources",
+    ],
+}
+
+cc_fuzz {
+    name: "bluetooth_gd_acl_manager_fuzz_test",
+    defaults: ["gd_fuzz_defaults"],
+    srcs: [
+        "hci/fuzz/acl_manager_fuzz_test.cc",
     ],
 }
 
