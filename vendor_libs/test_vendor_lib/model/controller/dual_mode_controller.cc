@@ -40,7 +40,7 @@ constexpr uint16_t kNumCommandPackets = 0x01;
 void DualModeController::Initialize(const std::vector<std::string>& args) {
   if (args.size() < 2) return;
 
-  Address addr;
+  Address addr{};
   if (Address::FromString(args[1], addr)) {
     properties_.SetAddress(addr);
   } else {
@@ -78,7 +78,7 @@ DualModeController::DualModeController(const std::string& properties_filename, u
     : Device(properties_filename), security_manager_(num_keys) {
   loopback_mode_ = LoopbackMode::NO_LOOPBACK;
 
-  Address public_address;
+  Address public_address{};
   ASSERT(Address::FromString("3C:5A:B4:04:05:06", public_address));
   properties_.SetAddress(public_address);
 
@@ -147,6 +147,8 @@ DualModeController::DualModeController(const std::string& properties_filename, u
   SET_HANDLER(OpCode::SNIFF_MODE, SniffMode);
   SET_HANDLER(OpCode::EXIT_SNIFF_MODE, ExitSniffMode);
   SET_HANDLER(OpCode::QOS_SETUP, QosSetup);
+  SET_HANDLER(OpCode::READ_DEFAULT_LINK_POLICY_SETTINGS,
+              ReadDefaultLinkPolicySettings);
   SET_HANDLER(OpCode::WRITE_DEFAULT_LINK_POLICY_SETTINGS,
               WriteDefaultLinkPolicySettings);
   SET_HANDLER(OpCode::FLOW_SPECIFICATION, FlowSpecification);
@@ -464,7 +466,7 @@ void DualModeController::ReadLocalSupportedCommands(CommandPacketView command) {
   auto command_view = gd_hci::ReadLocalSupportedCommandsView::Create(command);
   ASSERT(command_view.IsValid());
 
-  std::array<uint8_t, 64> supported_commands;
+  std::array<uint8_t, 64> supported_commands{};
   supported_commands.fill(0x00);
   size_t len = properties_.GetSupportedCommands().size();
   if (len > 64) {
@@ -1010,14 +1012,28 @@ void DualModeController::QosSetup(CommandPacketView command) {
   send_event_(std::move(packet));
 }
 
+void DualModeController::ReadDefaultLinkPolicySettings(
+    CommandPacketView command) {
+  auto command_view = gd_hci::ReadDefaultLinkPolicySettingsView::Create(
+      gd_hci::ConnectionManagementCommandView::Create(command));
+  ASSERT(command_view.IsValid());
+  uint16_t settings = link_layer_controller_.ReadDefaultLinkPolicySettings();
+  auto packet =
+      bluetooth::hci::ReadDefaultLinkPolicySettingsCompleteBuilder::Create(
+          kNumCommandPackets, ErrorCode::SUCCESS, settings);
+  send_event_(std::move(packet));
+}
+
 void DualModeController::WriteDefaultLinkPolicySettings(
     CommandPacketView command) {
   auto command_view = gd_hci::WriteDefaultLinkPolicySettingsView::Create(
       gd_hci::ConnectionManagementCommandView::Create(command));
   ASSERT(command_view.IsValid());
+  ErrorCode status = link_layer_controller_.WriteDefaultLinkPolicySettings(
+      command_view.GetDefaultLinkPolicySettings());
   auto packet =
       bluetooth::hci::WriteDefaultLinkPolicySettingsCompleteBuilder::Create(
-          kNumCommandPackets, ErrorCode::SUCCESS);
+          kNumCommandPackets, status);
   send_event_(std::move(packet));
 }
 
@@ -1080,7 +1096,7 @@ void DualModeController::ReadLocalName(CommandPacketView command) {
   auto command_view = gd_hci::ReadLocalNameView::Create(command);
   ASSERT(command_view.IsValid());
 
-  std::array<uint8_t, 248> local_name;
+  std::array<uint8_t, 248> local_name{};
   local_name.fill(0x00);
   size_t len = properties_.GetName().size();
   if (len > 247) {

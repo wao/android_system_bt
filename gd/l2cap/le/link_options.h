@@ -48,6 +48,11 @@ class LinkOptions {
   uint16_t GetHandle() const;
 
   /**
+   * Return Local address used for initiation of this connection.
+   */
+  hci::AddressWithType GetLocalAddress() const;
+
+  /**
    * Update the LE link layer connection parameters.
    * Depending on the link role and supported features, may directly send HCI command to update link, or send L2CAP
    * request to advise the remote. The updated connection parameters are still determined by controller. It's a link
@@ -68,10 +73,10 @@ class LinkOptions {
    */
   bool SetPhy(uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys, uint16_t phy_options);
 
-  LinkOptions(hci::AclConnection* acl_connection, internal::Link* link, os::Handler* l2cap_handler);
+  LinkOptions(hci::LeAclConnection* acl_connection, internal::Link* link, os::Handler* l2cap_handler);
 
  private:
-  hci::AclConnection* acl_connection_ = nullptr;
+  hci::LeAclConnection* acl_connection_ = nullptr;
   internal::Link* link_ = nullptr;
   os::Handler* l2cap_handler_ = nullptr;
 };

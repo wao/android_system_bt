@@ -16,17 +16,25 @@
 
 from datetime import datetime, timedelta
 import logging
+from threading import Timer
 import time
+import traceback
 
 from mobly import asserts
 
+from acts import signals
 from acts.base_test import BaseTestClass
 
 from bluetooth_packets_python3 import hci_packets
 from bluetooth_packets_python3 import l2cap_packets
 from cert.event_stream import EventStream, FilteringEventStream
 from cert.truth import assertThat
-from cert.metadata import metadata, MetadataKey
+from cert.metadata import metadata
+from cert.behavior import when, wait_until
+from cert.behavior import IHasBehaviors
+from cert.behavior import anything
+from cert.behavior import SingleArgumentBehavior
+from cert.behavior import ReplyStage
 
 
 class BogusProto:
@@ -85,6 +93,44 @@ class FetchEvents:
         logging.debug("cancel")
         self.done_ = True
         return None
+
+
+class TestBehaviors(object):
+
+    def __init__(self, parent):
+        self.test_request_behavior = SingleArgumentBehavior(
+            lambda: TestBehaviors.TestRequestReplyStage(parent))
+
+    def test_request(self, matcher):
+        return self.test_request_behavior.begin(matcher)
+
+    class TestRequestReplyStage(ReplyStage):
+
+        def __init__(self, parent):
+            self._parent = parent
+
+        def increment_count(self):
+            self._commit(lambda obj: self._increment_count(obj))
+            return self
+
+        def _increment_count(self, obj):
+            self._parent.count += 1
+            self._parent.captured.append(obj)
+
+
+class ObjectWithBehaviors(IHasBehaviors):
+
+    def __init__(self):
+        self.behaviors = TestBehaviors(self)
+        self.count = 0
+        self.captured = []
+        self.unhandled_count = 0
+
+    def get_behaviors(self):
+        return self.behaviors
+
+    def increment_unhandled(self):
+        self.unhandled_count += 1
 
 
 class CertSelfTest(BaseTestClass):
@@ -397,103 +443,342 @@ class CertSelfTest(BaseTestClass):
                 .then(lambda data: data.value_ == 3)
 
     def test_metadata_empty(self):
-        my_content = [{}]
 
-        class TestClass:
-
-            def record_data(self, content):
-                my_content[0] = content
-
-            @metadata()
-            def sample_pass_test(self):
-                pass
-
-            @metadata()
-            def sample_skipped_test(self):
-                asserts.skip("SKIP")
-
-            @metadata()
-            def sample_failed_test(self):
-                asserts.fail("FAIL")
-
-        test_class = TestClass()
-
-        try:
-            test_class.sample_pass_test()
-        except Exception:
-            asserts.fail("Should not raise exception")
-        finally:
-            asserts.assert_equal(my_content[0][str(MetadataKey.TEST_NAME)],
-                                 "sample_pass_test")
-            asserts.assert_equal(my_content[0][str(MetadataKey.TEST_CLASS)],
-                                 "TestClass")
-
-        try:
-            test_class.sample_skipped_test()
-        except Exception:
+        @metadata()
+        def simple_pass_test(arg):
             pass
-        finally:
-            asserts.assert_equal(my_content[0][str(MetadataKey.TEST_NAME)],
-                                 "sample_skipped_test")
-            asserts.assert_equal(my_content[0][str(MetadataKey.TEST_CLASS)],
-                                 "TestClass")
 
         try:
-            test_class.sample_failed_test()
-        except Exception:
+            simple_pass_test(1)
+        except signals.TestFailure:
             pass
-        finally:
-            asserts.assert_equal(my_content[0][str(MetadataKey.TEST_NAME)],
-                                 "sample_failed_test")
-            asserts.assert_equal(my_content[0][str(MetadataKey.TEST_CLASS)],
-                                 "TestClass")
+        except Exception as e:
+            asserts.fail("@metadata() should only raise signals.TestFailure, "
+                         "but raised %s with msg %s instead" %
+                         (e.__class__.__name__, str(e)))
+        else:
+            asserts.fail("@metadata() should not work")
 
     def test_metadata_empty_no_function_call(self):
-        my_content = [{}]
 
-        class TestClass:
-
-            def record_data(self, content):
-                my_content[0] = content
-
-            @metadata()
-            def sample_pass_test(self):
-                pass
-
-        test_class = TestClass()
+        @metadata
+        def simple_pass_test(arg):
+            pass
 
         try:
-            test_class.sample_pass_test()
-        except Exception:
-            asserts.fail("Should not raise exception")
-        finally:
-            asserts.assert_equal(my_content[0][str(MetadataKey.TEST_NAME)],
-                                 "sample_pass_test")
-            asserts.assert_equal(my_content[0][str(MetadataKey.TEST_CLASS)],
-                                 "TestClass")
+            simple_pass_test(1)
+        except signals.TestFailure:
+            pass
+        except Exception as e:
+            asserts.fail("@metadata should only raise signals.TestFailure, "
+                         "but raised %s with msg %s instead" %
+                         (e.__class__.__name__, str(e)))
+        else:
+            asserts.fail("@metadata should not work")
 
-    def test_metadata_pts_test_id(self):
-        my_content = [{}]
+    def test_metadata_pts_missing_id(self):
 
-        class TestClass:
-
-            def record_data(self, content):
-                my_content[0] = content
-
-            @metadata(pts_test_id="Hello World")
-            def sample_pass_test(self):
-                pass
-
-        test_class = TestClass()
+        @metadata(pts_test_name="Hello world")
+        def simple_pass_test(arg):
+            pass
 
         try:
-            test_class.sample_pass_test()
-        except Exception:
-            asserts.fail("Should not raise exception")
-        finally:
-            asserts.assert_equal(my_content[0][str(MetadataKey.TEST_NAME)],
-                                 "sample_pass_test")
-            asserts.assert_equal(my_content[0][str(MetadataKey.TEST_CLASS)],
-                                 "TestClass")
-            asserts.assert_equal(my_content[0][str(MetadataKey.PTS_TEST_ID)],
-                                 "Hello World")
+            simple_pass_test(1)
+        except signals.TestFailure:
+            pass
+        except Exception as e:
+            asserts.fail("should only raise signals.TestFailure, "
+                         "but raised %s with msg %s instead" %
+                         (e.__class__.__name__, str(e)))
+        else:
+            asserts.fail("missing pts_test_id should not work")
+
+    def test_metadata_pts_missing_name(self):
+
+        @metadata(pts_test_id="A/B/C")
+        def simple_pass_test(arg):
+            pass
+
+        try:
+            simple_pass_test(1)
+        except signals.TestFailure:
+            pass
+        except Exception as e:
+            asserts.fail("should only raise signals.TestFailure, "
+                         "but raised %s with msg %s instead" %
+                         (e.__class__.__name__, str(e)))
+        else:
+            asserts.fail("missing pts_test_name should not work")
+
+    def test_metadata_pts_test_id_and_description(self):
+
+        @metadata(pts_test_id="A/B/C", pts_test_name="Hello world")
+        def simple_pass_test(arg):
+            pass
+
+        try:
+            simple_pass_test(1)
+        except signals.TestPass as e:
+            asserts.assert_true(
+                "pts_test_id" in e.extras,
+                msg=("pts_test_id not in extra: %s" % str(e.extras)))
+            asserts.assert_equal(e.extras["pts_test_id"], "A/B/C")
+            asserts.assert_true(
+                "pts_test_name" in e.extras,
+                msg=("pts_test_name not in extra: %s" % str(e.extras)))
+            asserts.assert_equal(e.extras["pts_test_name"], "Hello world")
+        else:
+            asserts.fail("Must throw an exception using @metadata decorator")
+
+    def test_metadata_test_with_exception_stacktrace(self):
+
+        @metadata(pts_test_id="A/B/C", pts_test_name="Hello world")
+        def simple_fail_test(failure_argument):
+            raise ValueError(failure_argument)
+
+        try:
+            simple_fail_test("BEEFBEEF")
+        except signals.TestError as e:
+            asserts.assert_true(
+                "pts_test_id" in e.extras,
+                msg=("pts_test_id not in extra: %s" % str(e.extras)))
+            asserts.assert_equal(e.extras["pts_test_id"], "A/B/C")
+            asserts.assert_true(
+                "pts_test_name" in e.extras,
+                msg=("pts_test_name not in extra: %s" % str(e.extras)))
+            asserts.assert_equal(e.extras["pts_test_name"], "Hello world")
+            trace_str = traceback.format_exc()
+            asserts.assert_true(
+                "raise ValueError(failure_argument)" in trace_str,
+                msg="Failed test method not in error stack trace: %s" %
+                trace_str)
+        else:
+            asserts.fail("Must throw an exception using @metadata decorator")
+
+    def test_fluent_behavior_simple(self):
+        thing = ObjectWithBehaviors()
+
+        when(thing).test_request(anything()).then().increment_count()
+
+        thing.behaviors.test_request_behavior.run("A")
+
+        assertThat(thing.count).isEqualTo(1)
+        assertThat(thing.captured).isEqualTo(["A"])
+
+    def test_fluent_behavior__then_single__captures_one(self):
+        thing = ObjectWithBehaviors()
+
+        thing.behaviors.test_request_behavior.set_default_to_ignore()
+
+        when(thing).test_request(anything()).then().increment_count()
+
+        thing.behaviors.test_request_behavior.run("A")
+        thing.behaviors.test_request_behavior.run("A")
+        thing.behaviors.test_request_behavior.run("A")
+
+        assertThat(thing.count).isEqualTo(1)
+        assertThat(thing.captured).isEqualTo(["A"])
+
+    def test_fluent_behavior__then_times__captures_all(self):
+        thing = ObjectWithBehaviors()
+
+        when(thing).test_request(anything()).then(times=3).increment_count()
+
+        thing.behaviors.test_request_behavior.run("A")
+        thing.behaviors.test_request_behavior.run("B")
+        thing.behaviors.test_request_behavior.run("C")
+
+        assertThat(thing.count).isEqualTo(3)
+        assertThat(thing.captured).isEqualTo(["A", "B", "C"])
+
+    def test_fluent_behavior__always__captures_all(self):
+        thing = ObjectWithBehaviors()
+
+        when(thing).test_request(anything()).always().increment_count()
+
+        thing.behaviors.test_request_behavior.run("A")
+        thing.behaviors.test_request_behavior.run("B")
+        thing.behaviors.test_request_behavior.run("C")
+
+        assertThat(thing.count).isEqualTo(3)
+        assertThat(thing.captured).isEqualTo(["A", "B", "C"])
+
+    def test_fluent_behavior__matcher__captures_relevant(self):
+        thing = ObjectWithBehaviors()
+        thing.behaviors.test_request_behavior.set_default_to_ignore()
+
+        when(thing).test_request(
+            lambda obj: obj == "B").always().increment_count()
+
+        thing.behaviors.test_request_behavior.run("A")
+        thing.behaviors.test_request_behavior.run("B")
+        thing.behaviors.test_request_behavior.run("C")
+
+        assertThat(thing.count).isEqualTo(1)
+        assertThat(thing.captured).isEqualTo(["B"])
+
+    def test_fluent_behavior__then_repeated__captures_relevant(self):
+        thing = ObjectWithBehaviors()
+        thing.behaviors.test_request_behavior.set_default_to_ignore()
+
+        when(thing).test_request(
+            anything()).then().increment_count().increment_count()
+
+        thing.behaviors.test_request_behavior.run("A")
+        thing.behaviors.test_request_behavior.run("B")
+        thing.behaviors.test_request_behavior.run("A")
+
+        assertThat(thing.count).isEqualTo(2)
+        assertThat(thing.captured).isEqualTo(["A", "B"])
+
+    def test_fluent_behavior__fallback__captures_relevant(self):
+        thing = ObjectWithBehaviors()
+        thing.behaviors.test_request_behavior.set_default_to_ignore()
+
+        when(thing).test_request(lambda obj: obj == "B").then(
+            times=1).increment_count()
+        when(thing).test_request(
+            lambda obj: obj == "C").always().increment_count()
+
+        thing.behaviors.test_request_behavior.run("A")
+        thing.behaviors.test_request_behavior.run("B")
+        thing.behaviors.test_request_behavior.run("A")
+        thing.behaviors.test_request_behavior.run("C")
+        thing.behaviors.test_request_behavior.run("B")
+        thing.behaviors.test_request_behavior.run("C")
+
+        assertThat(thing.count).isEqualTo(3)
+        assertThat(thing.captured).isEqualTo(["B", "C", "C"])
+
+    def test_fluent_behavior__default_unhandled_crash(self):
+        thing = ObjectWithBehaviors()
+
+        when(thing).test_request(anything()).then().increment_count()
+
+        thing.behaviors.test_request_behavior.run("A")
+        try:
+            thing.behaviors.test_request_behavior.run("A")
+        except Exception as e:
+            logging.debug(e)
+            return True  # Failed as expected
+        return False
+
+    def test_fluent_behavior__set_default_works(self):
+        thing = ObjectWithBehaviors()
+        thing.behaviors.test_request_behavior.set_default(
+            lambda obj: thing.increment_unhandled())
+
+        when(thing).test_request(anything()).then().increment_count()
+
+        thing.behaviors.test_request_behavior.run("A")
+        thing.behaviors.test_request_behavior.run("A")
+        assertThat(thing.unhandled_count).isEqualTo(1)
+
+    def test_fluent_behavior__wait_until_done(self):
+        thing = ObjectWithBehaviors()
+        is_a = lambda obj: obj == "A"
+        when(thing).test_request(is_a).then().increment_count()
+
+        closure = lambda: thing.behaviors.test_request_behavior.run("A")
+        t = Timer(0.5, closure)
+        t.start()
+
+        wait_until(thing).test_request(is_a).times(1)
+        assertThat(thing.count).isEqualTo(1)
+        assertThat(thing.captured).isEqualTo(["A"])
+
+    def test_fluent_behavior__wait_until_done_different_lambda(self):
+        thing = ObjectWithBehaviors()
+        when(thing).test_request(
+            lambda obj: obj == "A").then().increment_count()
+
+        closure = lambda: thing.behaviors.test_request_behavior.run("A")
+        t = Timer(0.5, closure)
+        t.start()
+
+        wait_until(thing).test_request(lambda obj: obj == "A").times(1)
+        assertThat(thing.count).isEqualTo(1)
+        assertThat(thing.captured).isEqualTo(["A"])
+
+    def test_fluent_behavior__wait_until_done_anything(self):
+        thing = ObjectWithBehaviors()
+        when(thing).test_request(
+            lambda obj: obj == "A").then().increment_count()
+
+        closure = lambda: thing.behaviors.test_request_behavior.run("A")
+        t = Timer(0.5, closure)
+        t.start()
+
+        wait_until(thing).test_request(anything()).times(1)
+        assertThat(thing.count).isEqualTo(1)
+        assertThat(thing.captured).isEqualTo(["A"])
+
+    def test_fluent_behavior__wait_until_done_not_happened(self):
+        thing = ObjectWithBehaviors()
+        thing.behaviors.test_request_behavior.set_default_to_ignore()
+        when(thing).test_request(
+            lambda obj: obj == "A").then().increment_count()
+
+        closure = lambda: thing.behaviors.test_request_behavior.run("B")
+        t = Timer(0.5, closure)
+        t.start()
+        assertThat(
+            wait_until(thing).test_request(lambda obj: obj == "A").times(
+                1)).isFalse()
+
+    def test_fluent_behavior__wait_until_done_with_default(self):
+        thing = ObjectWithBehaviors()
+        thing.behaviors.test_request_behavior.set_default(
+            lambda obj: thing.increment_unhandled())
+
+        closure = lambda: thing.behaviors.test_request_behavior.run("A")
+        t = Timer(0.5, closure)
+        t.start()
+
+        wait_until(thing).test_request(anything()).times(1)
+        assertThat(thing.unhandled_count).isEqualTo(1)
+
+    def test_fluent_behavior__wait_until_done_two_events_AA(self):
+        thing = ObjectWithBehaviors()
+        when(thing).test_request(
+            lambda obj: obj == "A").then().increment_count().increment_count()
+
+        closure1 = lambda: thing.behaviors.test_request_behavior.run("A")
+        t1 = Timer(0.5, closure1)
+        t1.start()
+        closure2 = lambda: thing.behaviors.test_request_behavior.run("A")
+        t2 = Timer(0.5, closure2)
+        t2.start()
+
+        wait_until(thing).test_request(lambda obj: obj == "A").times(2)
+        assertThat(thing.count).isEqualTo(2)
+        assertThat(thing.captured).isEqualTo(["A", "A"])
+
+    def test_fluent_behavior__wait_until_done_two_events_AB(self):
+        thing = ObjectWithBehaviors()
+        when(thing).test_request(anything()).always().increment_count()
+
+        closure1 = lambda: thing.behaviors.test_request_behavior.run("A")
+        t1 = Timer(0.5, closure1)
+        t1.start()
+        closure2 = lambda: thing.behaviors.test_request_behavior.run("B")
+        t2 = Timer(0.5, closure2)
+        t2.start()
+
+        wait_until(thing).test_request(anything()).times(2)
+        assertThat(thing.count).isEqualTo(2)
+        assertThat(thing.captured).isEqualTo(["A", "B"])
+
+    def test_fluent_behavior__wait_until_done_only_one_event_is_done(self):
+        thing = ObjectWithBehaviors()
+        when(thing).test_request(anything()).always().increment_count()
+
+        closure1 = lambda: thing.behaviors.test_request_behavior.run("A")
+        t1 = Timer(1, closure1)
+        t1.start()
+        closure2 = lambda: thing.behaviors.test_request_behavior.run("B")
+        t2 = Timer(3, closure2)
+        t2.start()
+        assertThat(
+            wait_until(thing).test_request(lambda obj: obj == "A").times(
+                2)).isFalse()
