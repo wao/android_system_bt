@@ -108,6 +108,27 @@ class L2capClassicModuleFacadeService : public L2capClassicModuleFacade::Service
     return ::grpc::Status::OK;
   }
 
+  ::grpc::Status SetTrafficPaused(::grpc::ServerContext* context, const SetTrafficPausedRequest* request,
+                                  ::google::protobuf::Empty* response) override {
+    auto psm = request->psm();
+    if (dynamic_channel_helper_map_.find(request->psm()) == dynamic_channel_helper_map_.end()) {
+      return ::grpc::Status(::grpc::StatusCode::FAILED_PRECONDITION, "Psm not registered");
+    }
+    if (request->paused()) {
+      dynamic_channel_helper_map_[psm]->SuspendDequeue();
+    } else {
+      dynamic_channel_helper_map_[psm]->ResumeDequeue();
+    }
+    return ::grpc::Status::OK;
+  }
+
+  ::grpc::Status GetChannelQueueDepth(::grpc::ServerContext* context, const ::google::protobuf::Empty* request,
+                                      GetChannelQueueDepthResponse* response) override {
+    // Use the value kChannelQueueSize (5) in internal/dynamic_channel_impl.h
+    response->set_size(5);
+    return ::grpc::Status::OK;
+  }
+
   class L2capDynamicChannelHelper {
    public:
     L2capDynamicChannelHelper(L2capClassicModuleFacadeService* service, L2capClassicModule* l2cap_layer,
@@ -124,7 +145,7 @@ class L2capClassicModuleFacadeService : public L2capClassicModuleFacade::Service
     }
 
     ~L2capDynamicChannelHelper() {
-      if (channel_ != nullptr) {
+      if (dequeue_registered_) {
         channel_->GetQueueUpEnd()->UnregisterDequeue();
         channel_ = nullptr;
       }
@@ -171,6 +192,7 @@ class L2capClassicModuleFacadeService : public L2capClassicModuleFacade::Service
       channel_->RegisterOnCloseCallback(
           facade_service_->facade_handler_,
           common::BindOnce(&L2capDynamicChannelHelper::on_close_callback, common::Unretained(this)));
+      dequeue_registered_ = true;
       channel_->GetQueueUpEnd()->RegisterDequeue(
           facade_service_->facade_handler_,
           common::Bind(&L2capDynamicChannelHelper::on_incoming_packet, common::Unretained(this)));
@@ -179,7 +201,9 @@ class L2capClassicModuleFacadeService : public L2capClassicModuleFacade::Service
     void on_close_callback(hci::ErrorCode error_code) {
       {
         std::unique_lock<std::mutex> lock(channel_open_cv_mutex_);
-        channel_->GetQueueUpEnd()->UnregisterDequeue();
+        if (dequeue_registered_.exchange(false)) {
+          channel_->GetQueueUpEnd()->UnregisterDequeue();
+        }
       }
       classic::ConnectionCloseEvent event;
       event.mutable_remote()->set_address(channel_->GetDevice().GetAddress().ToString());
@@ -188,13 +212,27 @@ class L2capClassicModuleFacadeService : public L2capClassicModuleFacade::Service
       channel_ = nullptr;
     }
 
+    void SuspendDequeue() {
+      if (dequeue_registered_.exchange(false)) {
+        channel_->GetQueueUpEnd()->UnregisterDequeue();
+      }
+    }
+
+    void ResumeDequeue() {
+      if (!dequeue_registered_.exchange(true)) {
+        channel_->GetQueueUpEnd()->RegisterDequeue(
+            facade_service_->facade_handler_,
+            common::Bind(&L2capDynamicChannelHelper::on_incoming_packet, common::Unretained(this)));
+      }
+    }
+
     void on_connect_fail(DynamicChannelManager::ConnectionResult result) {}
 
     void on_incoming_packet() {
       auto packet = channel_->GetQueueUpEnd()->TryDequeue();
       std::string data = std::string(packet->begin(), packet->end());
       L2capPacket l2cap_data;
-      //      l2cap_data.set_channel(cid_);
+      l2cap_data.set_psm(psm_);
       l2cap_data.set_payload(data);
       facade_service_->pending_l2cap_data_.OnIncomingEvent(l2cap_data);
     }
@@ -237,6 +275,7 @@ class L2capClassicModuleFacadeService : public L2capClassicModuleFacade::Service
     std::unique_ptr<DynamicChannel> channel_ = nullptr;
     Psm psm_;
     RetransmissionFlowControlMode mode_ = RetransmissionFlowControlMode::BASIC;
+    std::atomic_bool dequeue_registered_ = false;
     std::condition_variable channel_open_cv_;
     std::mutex channel_open_cv_mutex_;
   };

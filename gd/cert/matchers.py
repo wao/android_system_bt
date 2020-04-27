@@ -56,6 +56,42 @@ class HciMatchers(object):
             return None
         return hci_event
 
+    @staticmethod
+    def LinkKeyRequest():
+        return lambda event: HciMatchers.EventWithCode(EventCode.LINK_KEY_REQUEST)
+
+    @staticmethod
+    def IoCapabilityRequest():
+        return lambda event: HciMatchers.EventWithCode(EventCode.IO_CAPABILITY_REQUEST)
+
+    @staticmethod
+    def IoCapabilityResponse():
+        return lambda event: HciMatchers.EventWithCode(EventCode.IO_CAPABILITY_RESPONSE)
+
+    @staticmethod
+    def UserPasskeyNotification():
+        return lambda event: HciMatchers.EventWithCode(EventCode.USER_PASSKEY_NOTIFICATION)
+
+    @staticmethod
+    def UserPasskeyRequest():
+        return lambda event: HciMatchers.EventWithCode(EventCode.USER_PASSKEY_REQUEST)
+
+    @staticmethod
+    def UserConfirmationRequest():
+        return lambda event: HciMatchers.EventWithCode(EventCode.USER_CONFIRMATION_REQUEST)
+
+    @staticmethod
+    def RemoteHostSupportedFeaturesNotification():
+        return lambda event: HciMatchers.EventWithCode(EventCode.REMOTE_HOST_SUPPORTED_FEATURES_NOTIFICATION)
+
+    @staticmethod
+    def LinkKeyNotification():
+        return lambda event: HciMatchers.EventWithCode(EventCode.LINK_KEY_NOTIFICATION)
+
+    @staticmethod
+    def SimplePairingComplete():
+        return lambda event: HciMatchers.EventWithCode(EventCode.SIMPLE_PAIRING_COMPLETE)
+
 
 class NeighborMatchers(object):
 
@@ -130,12 +166,20 @@ class L2capMatchers(object):
         return lambda packet: L2capMatchers._is_matching_configuration_request_with_ertm(packet)
 
     @staticmethod
+    def ConfigurationRequestView(dcid):
+        return lambda request_view: request_view.GetDestinationCid() == dcid
+
+    @staticmethod
     def DisconnectionRequest(scid, dcid):
         return lambda packet: L2capMatchers._is_matching_disconnection_request(packet, scid, dcid)
 
     @staticmethod
     def DisconnectionResponse(scid, dcid):
         return lambda packet: L2capMatchers._is_matching_disconnection_response(packet, scid, dcid)
+
+    @staticmethod
+    def EchoResponse():
+        return lambda packet: L2capMatchers._is_control_frame_with_code(packet, CommandCode.ECHO_RESPONSE)
 
     @staticmethod
     def CommandReject():
