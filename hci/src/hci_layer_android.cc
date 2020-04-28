@@ -51,6 +51,7 @@ extern void initialization_complete();
 extern void hci_event_received(const base::Location& from_here, BT_HDR* packet);
 extern void acl_event_received(BT_HDR* packet);
 extern void sco_data_received(BT_HDR* packet);
+extern void hal_service_died();
 
 android::sp<IBluetoothHci> btHci;
 
@@ -58,7 +59,7 @@ class BluetoothHciDeathRecipient : public hidl_death_recipient {
  public:
   virtual void serviceDied(uint64_t /*cookie*/, const android::wp<::android::hidl::base::V1_0::IBase>& /*who*/) {
     LOG_ERROR(LOG_TAG, "Bluetooth HAL service died!");
-    abort();
+    hal_service_died();
   }
 };
 android::sp<BluetoothHciDeathRecipient> bluetoothHciDeathRecipient = new BluetoothHciDeathRecipient();
@@ -83,25 +84,25 @@ class BluetoothHciCallbacks : public IBluetoothHciCallbacks {
     return packet;
   }
 
-  Return<void> initializationComplete(Status status) override {
+  Return<void> initializationComplete(Status status) {
     CHECK(status == Status::SUCCESS);
     initialization_complete();
     return Void();
   }
 
-  Return<void> hciEventReceived(const hidl_vec<uint8_t>& event) override {
+  Return<void> hciEventReceived(const hidl_vec<uint8_t>& event) {
     BT_HDR* packet = WrapPacketAndCopy(MSG_HC_TO_STACK_HCI_EVT, event);
     hci_event_received(FROM_HERE, packet);
     return Void();
   }
 
-  Return<void> aclDataReceived(const hidl_vec<uint8_t>& data) override {
+  Return<void> aclDataReceived(const hidl_vec<uint8_t>& data) {
     BT_HDR* packet = WrapPacketAndCopy(MSG_HC_TO_STACK_HCI_ACL, data);
     acl_event_received(packet);
     return Void();
   }
 
-  Return<void> scoDataReceived(const hidl_vec<uint8_t>& data) override {
+  Return<void> scoDataReceived(const hidl_vec<uint8_t>& data) {
     BT_HDR* packet = WrapPacketAndCopy(MSG_HC_TO_STACK_HCI_SCO, data);
     sco_data_received(packet);
     return Void();

@@ -4,6 +4,8 @@ cc_defaults {
     shared_libs: [
         "android.hardware.bluetooth@1.0",
         "libhidlbase",
+        "libhidltransport",
+        "libhwbinder",
     ],
 }
 
@@ -34,6 +36,7 @@ cc_library_static {
         "system/bt/stack/include",
         "system/bt/utils/include",
         "system/bt/bta/include",
+        "system/bt/btif/include",
         "system/libhwbinder/include",
     ],
 }

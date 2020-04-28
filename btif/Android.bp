@@ -92,9 +92,6 @@ cc_library_static {
         "src/btif_util.cc",
         "src/stack_manager.cc",
     ],
-    header_libs: [
-        "libmedia_headers",
-    ],
     shared_libs: [
         "libaudioclient",
         "libcutils",
@@ -105,6 +102,8 @@ cc_library_static {
         "android.hardware.bluetooth.a2dp@1.0",
         "android.hardware.bluetooth.audio@2.0",
         "libhidlbase",
+        "libhidltransport",
+        "libhwbinder",
         "libutils",
         "libcrypto",
         "android.hardware.keymaster@4.0",
@@ -122,6 +121,7 @@ cc_library_static {
     ],
     cflags: [
         "-DBUILDCFG",
+        "-Wno-implicit-fallthrough",
     ],
 
 }
@@ -144,6 +144,7 @@ cc_test {
         "android.hardware.bluetooth.audio@2.0",
         "libfmq",
         "libhidlbase",
+        "libhidltransport",
         "liblog",
         "libprotobuf-cpp-lite",
         "libcutils",
@@ -193,8 +194,8 @@ cc_test {
     test_suites: ["device-tests"],
     include_dirs: btifCommonIncludes,
     srcs: [
-        "src/btif_profile_queue.cc",
-        "test/btif_profile_queue_test.cc",
+      "src/btif_profile_queue.cc",
+      "test/btif_profile_queue_test.cc"
     ],
     header_libs: ["libbluetooth_headers"],
     shared_libs: [
@@ -206,4 +207,37 @@ cc_test {
         "libosi",
     ],
     cflags: ["-DBUILDCFG"],
+}
+
+// btif rc unit tests for target
+// ========================================================
+cc_test {
+    name: "net_test_btif_rc",
+    defaults: ["fluoride_defaults"],
+    test_suites: ["device-tests"],
+    host_supported: true,
+    include_dirs: btifCommonIncludes,
+    srcs: [
+        "test/btif_rc_test.cc",
+    ],
+    header_libs: ["libbluetooth_headers"],
+    shared_libs: [
+        "libcrypto",
+        "libcutils",
+        "liblog",
+        "libprotobuf-cpp-lite",
+    ],
+    static_libs: [
+        "libbluetooth-types",
+        "libbt-common",
+        "libbt-protos-lite",
+        "libosi",
+        "libosi-AllocationTestHarness",
+    ],
+    cflags: ["-DBUILDCFG"],
+    sanitize: {
+        address: true,
+        cfi: true,
+        misc_undefined: ["bounds"],
+    },
 }

@@ -1836,6 +1836,12 @@ static bt_status_t get_element_attr_rsp(const RawAddress& bd_addr,
   BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
 
+  if (num_attr > BTRC_MAX_ELEM_ATTR_SIZE) {
+    LOG(WARNING) << __func__
+                 << " Exceeded number attributes:" << static_cast<int>(num_attr)
+                 << " max:" << BTRC_MAX_ELEM_ATTR_SIZE;
+    num_attr = BTRC_MAX_ELEM_ATTR_SIZE;
+  }
   memset(element_attrs, 0, sizeof(tAVRC_ATTR_ENTRY) * num_attr);
 
   if (num_attr == 0) {
@@ -1844,7 +1850,8 @@ static bt_status_t get_element_attr_rsp(const RawAddress& bd_addr,
     for (i = 0; i < num_attr; i++) {
       element_attrs[i].attr_id = p_attrs[i].attr_id;
       element_attrs[i].name.charset_id = AVRC_CHARSET_ID_UTF8;
-      element_attrs[i].name.str_len = (uint16_t)strlen((char*)p_attrs[i].text);
+      element_attrs[i].name.str_len =
+          (uint16_t)strnlen((char*)p_attrs[i].text, BTRC_MAX_ATTR_STR_LEN);
       element_attrs[i].name.p_str = p_attrs[i].text;
       BTIF_TRACE_DEBUG(
           "%s: attr_id: 0x%x, charset_id: 0x%x, str_len: %d, str: %s", __func__,
@@ -2535,9 +2542,9 @@ static bt_status_t set_volume(uint8_t volume) {
     BTIF_TRACE_DEBUG("%s: Peer supports absolute volume. newVolume: %d",
                      __func__, volume);
 
-    tAVRC_COMMAND avrc_cmd = {.volume = {.pdu = AVRC_PDU_SET_ABSOLUTE_VOLUME,
+    tAVRC_COMMAND avrc_cmd = {.volume = {.opcode = AVRC_OP_VENDOR,
+                                         .pdu = AVRC_PDU_SET_ABSOLUTE_VOLUME,
                                          .status = AVRC_STS_NO_ERROR,
-                                         .opcode = AVRC_OP_VENDOR,
                                          .volume = volume}};
 
     BT_HDR* p_msg = NULL;
@@ -2939,11 +2946,12 @@ static void register_for_event_notification(btif_rc_supported_event_t* p_event,
     return;
   }
   // interval is only valid for AVRC_EVT_PLAY_POS_CHANGED
-  uint32_t interval = 0;
+  uint32_t interval_in_seconds = 0;
   if (p_event->event_id == AVRC_EVT_PLAY_POS_CHANGED) {
-    interval = 2000;
+    interval_in_seconds = 2;
   }
-  status = register_notification_cmd(p_transaction->lbl, p_event->event_id, interval, p_dev);
+  status = register_notification_cmd(p_transaction->lbl, p_event->event_id,
+                                     interval_in_seconds, p_dev);
   if (status != BT_STATUS_SUCCESS) {
     BTIF_TRACE_ERROR("%s: Error in Notification registration: %d", __func__,
                      status);
@@ -3152,11 +3160,10 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg,
           break;
         } else {
           uint8_t* p_data = p_rsp->param.track;
-          /* Update the UID for current track
-           * Attributes will be fetched after the AVRCP procedure
-           */
           BE_STREAM_TO_UINT64(p_dev->rc_playing_uid, p_data);
           get_play_status_cmd(p_dev);
+          get_element_attribute_cmd(AVRC_MAX_NUM_MEDIA_ATTR_ID, attr_list,
+                                    p_dev);
         }
         break;
 
