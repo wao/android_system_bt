@@ -16,6 +16,7 @@
 #include <memory>
 #include <mutex>
 
+#include "hci/acl_manager.h"
 #include "hci/controller.h"
 #include "hci/hci_layer.h"
 #include "hci/hci_packets.h"
@@ -75,13 +76,21 @@ ExtendedAdvertisingConfig::ExtendedAdvertisingConfig(const AdvertisingConfig& co
   operation = Operation::COMPLETE_ADVERTISEMENT;
 }
 
-struct LeAdvertisingManager::impl {
+struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressRotatorCallback {
   impl(Module* module) : module_(module), le_advertising_interface_(nullptr), num_instances_(0) {}
 
-  void start(os::Handler* handler, hci::HciLayer* hci_layer, hci::Controller* controller) {
+  ~impl() {
+    if (address_rotator_registered) {
+      le_address_rotator_->Unregister(this);
+    }
+  }
+
+  void start(os::Handler* handler, hci::HciLayer* hci_layer, hci::Controller* controller,
+             hci::AclManager* acl_manager) {
     module_handler_ = handler;
     hci_layer_ = hci_layer;
     controller_ = controller;
+    le_address_rotator_ = acl_manager->GetLeAddressRotator();
     le_advertising_interface_ =
         hci_layer_->GetLeAdvertisingInterface(module_handler_->BindOn(this, &LeAdvertisingManager::impl::handle_event));
     num_instances_ = controller_->GetControllerLeNumberOfSupportedAdverisingSets();
@@ -152,6 +161,11 @@ struct LeAdvertisingManager::impl {
       return;
     }
     advertising_sets_.erase(id);
+    if (advertising_sets_.empty() && address_rotator_registered) {
+      le_address_rotator_->Unregister(this);
+      address_rotator_registered = false;
+      paused = false;
+    }
   }
 
   void create_advertiser(AdvertiserId id, const AdvertisingConfig& config,
@@ -161,16 +175,25 @@ struct LeAdvertisingManager::impl {
     advertising_sets_[id].scan_callback = scan_callback;
     advertising_sets_[id].set_terminated_callback = set_terminated_callback;
     advertising_sets_[id].handler = handler;
+
+    if (!address_rotator_registered) {
+      le_address_rotator_->Register(this);
+      address_rotator_registered = true;
+    }
+
     switch (advertising_api_type_) {
-      case (AdvertisingApiType::LE_4_0):
+      case (AdvertisingApiType::LE_4_0): {
         le_advertising_interface_->EnqueueCommand(
             hci::LeSetAdvertisingParametersBuilder::Create(
-                config.interval_min, config.interval_max, config.event_type, config.address_type,
-                config.peer_address_type, config.peer_address, config.channel_map, config.filter_policy),
+                config.interval_min,
+                config.interval_max,
+                config.event_type,
+                config.address_type,
+                config.peer_address_type,
+                config.peer_address,
+                config.channel_map,
+                config.filter_policy),
             module_handler_->BindOnce(impl::check_status<LeSetAdvertisingParametersCompleteView>));
-        le_advertising_interface_->EnqueueCommand(
-            hci::LeSetRandomAddressBuilder::Create(config.random_address),
-            module_handler_->BindOnce(impl::check_status<LeSetRandomAddressCompleteView>));
         if (!config.scan_response.empty()) {
           le_advertising_interface_->EnqueueCommand(
               hci::LeSetScanResponseDataBuilder::Create(config.scan_response),
@@ -179,15 +202,28 @@ struct LeAdvertisingManager::impl {
         le_advertising_interface_->EnqueueCommand(
             hci::LeSetAdvertisingDataBuilder::Create(config.advertisement),
             module_handler_->BindOnce(impl::check_status<LeSetAdvertisingDataCompleteView>));
+        if (!paused) {
+          le_advertising_interface_->EnqueueCommand(
+              hci::LeSetAdvertisingEnableBuilder::Create(Enable::ENABLED),
+              module_handler_->BindOnce(impl::check_status<LeSetAdvertisingEnableCompleteView>));
+        }
+        EnabledSet curr_set;
+        curr_set.advertising_handle_ = id;
+        enabled_sets_[id] = curr_set;
+      } break;
+      case (AdvertisingApiType::ANDROID_HCI): {
         le_advertising_interface_->EnqueueCommand(
-            hci::LeSetAdvertisingEnableBuilder::Create(Enable::ENABLED),
-            module_handler_->BindOnce(impl::check_status<LeSetAdvertisingEnableCompleteView>));
-        break;
-      case (AdvertisingApiType::ANDROID_HCI):
-        le_advertising_interface_->EnqueueCommand(
-            hci::LeMultiAdvtParamBuilder::Create(config.interval_min, config.interval_max, config.event_type,
-                                                 config.address_type, config.peer_address_type, config.peer_address,
-                                                 config.channel_map, config.filter_policy, id, config.tx_power),
+            hci::LeMultiAdvtParamBuilder::Create(
+                config.interval_min,
+                config.interval_max,
+                config.event_type,
+                config.address_type,
+                config.peer_address_type,
+                config.peer_address,
+                config.channel_map,
+                config.filter_policy,
+                id,
+                config.tx_power),
             module_handler_->BindOnce(impl::check_status<LeMultiAdvtCompleteView>));
         le_advertising_interface_->EnqueueCommand(
             hci::LeMultiAdvtSetDataBuilder::Create(config.advertisement, id),
@@ -198,12 +234,17 @@ struct LeAdvertisingManager::impl {
               module_handler_->BindOnce(impl::check_status<LeMultiAdvtCompleteView>));
         }
         le_advertising_interface_->EnqueueCommand(
-            hci::LeMultiAdvtSetRandomAddrBuilder::Create(config.random_address, id),
+            hci::LeMultiAdvtSetRandomAddrBuilder::Create(le_address_rotator_->GetAnotherAddress().GetAddress(), id),
             module_handler_->BindOnce(impl::check_status<LeMultiAdvtCompleteView>));
-        le_advertising_interface_->EnqueueCommand(
-            hci::LeMultiAdvtSetEnableBuilder::Create(Enable::ENABLED, id),
-            module_handler_->BindOnce(impl::check_status<LeMultiAdvtCompleteView>));
-        break;
+        if (!paused) {
+          le_advertising_interface_->EnqueueCommand(
+              hci::LeMultiAdvtSetEnableBuilder::Create(Enable::ENABLED, id),
+              module_handler_->BindOnce(impl::check_status<LeMultiAdvtCompleteView>));
+        }
+        EnabledSet curr_set;
+        curr_set.advertising_handle_ = id;
+        enabled_sets_[id] = curr_set;
+      } break;
       case (AdvertisingApiType::LE_5_0): {
         ExtendedAdvertisingConfig new_config = config;
         new_config.legacy_pdus = true;
@@ -219,6 +260,15 @@ struct LeAdvertisingManager::impl {
     if (advertising_api_type_ != AdvertisingApiType::LE_5_0) {
       create_advertiser(id, config, scan_callback, set_terminated_callback, handler);
       return;
+    }
+
+    advertising_sets_[id].scan_callback = scan_callback;
+    advertising_sets_[id].set_terminated_callback = set_terminated_callback;
+    advertising_sets_[id].handler = handler;
+
+    if (!address_rotator_registered) {
+      le_address_rotator_->Register(this);
+      address_rotator_registered = true;
     }
 
     if (config.legacy_pdus) {
@@ -259,7 +309,8 @@ struct LeAdvertisingManager::impl {
     }
 
     le_advertising_interface_->EnqueueCommand(
-        hci::LeSetExtendedAdvertisingRandomAddressBuilder::Create(id, config.random_address),
+        hci::LeSetExtendedAdvertisingRandomAddressBuilder::Create(
+            id, le_address_rotator_->GetAnotherAddress().GetAddress()),
         module_handler_->BindOnce(impl::check_status<LeSetExtendedAdvertisingRandomAddressCompleteView>));
     if (!config.scan_response.empty()) {
       le_advertising_interface_->EnqueueCommand(
@@ -279,13 +330,11 @@ struct LeAdvertisingManager::impl {
     std::vector<EnabledSet> enabled_sets = {curr_set};
 
     enabled_sets_[id] = curr_set;
-    le_advertising_interface_->EnqueueCommand(
-        hci::LeSetExtendedAdvertisingEnableBuilder::Create(Enable::ENABLED, enabled_sets),
-        module_handler_->BindOnce(impl::check_status<LeSetExtendedAdvertisingEnableCompleteView>));
-
-    advertising_sets_[id].scan_callback = scan_callback;
-    advertising_sets_[id].set_terminated_callback = set_terminated_callback;
-    advertising_sets_[id].handler = handler;
+    if (!paused) {
+      le_advertising_interface_->EnqueueCommand(
+          hci::LeSetExtendedAdvertisingEnableBuilder::Create(Enable::ENABLED, enabled_sets),
+          module_handler_->BindOnce(impl::check_status<LeSetExtendedAdvertisingEnableCompleteView>));
+    }
   }
 
   void stop_advertising(AdvertiserId advertising_set) {
@@ -316,7 +365,82 @@ struct LeAdvertisingManager::impl {
 
     std::unique_lock lock(id_mutex_);
     enabled_sets_[advertising_set].advertising_handle_ = -1;
-    advertising_sets_.erase(advertising_set);
+  }
+
+  void OnPause() override {
+    paused = true;
+    if (!advertising_sets_.empty()) {
+      switch (advertising_api_type_) {
+        case (AdvertisingApiType::LE_4_0): {
+          le_advertising_interface_->EnqueueCommand(
+              hci::LeSetAdvertisingEnableBuilder::Create(Enable::DISABLED),
+              module_handler_->BindOnce(impl::check_status<LeSetAdvertisingEnableCompleteView>));
+        } break;
+        case (AdvertisingApiType::ANDROID_HCI): {
+          for (size_t i = 0; i < enabled_sets_.size(); i++) {
+            uint8_t id = enabled_sets_[i].advertising_handle_;
+            if (id != -1) {
+              le_advertising_interface_->EnqueueCommand(
+                  hci::LeMultiAdvtSetEnableBuilder::Create(Enable::DISABLED, id),
+                  module_handler_->BindOnce(impl::check_status<LeMultiAdvtCompleteView>));
+            }
+          }
+        } break;
+        case (AdvertisingApiType::LE_5_0): {
+          std::vector<EnabledSet> enabled_sets = {};
+          for (size_t i = 0; i < enabled_sets_.size(); i++) {
+            EnabledSet curr_set = enabled_sets_[i];
+            if (enabled_sets_[i].advertising_handle_ != -1) {
+              enabled_sets.push_back(enabled_sets_[i]);
+            }
+          }
+          if (enabled_sets.size() != 0) {
+            le_advertising_interface_->EnqueueCommand(
+                hci::LeSetExtendedAdvertisingEnableBuilder::Create(Enable::DISABLED, enabled_sets),
+                module_handler_->BindOnce(impl::check_status<LeSetExtendedAdvertisingEnableCompleteView>));
+          }
+        } break;
+      }
+    }
+    le_address_rotator_->AckPause(this);
+  }
+
+  void OnResume() override {
+    paused = false;
+    if (!advertising_sets_.empty()) {
+      switch (advertising_api_type_) {
+        case (AdvertisingApiType::LE_4_0): {
+          le_advertising_interface_->EnqueueCommand(
+              hci::LeSetAdvertisingEnableBuilder::Create(Enable::ENABLED),
+              module_handler_->BindOnce(impl::check_status<LeSetAdvertisingEnableCompleteView>));
+        } break;
+        case (AdvertisingApiType::ANDROID_HCI): {
+          for (size_t i = 0; i < enabled_sets_.size(); i++) {
+            uint8_t id = enabled_sets_[i].advertising_handle_;
+            if (id != -1) {
+              le_advertising_interface_->EnqueueCommand(
+                  hci::LeMultiAdvtSetEnableBuilder::Create(Enable::ENABLED, id),
+                  module_handler_->BindOnce(impl::check_status<LeMultiAdvtCompleteView>));
+            }
+          }
+        } break;
+        case (AdvertisingApiType::LE_5_0): {
+          std::vector<EnabledSet> enabled_sets = {};
+          for (size_t i = 0; i < enabled_sets_.size(); i++) {
+            EnabledSet curr_set = enabled_sets_[i];
+            if (enabled_sets_[i].advertising_handle_ != -1) {
+              enabled_sets.push_back(enabled_sets_[i]);
+            }
+          }
+          if (enabled_sets.size() != 0) {
+            le_advertising_interface_->EnqueueCommand(
+                hci::LeSetExtendedAdvertisingEnableBuilder::Create(Enable::ENABLED, enabled_sets),
+                module_handler_->BindOnce(impl::check_status<LeSetExtendedAdvertisingEnableCompleteView>));
+          }
+        } break;
+      }
+    }
+    le_address_rotator_->AckResume(this);
   }
 
   common::Callback<void(Address, AddressType)> scan_callback_;
@@ -328,6 +452,9 @@ struct LeAdvertisingManager::impl {
   hci::Controller* controller_;
   hci::LeAdvertisingInterface* le_advertising_interface_;
   std::map<AdvertiserId, Advertiser> advertising_sets_;
+  hci::LeAddressRotator* le_address_rotator_;
+  bool address_rotator_registered = false;
+  bool paused = false;
 
   std::mutex id_mutex_;
   size_t num_instances_;
@@ -353,10 +480,12 @@ LeAdvertisingManager::LeAdvertisingManager() {
 void LeAdvertisingManager::ListDependencies(ModuleList* list) {
   list->add<hci::HciLayer>();
   list->add<hci::Controller>();
+  list->add<hci::AclManager>();
 }
 
 void LeAdvertisingManager::Start() {
-  pimpl_->start(GetHandler(), GetDependency<hci::HciLayer>(), GetDependency<hci::Controller>());
+  pimpl_->start(GetHandler(), GetDependency<hci::HciLayer>(), GetDependency<hci::Controller>(),
+                GetDependency<AclManager>());
 }
 
 void LeAdvertisingManager::Stop() {

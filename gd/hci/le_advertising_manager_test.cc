@@ -25,6 +25,7 @@
 #include <gtest/gtest.h>
 
 #include "common/bind.h"
+#include "hci/acl_manager.h"
 #include "hci/address.h"
 #include "hci/controller.h"
 #include "hci/hci_layer.h"
@@ -77,7 +78,7 @@ class TestHciLayer : public HciLayer {
   void EnqueueCommand(std::unique_ptr<CommandPacketBuilder> command,
                       common::ContextualOnceCallback<void(CommandStatusView)> on_status) override {
     auto packet_view = CommandPacketView::Create(GetPacketView(std::move(command)));
-    ASSERT(packet_view.IsValid());
+    ASSERT_TRUE(packet_view.IsValid());
     command_queue_.push_back(packet_view);
     command_status_callbacks.push_back(std::move(on_status));
     if (command_promise_ != nullptr &&
@@ -93,14 +94,14 @@ class TestHciLayer : public HciLayer {
   void EnqueueCommand(std::unique_ptr<CommandPacketBuilder> command,
                       common::ContextualOnceCallback<void(CommandCompleteView)> on_complete) override {
     auto packet_view = CommandPacketView::Create(GetPacketView(std::move(command)));
-    ASSERT(packet_view.IsValid());
+    ASSERT_TRUE(packet_view.IsValid());
     command_queue_.push_back(packet_view);
     command_complete_callbacks.push_back(std::move(on_complete));
     if (command_promise_ != nullptr &&
         (command_op_code_ == OpCode::NONE || command_op_code_ == packet_view.GetOpCode())) {
       if (command_op_code_ == OpCode::LE_MULTI_ADVT) {
         auto sub_view = LeMultiAdvtView::Create(LeAdvertisingCommandView::Create(packet_view));
-        ASSERT(sub_view.IsValid());
+        ASSERT_TRUE(sub_view.IsValid());
         if (sub_view.GetSubCmd() != command_sub_ocf_) {
           return;
         }
@@ -126,11 +127,14 @@ class TestHciLayer : public HciLayer {
   }
 
   ConnectionManagementCommandView GetCommandPacket(OpCode op_code) {
-    ASSERT(!command_queue_.empty());
+    if (command_queue_.empty()) {
+      return ConnectionManagementCommandView::Create(
+          CommandPacketView::Create(std::make_shared<std::vector<uint8_t>>()));
+    }
     CommandPacketView command_packet_view = CommandPacketView::Create(command_queue_.front());
     command_queue_.pop_front();
     ConnectionManagementCommandView command = ConnectionManagementCommandView::Create(command_packet_view);
-    ASSERT(command.IsValid());
+    EXPECT_TRUE(command.IsValid());
     EXPECT_EQ(command.GetOpCode(), op_code);
 
     return command;
@@ -151,7 +155,7 @@ class TestHciLayer : public HciLayer {
     EventPacketView event = EventPacketView::Create(packet);
     ASSERT_TRUE(event.IsValid());
     EventCode event_code = event.GetEventCode();
-    ASSERT_TRUE(registered_events_.find(event_code) != registered_events_.end()) << EventCodeText(event_code);
+    ASSERT_NE(registered_events_.find(event_code), registered_events_.end()) << EventCodeText(event_code);
     registered_events_[event_code].Invoke(event);
   }
 
@@ -161,21 +165,21 @@ class TestHciLayer : public HciLayer {
     LeMetaEventView meta_event_view = LeMetaEventView::Create(event);
     ASSERT_TRUE(meta_event_view.IsValid());
     SubeventCode subevent_code = meta_event_view.GetSubeventCode();
-    ASSERT_TRUE(registered_le_events_.find(subevent_code) != registered_le_events_.end())
+    ASSERT_NE(registered_le_events_.find(subevent_code), registered_le_events_.end())
         << SubeventCodeText(subevent_code);
     registered_le_events_[subevent_code].Invoke(meta_event_view);
   }
 
   void CommandCompleteCallback(EventPacketView event) {
     CommandCompleteView complete_view = CommandCompleteView::Create(event);
-    ASSERT(complete_view.IsValid());
+    ASSERT_TRUE(complete_view.IsValid());
     std::move(command_complete_callbacks.front()).Invoke(complete_view);
     command_complete_callbacks.pop_front();
   }
 
   void CommandStatusCallback(EventPacketView event) {
     CommandStatusView status_view = CommandStatusView::Create(event);
-    ASSERT(status_view.IsValid());
+    ASSERT_TRUE(status_view.IsValid());
     std::move(command_status_callbacks.front()).Invoke(status_view);
     command_status_callbacks.pop_front();
   }
@@ -201,14 +205,67 @@ class TestHciLayer : public HciLayer {
   SubOcf command_sub_ocf_;
 };
 
+class TestLeAddressRotator : public LeAddressRotator {
+ public:
+  TestLeAddressRotator(common::Callback<void(Address address)> set_random_address, os::Handler* handler,
+                       Address public_address)
+      : LeAddressRotator(set_random_address, handler, public_address) {}
+
+  AddressPolicy Register(LeAddressRotatorCallback* callback) override {
+    return AddressPolicy::USE_STATIC_ADDRESS;
+  }
+
+  void Unregister(LeAddressRotatorCallback* callback) override {}
+
+  AddressWithType GetAnotherAddress() override {
+    hci::Address address;
+    Address::FromString("05:04:03:02:01:00", address);
+    auto random_address = AddressWithType(address, AddressType::RANDOM_DEVICE_ADDRESS);
+    return random_address;
+  }
+};
+
+class TestAclManager : public AclManager {
+ public:
+  LeAddressRotator* GetLeAddressRotator() override {
+    return test_le_address_rotator_;
+  }
+
+ protected:
+  void Start() override {
+    thread_ = new os::Thread("thread", os::Thread::Priority::NORMAL);
+    handler_ = new os::Handler(thread_);
+    Address address({0x01, 0x02, 0x03, 0x04, 0x05, 0x06});
+    test_le_address_rotator_ = new TestLeAddressRotator(
+        common::Bind(&TestAclManager::SetRandomAddress, common::Unretained(this)), handler_, address);
+  }
+
+  void Stop() override {
+    delete test_le_address_rotator_;
+    handler_->Clear();
+    delete handler_;
+    delete thread_;
+  }
+
+  void ListDependencies(ModuleList* list) override {}
+
+  void SetRandomAddress(Address address) {}
+
+  os::Thread* thread_;
+  os::Handler* handler_;
+  TestLeAddressRotator* test_le_address_rotator_;
+};
+
 class LeAdvertisingManagerTest : public ::testing::Test {
  protected:
   void SetUp() override {
     test_hci_layer_ = new TestHciLayer;  // Ownership is transferred to registry
     test_controller_ = new TestController;
+    test_acl_manager_ = new TestAclManager;
     test_controller_->AddSupported(param_opcode_);
     fake_registry_.InjectTestModule(&HciLayer::Factory, test_hci_layer_);
     fake_registry_.InjectTestModule(&Controller::Factory, test_controller_);
+    fake_registry_.InjectTestModule(&AclManager::Factory, test_acl_manager_);
     client_handler_ = fake_registry_.GetTestModuleHandler(&HciLayer::Factory);
     ASSERT_NE(client_handler_, nullptr);
     test_controller_->num_advertisers = 1;
@@ -223,6 +280,7 @@ class LeAdvertisingManagerTest : public ::testing::Test {
   TestModuleRegistry fake_registry_;
   TestHciLayer* test_hci_layer_ = nullptr;
   TestController* test_controller_ = nullptr;
+  TestAclManager* test_acl_manager_ = nullptr;
   os::Thread& thread_ = fake_registry_.GetTestThread();
   LeAdvertisingManager* le_advertising_manager_ = nullptr;
   os::Handler* client_handler_ = nullptr;
@@ -308,8 +366,10 @@ TEST_F(LeAdvertisingManagerTest, create_advertiser_test) {
                                                       client_handler_);
   ASSERT_NE(LeAdvertisingManager::kInvalidId, id);
   std::vector<OpCode> adv_opcodes = {
-      OpCode::LE_SET_ADVERTISING_PARAMETERS, OpCode::LE_SET_RANDOM_ADDRESS,     OpCode::LE_SET_SCAN_RESPONSE_DATA,
-      OpCode::LE_SET_ADVERTISING_DATA,       OpCode::LE_SET_ADVERTISING_ENABLE,
+      OpCode::LE_SET_ADVERTISING_PARAMETERS,
+      OpCode::LE_SET_SCAN_RESPONSE_DATA,
+      OpCode::LE_SET_ADVERTISING_DATA,
+      OpCode::LE_SET_ADVERTISING_ENABLE,
   };
   std::vector<uint8_t> success_vector{static_cast<uint8_t>(ErrorCode::SUCCESS)};
   auto result = last_command_future.wait_for(std::chrono::duration(std::chrono::milliseconds(100)));
@@ -357,7 +417,7 @@ TEST_F(LeAndroidHciAdvertisingManagerTest, create_advertiser_test) {
   for (size_t i = 0; i < sub_ocf.size(); i++) {
     auto packet = test_hci_layer_->GetCommandPacket(OpCode::LE_MULTI_ADVT);
     auto sub_packet = LeMultiAdvtView::Create(LeAdvertisingCommandView::Create(packet));
-    ASSERT(sub_packet.IsValid());
+    ASSERT_TRUE(sub_packet.IsValid());
     test_hci_layer_->IncomingEvent(LeMultiAdvtCompleteBuilder::Create(uint8_t{1}, ErrorCode::SUCCESS, sub_ocf[i]));
     num_commands -= 1;
   }

@@ -21,14 +21,16 @@
 
 #include "hci/acl_manager.h"
 #include "hci/classic_device.h"
+#include "l2cap/classic/security_enforcement_interface.h"
 #include "l2cap/le/l2cap_le_module.h"
+#include "l2cap/le/security_enforcement_interface.h"
 #include "os/handler.h"
 #include "security/channel/security_manager_channel.h"
 #include "security/initial_informations.h"
 #include "security/pairing/classic_pairing_handler.h"
 #include "security/pairing_handler_le.h"
 #include "security/record/security_record.h"
-#include "security/security_record_database.h"
+#include "security/record/security_record_database.h"
 
 namespace bluetooth {
 namespace security {
@@ -120,18 +122,8 @@ class SecurityManagerImpl : public channel::ISecurityManagerChannelListener, pub
    * When a conncetion closes we should clean up the pairing handler
    *
    * @param address Remote address
-   * @param error_code HCI error
    */
-  void OnConnectionClosed(hci::Address address, bluetooth::hci::ErrorCode error_code) override;
-
-  /**
-   * This can occur when a remote device isn't in range or doesn't agree with local device
-   *
-   * @param address Remote address
-   * @param result holds hci error and connection error code
-   */
-  void OnConnectionFailed(hci::Address address,
-                          bluetooth::l2cap::classic::FixedChannelManager::ConnectionResult result) override;
+  void OnConnectionClosed(hci::Address address) override;
 
   /**
    * Pairing handler has finished or cancelled
@@ -150,6 +142,11 @@ class SecurityManagerImpl : public channel::ISecurityManagerChannelListener, pub
   void SetIoCapability(hci::IoCapability io_capability);
   void SetAuthenticationRequirements(hci::AuthenticationRequirements authentication_requirements);
   void SetOobDataPresent(hci::OobDataPresent data_present);
+
+  void EnforceSecurityPolicy(hci::AddressWithType remote, l2cap::classic::SecurityPolicy policy,
+                             l2cap::classic::SecurityEnforcementInterface::ResultCallback result_callback);
+  void EnforceLeSecurityPolicy(hci::AddressWithType remote, l2cap::le::SecurityPolicy policy,
+                               l2cap::le::SecurityEnforcementInterface::ResultCallback result_callback);
 
  protected:
   std::vector<std::pair<ISecurityManagerListener*, os::Handler*>> listeners_;
@@ -180,7 +177,7 @@ class SecurityManagerImpl : public channel::ISecurityManagerChannelListener, pub
   std::unique_ptr<l2cap::le::FixedChannelManager> l2cap_manager_le_;
   hci::LeSecurityInterface* hci_security_interface_le_ __attribute__((unused));
   channel::SecurityManagerChannel* security_manager_channel_;
-  SecurityRecordDatabase security_database_;
+  record::SecurityRecordDatabase security_database_;
   std::unordered_map<hci::Address, std::shared_ptr<pairing::PairingHandler>> pairing_handler_map_;
   hci::IoCapability local_io_capability_ = kDefaultIoCapability;
   hci::AuthenticationRequirements local_authentication_requirements_ = kDefaultAuthenticationRequirements;

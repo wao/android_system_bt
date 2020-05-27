@@ -104,6 +104,7 @@ void SecurityManagerImpl::CancelBond(hci::AddressWithType device) {
 void SecurityManagerImpl::RemoveBond(hci::AddressWithType device) {
   CancelBond(device);
   security_database_.Remove(device);
+  security_manager_channel_->Disconnect(device.GetAddress());
   // Signal disconnect
   // Remove security record
   // Signal Remove from database
@@ -250,19 +251,7 @@ void SecurityManagerImpl::OnHciEventReceived(hci::EventPacketView packet) {
   }
 }
 
-void SecurityManagerImpl::OnConnectionClosed(hci::Address address, bluetooth::hci::ErrorCode error_code) {
-  LOG_DEBUG("Reason: %s ", hci::ErrorCodeText(error_code).c_str());
-  auto entry = pairing_handler_map_.find(address);
-  if (entry != pairing_handler_map_.end()) {
-    LOG_DEBUG("Cancelling pairing handler for '%s'", address.ToString().c_str());
-    entry->second->Cancel();
-  }
-}
-
-void SecurityManagerImpl::OnConnectionFailed(hci::Address address,
-                                             bluetooth::l2cap::classic::FixedChannelManager::ConnectionResult result) {
-  LOG_DEBUG("HCI Reason: %s ", hci::ErrorCodeText(result.hci_error).c_str());
-  LOG_DEBUG("L2CAP Reason: %d ", result.connection_result_code);
+void SecurityManagerImpl::OnConnectionClosed(hci::Address address) {
   auto entry = pairing_handler_map_.find(address);
   if (entry != pairing_handler_map_.end()) {
     LOG_DEBUG("Cancelling pairing handler for '%s'", address.ToString().c_str());
@@ -312,7 +301,7 @@ void SecurityManagerImpl::OnPairingHandlerComplete(hci::Address address, Pairing
   auto entry = pairing_handler_map_.find(address);
   if (entry != pairing_handler_map_.end()) {
     pairing_handler_map_.erase(entry);
-    security_manager_channel_->Disconnect(address);
+    security_manager_channel_->Release(address);
   }
   if (!std::holds_alternative<PairingFailure>(status)) {
     NotifyDeviceBonded(hci::AddressWithType(address, hci::AddressType::PUBLIC_DEVICE_ADDRESS));
@@ -415,13 +404,16 @@ SecurityManagerImpl::SecurityManagerImpl(os::Handler* security_handler, l2cap::l
   Init();
 
   l2cap_manager_le_->RegisterService(
-      bluetooth::l2cap::kSmpCid, {},
+      bluetooth::l2cap::kSmpCid,
       common::BindOnce(&SecurityManagerImpl::OnL2capRegistrationCompleteLe, common::Unretained(this)),
       common::Bind(&SecurityManagerImpl::OnConnectionOpenLe, common::Unretained(this)), security_handler_);
 }
 
 void SecurityManagerImpl::OnPairingFinished(security::PairingResultOrFailure pairing_result) {
   LOG_INFO(" ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ Received pairing result");
+
+  pending_le_pairing_.channel_->GetQueueUpEnd()->UnregisterDequeue();
+  pending_le_pairing_.enqueue_buffer_.reset();
 
   if (std::holds_alternative<PairingFailure>(pairing_result)) {
     PairingFailure failure = std::get<PairingFailure>(pairing_result);
@@ -445,6 +437,52 @@ void SecurityManagerImpl::SetAuthenticationRequirements(hci::AuthenticationRequi
 
 void SecurityManagerImpl::SetOobDataPresent(hci::OobDataPresent data_present) {
   this->local_oob_data_present_ = data_present;
+}
+
+void SecurityManagerImpl::EnforceSecurityPolicy(
+    hci::AddressWithType remote, l2cap::classic::SecurityPolicy policy,
+    l2cap::classic::SecurityEnforcementInterface::ResultCallback result_callback) {
+  bool result = false;
+  auto record = this->security_database_.FindOrCreate(remote);
+  switch (policy) {
+    case l2cap::classic::SecurityPolicy::BEST:
+    case l2cap::classic::SecurityPolicy::AUTHENTICATED_ENCRYPTED_TRANSPORT:
+      result = record.IsAuthenticated() && record.RequiresMitmProtection() && record.IsEncryptionRequired();
+      break;
+    case l2cap::classic::SecurityPolicy::ENCRYPTED_TRANSPORT:
+      result = record.IsAuthenticated() && record.IsEncryptionRequired();
+      break;
+    case l2cap::classic::SecurityPolicy::_SDP_ONLY_NO_SECURITY_WHATSOEVER_PLAINTEXT_TRANSPORT_OK:
+      result = true;
+      break;
+  }
+  if (!result) {
+    // TODO(optedoblivion): Start pairing process to meet requirements
+  }
+  result_callback.Invoke(result);
+}
+
+void SecurityManagerImpl::EnforceLeSecurityPolicy(
+    hci::AddressWithType remote, l2cap::le::SecurityPolicy policy,
+    l2cap::le::SecurityEnforcementInterface::ResultCallback result_callback) {
+  bool result = false;
+  // TODO(jpawlowski): Implement for LE
+  switch (policy) {
+    case l2cap::le::SecurityPolicy::BEST:
+      break;
+    case l2cap::le::SecurityPolicy::AUTHENTICATED_ENCRYPTED_TRANSPORT:
+      break;
+    case l2cap::le::SecurityPolicy::ENCRYPTED_TRANSPORT:
+      break;
+    case l2cap::le::SecurityPolicy::NO_SECURITY_WHATSOEVER_PLAINTEXT_TRANSPORT_OK:
+      result = true;
+      break;
+    case l2cap::le::SecurityPolicy::_NOT_FOR_YOU__AUTHENTICATED_PAIRING_WITH_128_BIT_KEY:
+      break;
+    case l2cap::le::SecurityPolicy::_NOT_FOR_YOU__AUTHORIZATION:
+      break;
+  }
+  result_callback.Invoke(result);
 }
 
 }  // namespace internal

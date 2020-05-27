@@ -16,7 +16,7 @@
 #include <memory>
 #include <unordered_map>
 
-#include "hci/acl_manager.h"
+#include "hci/acl_manager/le_acl_connection.h"
 #include "hci/address.h"
 #include "l2cap/internal/scheduler_fifo.h"
 #include "l2cap/le/internal/link.h"
@@ -54,7 +54,8 @@ void LinkManager::ConnectFixedChannelServices(hci::AddressWithType address_with_
         continue;
       }
       // Allocate channel for newly registered fixed channels
-      auto fixed_channel_impl = link->AllocateFixedChannel(fixed_channel_service.first, SecurityPolicy());
+      auto fixed_channel_impl = link->AllocateFixedChannel(
+          fixed_channel_service.first, SecurityPolicy::NO_SECURITY_WHATSOEVER_PLAINTEXT_TRANSPORT_OK);
       fixed_channel_service.second->NotifyChannelCreation(
           std::make_unique<FixedChannel>(fixed_channel_impl, l2cap_handler_));
       num_new_channels++;
@@ -101,7 +102,7 @@ Link* LinkManager::GetLink(hci::AddressWithType address_with_type) {
 }
 
 void LinkManager::OnLeConnectSuccess(hci::AddressWithType connecting_address_with_type,
-                                     std::unique_ptr<hci::LeAclConnection> acl_connection) {
+                                     std::unique_ptr<hci::acl_manager::LeAclConnection> acl_connection) {
   // Same link should not be connected twice
   hci::AddressWithType connected_address_with_type = acl_connection->GetRemoteAddress();
   ASSERT_LOG(GetLink(connected_address_with_type) == nullptr, "%s is connected twice without disconnection",
@@ -112,7 +113,8 @@ void LinkManager::OnLeConnectSuccess(hci::AddressWithType connecting_address_wit
   // Allocate and distribute channels for all registered fixed channel services
   auto fixed_channel_services = fixed_channel_service_manager_->GetRegisteredServices();
   for (auto& fixed_channel_service : fixed_channel_services) {
-    auto fixed_channel_impl = link->AllocateFixedChannel(fixed_channel_service.first, SecurityPolicy());
+    auto fixed_channel_impl = link->AllocateFixedChannel(fixed_channel_service.first,
+                                                         SecurityPolicy::NO_SECURITY_WHATSOEVER_PLAINTEXT_TRANSPORT_OK);
     fixed_channel_service.second->NotifyChannelCreation(
         std::make_unique<FixedChannel>(fixed_channel_impl, l2cap_handler_));
   }

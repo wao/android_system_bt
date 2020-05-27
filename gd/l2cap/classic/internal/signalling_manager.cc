@@ -32,6 +32,22 @@ namespace classic {
 namespace internal {
 static constexpr auto kTimeout = std::chrono::seconds(3);
 
+static std::vector<ControlView> GetCommandsFromPacketView(PacketView<kLittleEndian> packet) {
+  size_t curr = 0;
+  size_t end = packet.size();
+  std::vector<ControlView> result;
+  while (curr < end) {
+    auto sub_view = packet.GetLittleEndianSubview(curr, end);
+    auto control = ControlView::Create(sub_view);
+    if (!control.IsValid()) {
+      return {};
+    }
+    result.push_back(control);
+    curr += 1 + 1 + 2 + control.GetPayload().size();
+  }
+  return result;
+}
+
 ClassicSignallingManager::ClassicSignallingManager(os::Handler* handler, Link* link,
                                                    l2cap::internal::DataPipelineManager* data_pipeline_manager,
                                                    DynamicChannelServiceManagerImpl* dynamic_service_manager,
@@ -42,7 +58,7 @@ ClassicSignallingManager::ClassicSignallingManager(os::Handler* handler, Link* l
       fixed_service_manager_(fixed_service_manager), alarm_(handler) {
   ASSERT(handler_ != nullptr);
   ASSERT(link_ != nullptr);
-  signalling_channel_ = link_->AllocateFixedChannel(kClassicSignallingCid, {});
+  signalling_channel_ = link_->AllocateFixedChannel(kClassicSignallingCid);
   signalling_channel_->GetQueueUpEnd()->RegisterDequeue(
       handler_, common::Bind(&ClassicSignallingManager::on_incoming_packet, common::Unretained(this)));
   enqueue_buffer_ =
@@ -73,7 +89,35 @@ void ClassicSignallingManager::OnCommandReject(CommandRejectView command_reject_
 }
 
 void ClassicSignallingManager::SendConnectionRequest(Psm psm, Cid local_cid) {
-  PendingCommand pending_command = {next_signal_id_, CommandCode::CONNECTION_REQUEST, psm, local_cid, {}, {}, {}};
+  PendingConnection pending{
+      .local_cid = local_cid,
+  };
+  pending_security_requests_[psm] = pending;
+  dynamic_service_manager_->GetSecurityEnforcementInterface()->Enforce(
+      link_->GetDevice(), dynamic_service_manager_->GetService(psm)->GetSecurityPolicy(),
+      handler_->BindOnceOn(this, &ClassicSignallingManager::on_security_result_for_outgoing, psm));
+}
+
+void ClassicSignallingManager::on_security_result_for_outgoing(Psm psm, bool result) {
+  ASSERT_LOG(pending_security_requests_.find(psm) != pending_security_requests_.end(),
+             "Received security result without pending request");
+
+  auto request = pending_security_requests_[psm];
+  pending_security_requests_.erase(psm);
+
+  if (!result) {
+    LOG_WARN("Security requirement can't be satisfied. Dropping connection request");
+    DynamicChannelManager::ConnectionResult connection_result{
+        .connection_result_code = DynamicChannelManager::ConnectionResultCode::FAIL_SECURITY_BLOCK,
+        .hci_error = hci::ErrorCode::SUCCESS,
+        .l2cap_connection_response_result = ConnectionResponseResult::NO_RESOURCES_AVAILABLE,
+    };
+    link_->OnOutgoingConnectionRequestFail(request.local_cid, connection_result);
+    return;
+  }
+
+  PendingCommand pending_command = {
+      next_signal_id_, CommandCode::CONNECTION_REQUEST, psm, request.local_cid, {}, {}, {}};
   next_signal_id_++;
   pending_commands_.push(std::move(pending_command));
   if (command_just_sent_.signal_id_ == kInvalidSignalId) {
@@ -147,12 +191,40 @@ void ClassicSignallingManager::OnConnectionRequest(SignalId signal_id, Psm psm, 
     return;
   }
 
-  auto new_channel = link_->AllocateDynamicChannel(psm, remote_cid, {});
+  PendingConnection pending{
+      .remote_cid = remote_cid,
+      .incoming_signal_id = signal_id,
+  };
+  pending_security_requests_[psm] = pending;
+  dynamic_service_manager_->GetSecurityEnforcementInterface()->Enforce(
+      link_->GetDevice(), dynamic_service_manager_->GetService(psm)->GetSecurityPolicy(),
+      handler_->BindOnceOn(this, &ClassicSignallingManager::on_security_result_for_incoming, psm));
+}
+
+void ClassicSignallingManager::on_security_result_for_incoming(Psm psm, bool result) {
+  ASSERT_LOG(pending_security_requests_.find(psm) != pending_security_requests_.end(),
+             "Received security result without pending request");
+
+  auto request = pending_security_requests_[psm];
+  pending_security_requests_.erase(psm);
+  auto signal_id = request.incoming_signal_id;
+  if (!result) {
+    send_connection_response(signal_id, request.remote_cid, request.local_cid, ConnectionResponseResult::SECURITY_BLOCK,
+                             ConnectionResponseStatus::NO_FURTHER_INFORMATION_AVAILABLE);
+    DynamicChannelManager::ConnectionResult connection_result{
+        .connection_result_code = DynamicChannelManager::ConnectionResultCode::FAIL_SECURITY_BLOCK,
+        .hci_error = hci::ErrorCode::SUCCESS,
+        .l2cap_connection_response_result = ConnectionResponseResult::NO_RESOURCES_AVAILABLE,
+    };
+    link_->OnOutgoingConnectionRequestFail(request.local_cid, connection_result);
+  }
+
+  auto new_channel = link_->AllocateDynamicChannel(psm, request.remote_cid);
   if (new_channel == nullptr) {
     LOG_WARN("Can't allocate dynamic channel");
     return;
   }
-  send_connection_response(signal_id, remote_cid, new_channel->GetCid(), ConnectionResponseResult::SUCCESS,
+  send_connection_response(signal_id, request.remote_cid, new_channel->GetCid(), ConnectionResponseResult::SUCCESS,
                            ConnectionResponseStatus::NO_FURTHER_INFORMATION_AVAILABLE);
 
   link_->SendInitialConfigRequestOrQueue(new_channel->GetCid());
@@ -181,15 +253,25 @@ void ClassicSignallingManager::OnConnectionResponse(SignalId signal_id, Cid remo
   command_just_sent_.signal_id_ = kInvalidSignalId;
   alarm_.Cancel();
   if (result != ConnectionResponseResult::SUCCESS) {
-    link_->OnOutgoingConnectionRequestFail(cid);
+    DynamicChannelManager::ConnectionResult connection_result{
+        .connection_result_code = DynamicChannelManager::ConnectionResultCode::FAIL_L2CAP_ERROR,
+        .hci_error = hci::ErrorCode::SUCCESS,
+        .l2cap_connection_response_result = result,
+    };
+    link_->OnOutgoingConnectionRequestFail(cid, connection_result);
     handle_send_next_command();
     return;
   }
   Psm pending_psm = command_just_sent_.psm_;
-  auto new_channel = link_->AllocateReservedDynamicChannel(cid, pending_psm, remote_cid, {});
+  auto new_channel = link_->AllocateReservedDynamicChannel(cid, pending_psm, remote_cid);
   if (new_channel == nullptr) {
     LOG_WARN("Can't allocate dynamic channel");
-    link_->OnOutgoingConnectionRequestFail(cid);
+    DynamicChannelManager::ConnectionResult connection_result{
+        .connection_result_code = DynamicChannelManager::ConnectionResultCode::FAIL_L2CAP_ERROR,
+        .hci_error = hci::ErrorCode::SUCCESS,
+        .l2cap_connection_response_result = ConnectionResponseResult::NO_RESOURCES_AVAILABLE,
+    };
+    link_->OnOutgoingConnectionRequestFail(cid, connection_result);
     handle_send_next_command();
     return;
   }
@@ -634,7 +716,13 @@ void ClassicSignallingManager::OnInformationResponse(SignalId signal_id, const I
 
 void ClassicSignallingManager::on_incoming_packet() {
   auto packet = signalling_channel_->GetQueueUpEnd()->TryDequeue();
-  ControlView control_packet_view = ControlView::Create(*packet);
+  auto command_list = GetCommandsFromPacketView(*packet);
+  for (auto& command : command_list) {
+    handle_one_command(command);
+  }
+}
+
+void ClassicSignallingManager::handle_one_command(ControlView control_packet_view) {
   if (!control_packet_view.IsValid()) {
     LOG_WARN("Invalid signalling packet received");
     return;
@@ -762,7 +850,12 @@ void ClassicSignallingManager::on_command_timeout() {
   LOG_WARN("Response time out for %s", CommandCodeText(command_just_sent_.command_code_).c_str());
   switch (command_just_sent_.command_code_) {
     case CommandCode::CONNECTION_REQUEST: {
-      link_->OnOutgoingConnectionRequestFail(command_just_sent_.source_cid_);
+      DynamicChannelManager::ConnectionResult connection_result{
+          .connection_result_code = DynamicChannelManager::ConnectionResultCode::FAIL_L2CAP_ERROR,
+          .hci_error = hci::ErrorCode::SUCCESS,
+          .l2cap_connection_response_result = ConnectionResponseResult::NO_RESOURCES_AVAILABLE,
+      };
+      link_->OnOutgoingConnectionRequestFail(command_just_sent_.source_cid_, connection_result);
       break;
     }
     case CommandCode::CONFIGURATION_REQUEST: {

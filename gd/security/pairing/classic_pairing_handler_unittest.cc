@@ -22,13 +22,12 @@
 #include <utility>
 
 #include "hci/hci_packets.h"
-#include "l2cap/classic/fixed_channel.h"
-#include "l2cap/classic/fixed_channel_manager_mock.h"
 #include "packet/raw_builder.h"
 #include "security/channel/security_manager_channel.h"
 #include "security/initial_informations.h"
 #include "security/smp_packets.h"
 #include "security/test/fake_hci_layer.h"
+#include "security/test/fake_security_interface.h"
 
 namespace bluetooth {
 namespace security {
@@ -53,7 +52,11 @@ class FakeSecurityManagerChannel : public channel::SecurityManagerChannel {
       : channel::SecurityManagerChannel(handler, hci_layer) {}
   ~FakeSecurityManagerChannel() {}
 
-  void OnConnectionOpen(std::unique_ptr<l2cap::classic::FixedChannel> fixed_channel) override {
+  void OnLinkConnected(std::unique_ptr<l2cap::classic::LinkSecurityInterface> link) override {
+    LOG_ERROR("CALLED");
+  }
+
+  void OnLinkDisconnected(hci::Address address) override {
     LOG_ERROR("CALLED");
   }
 };
@@ -109,13 +112,8 @@ class SecurityManagerChannelCallback : public ISecurityManagerChannelListener {
     }
   }
 
-  void OnConnectionClosed(hci::Address address, bluetooth::hci::ErrorCode error_code) override {
+  void OnConnectionClosed(hci::Address address) override {
     LOG_DEBUG("Called");
-  }
-
-  void OnConnectionFailed(hci::Address address,
-                          bluetooth::l2cap::classic::FixedChannelManager::ConnectionResult result) override {
-    LOG_DEBUG("Shouldn't be called");
   }
 
  private:
@@ -123,7 +121,7 @@ class SecurityManagerChannelCallback : public ISecurityManagerChannelListener {
 };
 
 static void pairing_complete_callback(bluetooth::hci::Address address, PairingResultOrFailure status) {
-  ASSERT(std::holds_alternative<PairingResult>(status));
+  ASSERT_TRUE(std::holds_alternative<PairingResult>(status));
 }
 
 class ClassicPairingHandlerTest : public ::testing::Test {
@@ -139,6 +137,8 @@ class ClassicPairingHandlerTest : public ::testing::Test {
                                                           user_interface_handler_, "Fake name");
     channel_callback_ = new SecurityManagerChannelCallback(pairing_handler_);
     channel_->SetChannelListener(channel_callback_);
+    security_interface_ = new FakeSecurityInterface(handler_, channel_);
+    channel_->SetSecurityInterface(security_interface_);
   }
 
   void TearDown() override {
@@ -148,6 +148,7 @@ class ClassicPairingHandlerTest : public ::testing::Test {
     delete pairing_handler_;
     delete channel_;
     delete channel_callback_;
+    delete security_interface_;
   }
 
   void synchronize() {
@@ -198,6 +199,7 @@ class ClassicPairingHandlerTest : public ::testing::Test {
   std::shared_ptr<record::SecurityRecord> security_record_ = nullptr;
   UI* user_interface_;
   os::Handler* user_interface_handler_;
+  l2cap::classic::SecurityInterface* security_interface_ = nullptr;
 };
 
 // Security Manager Boot Sequence (Required for SSP, these are already set at boot time)
@@ -227,9 +229,10 @@ hci::SecurityCommandView GetLastCommand(FakeHciLayer* hci_layer) {
   auto last_command = std::move(hci_layer->GetLastCommand()->command);
   auto command_packet = GetPacketView(std::move(last_command));
   auto command_packet_view = hci::CommandPacketView::Create(command_packet);
-  ASSERT(command_packet_view.IsValid());
   auto security_command_view = hci::SecurityCommandView::Create(command_packet_view);
-  ASSERT(security_command_view.IsValid());
+  if (!security_command_view.IsValid()) {
+    LOG_ERROR("Invalid security command received");
+  }
   return security_command_view;
 }
 
@@ -270,6 +273,8 @@ TEST_F(ClassicPairingHandlerTest, locally_initiatied_display_only_display_only_t
   ReceiveLinkKeyNotification(device_, link_key, key_type);
   ASSERT_EQ(link_key, security_record_->GetLinkKey());
   ASSERT_EQ(key_type, security_record_->GetKeyType());
+  ASSERT_FALSE(security_record_->IsAuthenticated());
+  ASSERT_FALSE(security_record_->RequiresMitmProtection());
 }
 
 // display_only + display_yes_no is JustWorks no confirmation
@@ -306,6 +311,8 @@ TEST_F(ClassicPairingHandlerTest, locally_initiatied_display_only_display_yes_no
   ReceiveLinkKeyNotification(device_, link_key, key_type);
   ASSERT_EQ(link_key, security_record_->GetLinkKey());
   ASSERT_EQ(key_type, security_record_->GetKeyType());
+  ASSERT_FALSE(security_record_->IsAuthenticated());
+  ASSERT_FALSE(security_record_->RequiresMitmProtection());
 }
 
 // display_only + no_input_no_output is JustWorks no confirmation
@@ -342,6 +349,8 @@ TEST_F(ClassicPairingHandlerTest, locally_initiatied_display_only_no_input_no_ou
   ReceiveLinkKeyNotification(device_, link_key, key_type);
   ASSERT_EQ(link_key, security_record_->GetLinkKey());
   ASSERT_EQ(key_type, security_record_->GetKeyType());
+  ASSERT_FALSE(security_record_->IsAuthenticated());
+  ASSERT_FALSE(security_record_->RequiresMitmProtection());
 }
 
 // keyboard_only + no_input_no_output is JustWorks no confirmation
@@ -378,6 +387,8 @@ TEST_F(ClassicPairingHandlerTest, locally_initiatied_keyboard_only_no_input_no_o
   ReceiveLinkKeyNotification(device_, link_key, key_type);
   ASSERT_EQ(link_key, security_record_->GetLinkKey());
   ASSERT_EQ(key_type, security_record_->GetKeyType());
+  ASSERT_FALSE(security_record_->IsAuthenticated());
+  ASSERT_FALSE(security_record_->RequiresMitmProtection());
 }
 
 // no_input_no_output + display_only is JustWorks no confirmation
@@ -414,6 +425,8 @@ TEST_F(ClassicPairingHandlerTest, locally_initiatied_no_input_no_output_display_
   ReceiveLinkKeyNotification(device_, link_key, key_type);
   ASSERT_EQ(link_key, security_record_->GetLinkKey());
   ASSERT_EQ(key_type, security_record_->GetKeyType());
+  ASSERT_FALSE(security_record_->IsAuthenticated());
+  ASSERT_FALSE(security_record_->RequiresMitmProtection());
 }
 
 // no_input_no_output + display_yes_no is JustWorks no confirmation
@@ -450,6 +463,8 @@ TEST_F(ClassicPairingHandlerTest, locally_initiatied_no_input_no_output_display_
   ReceiveLinkKeyNotification(device_, link_key, key_type);
   ASSERT_EQ(link_key, security_record_->GetLinkKey());
   ASSERT_EQ(key_type, security_record_->GetKeyType());
+  ASSERT_FALSE(security_record_->IsAuthenticated());
+  ASSERT_FALSE(security_record_->RequiresMitmProtection());
 }
 
 // no_input_no_output + keyboard_only is JustWorks no confirmation
@@ -486,6 +501,8 @@ TEST_F(ClassicPairingHandlerTest, locally_initiatied_no_input_no_output_keyboard
   ReceiveLinkKeyNotification(device_, link_key, key_type);
   ASSERT_EQ(link_key, security_record_->GetLinkKey());
   ASSERT_EQ(key_type, security_record_->GetKeyType());
+  ASSERT_FALSE(security_record_->IsAuthenticated());
+  ASSERT_FALSE(security_record_->RequiresMitmProtection());
 }
 
 // no_input_no_output + no_input_no_output is JustWorks no confirmation
@@ -522,6 +539,8 @@ TEST_F(ClassicPairingHandlerTest, locally_initiatied_no_input_no_output_no_input
   ReceiveLinkKeyNotification(device_, link_key, key_type);
   ASSERT_EQ(link_key, security_record_->GetLinkKey());
   ASSERT_EQ(key_type, security_record_->GetKeyType());
+  ASSERT_FALSE(security_record_->IsAuthenticated());
+  ASSERT_FALSE(security_record_->RequiresMitmProtection());
 }
 
 /*** Numeric Comparison ***/

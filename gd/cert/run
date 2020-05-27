@@ -23,6 +23,7 @@ TEST_CONFIG="$ANDROID_BUILD_TOP/system/bt/gd/cert/android_devices_config.json"
 TEST_FILTER="-tf $ANDROID_BUILD_TOP/system/bt/gd/cert/all_cert_testcases"
 CLEAN_VENV=false
 NUM_REPETITIONS="1"
+VERBOSE_MODE=false
 
 POSITIONAL=()
 while [[ $# -gt 0 ]]
@@ -56,6 +57,11 @@ case $key in
     NUM_REPETITIONS="${key#*=}"
     shift # past argument
     ;;
+    # This will log everything to both log file and stdout
+    --verbose)
+    VERBOSE_MODE=true
+    shift # past argument
+    ;;
     *)    # unknown option
     POSITIONAL+=("$1") # save it in an array for later
     shift # past argument
@@ -63,6 +69,10 @@ case $key in
 esac
 done
 set -- "${POSITIONAL[@]}" # restore positional parameters
+
+if [[ -n "$1" ]] ; then
+  TEST_FILTER="-tc $1"
+fi
 
 CERT_TEST_VENV=$ANDROID_BUILD_TOP/out/dist/bluetooth_venv
 
@@ -109,6 +119,23 @@ bp3.BaseStruct
 if [[ $? -ne 0 ]] ; then
   echo "Setup failed as bluetooth_packets_python3 cannot be imported"
   exit 1
+fi
+
+if [ "$VERBOSE_MODE" == true ] ; then
+  TEMP_CONFIG=/tmp/temp_acts_config.json
+  cat $TEST_CONFIG | $CERT_TEST_VENV/bin/python -c "
+import sys
+import json
+from acts import keys
+config = json.load(sys.stdin)
+config['verbose_mode'] = True
+print(json.dumps(config))
+  " > $TEMP_CONFIG
+  TEST_CONFIG=$TEMP_CONFIG
+  if [[ $? -ne 0 ]] ; then
+    echo "Setup failed as verbose mode is chosen but cannot be enabled"
+    exit 1
+  fi
 fi
 
 for n in $(seq $NUM_REPETITIONS); do
