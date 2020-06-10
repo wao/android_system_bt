@@ -12,7 +12,6 @@ service LeAclManagerFacade {
   rpc SendAclData(LeAclData) returns (google.protobuf.Empty) {}
   rpc FetchAclData(google.protobuf.Empty) returns (stream LeAclData) {}
   rpc FetchIncomingConnection(google.protobuf.Empty) returns (stream LeConnectionEvent) {}
-  rpc SetInitiatorAddress(bluetooth.facade.BluetoothAddressWithType) returns (google.protobuf.Empty) {}
 }
 
 message LeHandleMsg {
@@ -32,3 +31,4 @@ message LeAclData {
   uint32 handle = 1;
   bytes payload = 2;
 }
+

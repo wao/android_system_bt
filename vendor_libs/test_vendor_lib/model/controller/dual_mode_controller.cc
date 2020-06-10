@@ -147,6 +147,8 @@ DualModeController::DualModeController(const std::string& properties_filename, u
   SET_HANDLER(OpCode::SNIFF_MODE, SniffMode);
   SET_HANDLER(OpCode::EXIT_SNIFF_MODE, ExitSniffMode);
   SET_HANDLER(OpCode::QOS_SETUP, QosSetup);
+  SET_HANDLER(OpCode::READ_DEFAULT_LINK_POLICY_SETTINGS,
+              ReadDefaultLinkPolicySettings);
   SET_HANDLER(OpCode::WRITE_DEFAULT_LINK_POLICY_SETTINGS,
               WriteDefaultLinkPolicySettings);
   SET_HANDLER(OpCode::FLOW_SPECIFICATION, FlowSpecification);
@@ -225,6 +227,7 @@ DualModeController::DualModeController(const std::string& properties_filename, u
   SET_HANDLER(OpCode::LE_REMOVE_DEVICE_FROM_RESOLVING_LIST,
               LeRemoveDeviceFromResolvingList);
   SET_HANDLER(OpCode::LE_CLEAR_RESOLVING_LIST, LeClearResolvingList);
+  SET_HANDLER(OpCode::LE_READ_RESOLVING_LIST_SIZE, LeReadResolvingListSize);
   SET_HANDLER(OpCode::LE_SET_EXTENDED_SCAN_PARAMETERS,
               LeSetExtendedScanParameters);
   SET_HANDLER(OpCode::LE_SET_EXTENDED_SCAN_ENABLE, LeSetExtendedScanEnable);
@@ -1010,14 +1013,28 @@ void DualModeController::QosSetup(CommandPacketView command) {
   send_event_(std::move(packet));
 }
 
+void DualModeController::ReadDefaultLinkPolicySettings(
+    CommandPacketView command) {
+  auto command_view = gd_hci::ReadDefaultLinkPolicySettingsView::Create(
+      gd_hci::ConnectionManagementCommandView::Create(command));
+  ASSERT(command_view.IsValid());
+  uint16_t settings = link_layer_controller_.ReadDefaultLinkPolicySettings();
+  auto packet =
+      bluetooth::hci::ReadDefaultLinkPolicySettingsCompleteBuilder::Create(
+          kNumCommandPackets, ErrorCode::SUCCESS, settings);
+  send_event_(std::move(packet));
+}
+
 void DualModeController::WriteDefaultLinkPolicySettings(
     CommandPacketView command) {
   auto command_view = gd_hci::WriteDefaultLinkPolicySettingsView::Create(
       gd_hci::ConnectionManagementCommandView::Create(command));
   ASSERT(command_view.IsValid());
+  ErrorCode status = link_layer_controller_.WriteDefaultLinkPolicySettings(
+      command_view.GetDefaultLinkPolicySettings());
   auto packet =
       bluetooth::hci::WriteDefaultLinkPolicySettingsCompleteBuilder::Create(
-          kNumCommandPackets, ErrorCode::SUCCESS);
+          kNumCommandPackets, status);
   send_event_(std::move(packet));
 }
 
@@ -1065,7 +1082,7 @@ void DualModeController::WriteLinkSupervisionTimeout(
       gd_hci::ConnectionManagementCommandView::Create(command));
   ASSERT(command_view.IsValid());
 
-  uint16_t handle = command_view.GetHandle();
+  uint16_t handle = command_view.GetConnectionHandle();
   uint16_t timeout = command_view.GetLinkSupervisionTimeout();
 
   auto status =
@@ -1588,8 +1605,8 @@ void DualModeController::LeConnectionCancel(CommandPacketView command) {
       gd_hci::LeConnectionManagementCommandView::Create(command));
   ASSERT(command_view.IsValid());
   link_layer_controller_.SetLeConnect(false);
-  auto packet = bluetooth::hci::LeCreateConnectionCancelStatusBuilder::Create(
-      ErrorCode::SUCCESS, kNumCommandPackets);
+  auto packet = bluetooth::hci::LeCreateConnectionCancelCompleteBuilder::Create(
+      kNumCommandPackets, ErrorCode::SUCCESS);
   send_event_(std::move(packet));
   /* For testing Jakub's patch:  Figure out a neat way to call this without
      recompiling.  I'm thinking about a bad device. */
@@ -1659,6 +1676,16 @@ void DualModeController::LeClearResolvingList(CommandPacketView command) {
   link_layer_controller_.LeResolvingListClear();
   auto packet = bluetooth::hci::LeClearResolvingListCompleteBuilder::Create(
       kNumCommandPackets, ErrorCode::SUCCESS);
+  send_event_(std::move(packet));
+}
+
+void DualModeController::LeReadResolvingListSize(CommandPacketView command) {
+  auto command_view = gd_hci::LeReadResolvingListSizeView::Create(
+      gd_hci::LeSecurityCommandView::Create(command));
+  ASSERT(command_view.IsValid());
+  auto packet = bluetooth::hci::LeReadResolvingListSizeCompleteBuilder::Create(
+      kNumCommandPackets, ErrorCode::SUCCESS,
+      properties_.GetLeResolvingListSize());
   send_event_(std::move(packet));
 }
 

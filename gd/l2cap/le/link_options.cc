@@ -25,7 +25,8 @@ namespace bluetooth {
 namespace l2cap {
 namespace le {
 
-LinkOptions::LinkOptions(hci::LeAclConnection* acl_connection, internal::Link* link, os::Handler* l2cap_handler)
+LinkOptions::LinkOptions(hci::acl_manager::LeAclConnection* acl_connection, internal::Link* link,
+                         os::Handler* l2cap_handler)
     : acl_connection_(acl_connection), link_(link), l2cap_handler_(l2cap_handler) {}
 
 hci::Role LinkOptions::GetRole() const {
@@ -34,6 +35,10 @@ hci::Role LinkOptions::GetRole() const {
 
 uint16_t LinkOptions::GetHandle() const {
   return acl_connection_->GetHandle();
+}
+
+hci::AddressWithType LinkOptions::GetLocalAddress() const {
+  return acl_connection_->GetLocalAddress();
 }
 
 bool LinkOptions::UpdateConnectionParameter(uint16_t conn_interval_min, uint16_t conn_interval_max,

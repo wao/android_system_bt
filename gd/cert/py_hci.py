@@ -36,10 +36,7 @@ class PyHciAclConnection(IEventStream):
 
     def send(self, pb_flag, b_flag, data):
         acl_msg = hci_facade.AclMsg(
-            handle=self.handle,
-            packet_boundary_flag=int(pb_flag),
-            broadcast_flag=int(b_flag),
-            data=data)
+            handle=self.handle, packet_boundary_flag=int(pb_flag), broadcast_flag=int(b_flag), data=data)
         self.device.hci.SendAclData(acl_msg)
 
     def send_first(self, data):
@@ -47,8 +44,8 @@ class PyHciAclConnection(IEventStream):
                   hci_packets.BroadcastFlag.POINT_TO_POINT, bytes(data))
 
     def send_continuing(self, data):
-        self.send(hci_packets.PacketBoundaryFlag.CONTINUING_FRAGMENT,
-                  hci_packets.BroadcastFlag.POINT_TO_POINT, bytes(data))
+        self.send(hci_packets.PacketBoundaryFlag.CONTINUING_FRAGMENT, hci_packets.BroadcastFlag.POINT_TO_POINT,
+                  bytes(data))
 
     def get_event_queue(self):
         return self.our_acl_stream.get_event_queue()
@@ -56,21 +53,33 @@ class PyHciAclConnection(IEventStream):
 
 class PyHci(Closable):
 
-    def __init__(self, device):
+    event_stream = None
+    le_event_stream = None
+    acl_stream = None
+
+    def __init__(self, device, acl_streaming=False):
+        """
+            If you are planning on personally using the ACL data stream
+            coming from HCI, specify acl_streaming=True. You probably only
+            want this if you are testing HCI itself.
+        """
         self.device = device
+        self._setup_event_stream()
+        self._setup_le_event_stream()
+        if acl_streaming:
+            self.register_for_events(hci_packets.EventCode.ROLE_CHANGE, hci_packets.EventCode.CONNECTION_REQUEST,
+                                     hci_packets.EventCode.CONNECTION_COMPLETE,
+                                     hci_packets.EventCode.CONNECTION_PACKET_TYPE_CHANGED)
+            self._setup_acl_stream()
 
-        self.register_for_events(
-            hci_packets.EventCode.ROLE_CHANGE,
-            hci_packets.EventCode.CONNECTION_REQUEST,
-            hci_packets.EventCode.CONNECTION_COMPLETE,
-            hci_packets.EventCode.CONNECTION_PACKET_TYPE_CHANGED)
+    def _setup_event_stream(self):
+        self.event_stream = EventStream(self.device.hci.FetchEvents(empty_proto.Empty()))
 
-        self.event_stream = EventStream(
-            self.device.hci.FetchEvents(empty_proto.Empty()))
-        self.le_event_stream = EventStream(
-            self.device.hci.FetchLeSubevents(empty_proto.Empty()))
-        self.acl_stream = EventStream(
-            self.device.hci.FetchAclPackets(empty_proto.Empty()))
+    def _setup_le_event_stream(self):
+        self.le_event_stream = EventStream(self.device.hci.FetchLeSubevents(empty_proto.Empty()))
+
+    def _setup_acl_stream(self):
+        self.acl_stream = EventStream(self.device.hci.FetchAclPackets(empty_proto.Empty()))
 
     def close(self):
         safeClose(self.event_stream)
@@ -84,6 +93,8 @@ class PyHci(Closable):
         return self.le_event_stream
 
     def get_raw_acl_stream(self):
+        if self.acl_stream is None:
+            raise Exception("Please construct '%s' with acl_streaming=True!" % self.__class__.__name__)
         return self.acl_stream
 
     def register_for_events(self, *event_codes):
@@ -108,8 +119,7 @@ class PyHci(Closable):
 
     def enable_inquiry_and_page_scan(self):
         self.send_command_with_complete(
-            hci_packets.WriteScanEnableBuilder(
-                hci_packets.ScanEnable.INQUIRY_AND_PAGE_SCAN))
+            hci_packets.WriteScanEnableBuilder(hci_packets.ScanEnable.INQUIRY_AND_PAGE_SCAN))
 
     def read_own_address(self):
         self.send_command_with_complete(hci_packets.ReadBdAddrBuilder())
@@ -132,9 +142,8 @@ class PyHci(Closable):
         assertThat(self.event_stream).emits(connection_request)
 
         self.send_command_with_status(
-            hci_packets.AcceptConnectionRequestBuilder(
-                connection_request.get().GetBdAddr(),
-                hci_packets.AcceptConnectionRequestRole.REMAIN_SLAVE))
+            hci_packets.AcceptConnectionRequestBuilder(connection_request.get().GetBdAddr(),
+                                                       hci_packets.AcceptConnectionRequestRole.REMAIN_SLAVE))
         return self.complete_connection()
 
     def complete_connection(self):
@@ -142,4 +151,6 @@ class PyHci(Closable):
         assertThat(self.event_stream).emits(connection_complete)
 
         handle = connection_complete.get().GetConnectionHandle()
+        if self.acl_stream is None:
+            raise Exception("Please construct '%s' with acl_streaming=True!" % self.__class__.__name__)
         return PyHciAclConnection(handle, self.acl_stream, self.device)

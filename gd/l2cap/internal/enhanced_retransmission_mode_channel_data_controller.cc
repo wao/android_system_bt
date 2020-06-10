@@ -167,6 +167,7 @@ struct ErtmController::impl {
       send_rr_or_rnr(Poll::POLL);
       start_monitor_timer();
     } else if (tx_state_ == TxState::WAIT_F) {
+      LOG_INFO("Close channel because max transmit reached");
       CloseChannel();
     }
   }
@@ -489,16 +490,30 @@ struct ErtmController::impl {
     return retry_count_ < controller_->local_max_transmit_;
   }
 
+  // Compares two sequence numbers (tx_seq or rx_seq)
+  bool sequence_less_than(uint8_t x, uint8_t y) {
+    // Assuming the maximum overflow of sequence number is the same as local_tx_window_ (10 by default).
+    return x < y || kMaxTxWin - (x - y) < controller_->local_tx_window_;
+  }
+
+  // Compares two sequence numbers (tx_seq or rx_seq)
+  bool sequence_less_than_or_equal(uint8_t x, uint8_t y) {
+    // Assuming the maximum overflow of sequence number is the same as local_tx_window_ (10 by default).
+    return x <= y || kMaxTxWin - (x - y) <= controller_->local_tx_window_;
+  }
+
   bool with_expected_tx_seq(uint8_t tx_seq) {
     return tx_seq == expected_tx_seq_;
   }
 
   bool with_valid_req_seq(uint8_t req_seq) {
-    return expected_ack_seq_ <= req_seq && req_seq <= next_tx_seq_;
+    return sequence_less_than_or_equal(expected_ack_seq_, req_seq) &&
+           sequence_less_than_or_equal(req_seq, next_tx_seq_);
   }
 
   bool with_valid_req_seq_retrans(uint8_t req_seq) {
-    return expected_ack_seq_ <= req_seq && req_seq <= next_tx_seq_;
+    return sequence_less_than_or_equal(expected_ack_seq_, req_seq) &&
+           sequence_less_than_or_equal(req_seq, next_tx_seq_);
   }
 
   bool with_valid_f_bit(Final f) {
@@ -506,24 +521,26 @@ struct ErtmController::impl {
   }
 
   bool with_unexpected_tx_seq(uint8_t tx_seq) {
-    return tx_seq > expected_tx_seq_ && tx_seq <= expected_tx_seq_ + controller_->local_tx_window_;
+    return sequence_less_than(expected_tx_seq_, tx_seq) &&
+           sequence_less_than_or_equal(tx_seq, expected_tx_seq_ + controller_->local_tx_window_);
   }
 
   bool with_duplicate_tx_seq(uint8_t tx_seq) {
-    return tx_seq < expected_tx_seq_ && tx_seq >= expected_tx_seq_ - controller_->local_tx_window_;
+    return sequence_less_than(tx_seq, expected_tx_seq_) &&
+           sequence_less_than_or_equal(expected_tx_seq_ - controller_->local_tx_window_, tx_seq);
   }
 
   bool with_invalid_tx_seq(uint8_t tx_seq) {
-    return tx_seq < expected_tx_seq_ - controller_->local_tx_window_ ||
-           tx_seq > expected_tx_seq_ + controller_->local_tx_window_;
+    return sequence_less_than(tx_seq, expected_tx_seq_ - controller_->local_tx_window_) ||
+           sequence_less_than(expected_tx_seq_ + controller_->local_tx_window_, tx_seq);
   }
 
   bool with_invalid_req_seq(uint8_t req_seq) {
-    return req_seq < expected_ack_seq_ || req_seq > next_tx_seq_;
+    return sequence_less_than(req_seq, expected_ack_seq_) || sequence_less_than(next_tx_seq_, req_seq);
   }
 
   bool with_invalid_req_seq_retrans(uint8_t req_seq) {
-    return req_seq < expected_ack_seq_ || req_seq > next_tx_seq_;
+    return sequence_less_than(req_seq, expected_ack_seq_) || sequence_less_than(next_tx_seq_, req_seq);
   }
 
   bool not_with_expected_tx_seq(uint8_t tx_seq) {
@@ -636,6 +653,7 @@ struct ErtmController::impl {
 
   void send_rnr(Final f) {
     _send_s_frame(SupervisoryFunction::RECEIVER_NOT_READY, expected_tx_seq_, Poll::NOT_SET, f);
+    rnr_sent_ = true;
   }
 
   void send_rej(Poll p = Poll::NOT_SET, Final f = Final::NOT_SET) {
@@ -723,7 +741,7 @@ struct ErtmController::impl {
   }
 
   void store_or_ignore() {
-    // We choose to ignore. We don't support local busy so far.
+    // We choose to ignore.
   }
 
   bool p_bit_outstanding() {
@@ -947,6 +965,8 @@ std::unique_ptr<packet::BasePacketBuilder> ErtmController::GetNextPacket() {
 
 void ErtmController::stage_for_reassembly(SegmentationAndReassembly sar, uint16_t sdu_size,
                                           const packet::PacketView<kLittleEndian>& payload) {
+  // If EnqueueBuffer has more than 1 packets, we claim LocalBusy, until queue is empty
+  constexpr size_t kEnqueueBufferBusyThreshold = 3;
   switch (sar) {
     case SegmentationAndReassembly::UNSEGMENTED:
       if (sar_state_ != SegmentationAndReassembly::END) {
@@ -956,6 +976,10 @@ void ErtmController::stage_for_reassembly(SegmentationAndReassembly sar, uint16_
       }
       // TODO: Enforce MTU
       enqueue_buffer_.Enqueue(std::make_unique<packet::PacketView<kLittleEndian>>(payload), handler_);
+      if (enqueue_buffer_.Size() == kEnqueueBufferBusyThreshold) {
+        pimpl_->local_busy_detected();
+        enqueue_buffer_.NotifyOnEmpty(common::BindOnce(&impl::local_busy_clear, common::Unretained(pimpl_.get())));
+      }
       break;
     case SegmentationAndReassembly::START:
       if (sar_state_ != SegmentationAndReassembly::END) {
@@ -994,6 +1018,10 @@ void ErtmController::stage_for_reassembly(SegmentationAndReassembly sar, uint16_
       }
       reassembly_stage_.AppendPacketView(payload);
       enqueue_buffer_.Enqueue(std::make_unique<packet::PacketView<kLittleEndian>>(reassembly_stage_), handler_);
+      if (enqueue_buffer_.Size() == kEnqueueBufferBusyThreshold) {
+        pimpl_->local_busy_detected();
+        enqueue_buffer_.NotifyOnEmpty(common::BindOnce(&impl::local_busy_clear, common::Unretained(pimpl_.get())));
+      }
       break;
   }
 }

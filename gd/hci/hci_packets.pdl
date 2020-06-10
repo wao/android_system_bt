@@ -1795,7 +1795,7 @@ packet ReadLinkSupervisionTimeoutComplete : CommandComplete (command_op_code = R
 }
 
 packet WriteLinkSupervisionTimeout : ConnectionManagementCommand (op_code = WRITE_LINK_SUPERVISION_TIMEOUT) {
-  handle : 12,
+  connection_handle : 12,
   _reserved_ : 4,
   link_supervision_timeout : 16, // 0x001-0xFFFF (0.625ms-40.9s)
 }
@@ -2579,14 +2579,11 @@ packet LeCreateConnectionStatus : CommandStatus (command_op_code = LE_CREATE_CON
 packet LeCreateConnectionCancel : LeConnectionManagementCommand (op_code = LE_CREATE_CONNECTION_CANCEL) {
 }
 
-packet LeCreateConnectionCancelStatus : CommandStatus (command_op_code = LE_CREATE_CONNECTION_CANCEL) {
-}
-
 packet LeCreateConnectionCancelComplete : CommandComplete (command_op_code = LE_CREATE_CONNECTION_CANCEL) {
   status : ErrorCode,
 }
 
-packet LeReadWhiteListSize : LeConnectionManagementCommand (op_code = LE_READ_WHITE_LIST_SIZE) {
+packet LeReadWhiteListSize : CommandPacket (op_code = LE_READ_WHITE_LIST_SIZE) {
 }
 
 packet LeReadWhiteListSizeComplete : CommandComplete (command_op_code = LE_READ_WHITE_LIST_SIZE) {
@@ -2829,11 +2826,12 @@ packet LeClearResolvingListComplete : CommandComplete (command_op_code = LE_CLEA
   status : ErrorCode,
 }
 
-packet LeReadResolvingListSize : LeSecurityCommand (op_code = LE_READ_RESOLVING_LIST_SIZE) {
+packet LeReadResolvingListSize : CommandPacket (op_code = LE_READ_RESOLVING_LIST_SIZE) {
 }
 
 packet LeReadResolvingListSizeComplete : CommandComplete (command_op_code = LE_READ_RESOLVING_LIST_SIZE) {
   status : ErrorCode,
+  resolving_list_size : 8,
 }
 
 packet LeReadPeerResolvableAddress : LeSecurityCommand (op_code = LE_READ_PEER_RESOLVABLE_ADDRESS) {

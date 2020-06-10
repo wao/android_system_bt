@@ -119,11 +119,7 @@ ErrorCode LinkLayerController::SendAclToRemote(
   AddressWithType destination = connections_.GetAddress(handle);
   Phy::Type phy = connections_.GetPhyType(handle);
 
-  LOG_INFO("%s(%s): handle 0x%x size %d", __func__,
-           properties_.GetAddress().ToString().c_str(), handle,
-           static_cast<int>(acl_packet.size()));
-
-  ScheduleTask(milliseconds(5), [this, handle]() {
+  ScheduleTask(milliseconds(1), [this, handle]() {
     std::vector<bluetooth::hci::CompletedPackets> completed_packets;
     bluetooth::hci::CompletedPackets cp;
     cp.connection_handle_ = handle;
@@ -904,7 +900,6 @@ void LinkLayerController::IncomingLeConnectCompletePacket(
 
 void LinkLayerController::IncomingLeScanPacket(
     model::packets::LinkLayerPacketView incoming) {
-
   auto to_send = model::packets::LeScanResponseBuilder::Create(
       properties_.GetLeAddress(), incoming.GetSourceAddress(),
       static_cast<model::packets::AddressType>(properties_.GetLeAddressType()),
@@ -1614,6 +1609,19 @@ ErrorCode LinkLayerController::WriteLinkPolicySettings(uint16_t handle,
     return ErrorCode::UNKNOWN_CONNECTION;
   }
   return ErrorCode::SUCCESS;
+}
+
+ErrorCode LinkLayerController::WriteDefaultLinkPolicySettings(
+    uint16_t settings) {
+  if (settings > 7 /* Sniff + Hold + Role switch */) {
+    return ErrorCode::INVALID_HCI_COMMAND_PARAMETERS;
+  }
+  default_link_policy_settings_ = settings;
+  return ErrorCode::SUCCESS;
+}
+
+uint16_t LinkLayerController::ReadDefaultLinkPolicySettings() {
+  return default_link_policy_settings_;
 }
 
 ErrorCode LinkLayerController::FlowSpecification(

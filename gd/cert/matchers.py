@@ -32,10 +32,8 @@ class HciMatchers(object):
         return lambda msg: HciMatchers._is_matching_command_complete(msg.event, opcode, num_complete)
 
     @staticmethod
-    def _is_matching_command_complete(packet_bytes, opcode=None,
-                                      num_complete=1):
-        hci_event = HciMatchers.extract_hci_event_with_code(
-            packet_bytes, EventCode.COMMAND_COMPLETE)
+    def _is_matching_command_complete(packet_bytes, opcode=None, num_complete=1):
+        hci_event = HciMatchers.extract_hci_event_with_code(packet_bytes, EventCode.COMMAND_COMPLETE)
         if hci_event is None:
             return False
         frame = hci_packets.CommandCompleteView(hci_event)
@@ -48,13 +46,52 @@ class HciMatchers(object):
 
     @staticmethod
     def extract_hci_event_with_code(packet_bytes, event_code=None):
-        hci_event = hci_packets.EventPacketView(
-            bt_packets.PacketViewLittleEndian(list(packet_bytes)))
+        hci_event = hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet_bytes)))
         if hci_event is None:
             return None
         if event_code is not None and hci_event.GetEventCode() != event_code:
             return None
         return hci_event
+
+    @staticmethod
+    def LinkKeyRequest():
+        return lambda event: HciMatchers.EventWithCode(EventCode.LINK_KEY_REQUEST)
+
+    @staticmethod
+    def IoCapabilityRequest():
+        return lambda event: HciMatchers.EventWithCode(EventCode.IO_CAPABILITY_REQUEST)
+
+    @staticmethod
+    def IoCapabilityResponse():
+        return lambda event: HciMatchers.EventWithCode(EventCode.IO_CAPABILITY_RESPONSE)
+
+    @staticmethod
+    def UserPasskeyNotification():
+        return lambda event: HciMatchers.EventWithCode(EventCode.USER_PASSKEY_NOTIFICATION)
+
+    @staticmethod
+    def UserPasskeyRequest():
+        return lambda event: HciMatchers.EventWithCode(EventCode.USER_PASSKEY_REQUEST)
+
+    @staticmethod
+    def UserConfirmationRequest():
+        return lambda event: HciMatchers.EventWithCode(EventCode.USER_CONFIRMATION_REQUEST)
+
+    @staticmethod
+    def RemoteHostSupportedFeaturesNotification():
+        return lambda event: HciMatchers.EventWithCode(EventCode.REMOTE_HOST_SUPPORTED_FEATURES_NOTIFICATION)
+
+    @staticmethod
+    def LinkKeyNotification():
+        return lambda event: HciMatchers.EventWithCode(EventCode.LINK_KEY_NOTIFICATION)
+
+    @staticmethod
+    def SimplePairingComplete():
+        return lambda event: HciMatchers.EventWithCode(EventCode.SIMPLE_PAIRING_COMPLETE)
+
+    @staticmethod
+    def Disconnect():
+        return lambda event: HciMatchers.EventWithCode(EventCode.DISCONNECT)
 
 
 class NeighborMatchers(object):
@@ -65,8 +102,7 @@ class NeighborMatchers(object):
 
     @staticmethod
     def _is_matching_inquiry_result(packet, address):
-        hci_event = HciMatchers.extract_hci_event_with_code(
-            packet, EventCode.INQUIRY_RESULT)
+        hci_event = HciMatchers.extract_hci_event_with_code(packet, EventCode.INQUIRY_RESULT)
         if hci_event is None:
             return False
         inquiry_view = hci_packets.InquiryResultView(hci_event)
@@ -81,8 +117,7 @@ class NeighborMatchers(object):
 
     @staticmethod
     def _is_matching_inquiry_result_with_rssi(packet, address):
-        hci_event = HciMatchers.extract_hci_event_with_code(
-            packet, EventCode.INQUIRY_RESULT_WITH_RSSI)
+        hci_event = HciMatchers.extract_hci_event_with_code(packet, EventCode.INQUIRY_RESULT_WITH_RSSI)
         if hci_event is None:
             return False
         inquiry_view = hci_packets.InquiryResultWithRssiView(hci_event)
@@ -97,8 +132,7 @@ class NeighborMatchers(object):
 
     @staticmethod
     def _is_matching_extended_inquiry_result(packet, address):
-        hci_event = HciMatchers.extract_hci_event_with_code(
-            packet, EventCode.EXTENDED_INQUIRY_RESULT)
+        hci_event = HciMatchers.extract_hci_event_with_code(packet, EventCode.EXTENDED_INQUIRY_RESULT)
         if hci_event is None:
             return False
         extended_view = hci_packets.ExtendedInquiryResultView(hci_event)
@@ -130,12 +164,20 @@ class L2capMatchers(object):
         return lambda packet: L2capMatchers._is_matching_configuration_request_with_ertm(packet)
 
     @staticmethod
+    def ConfigurationRequestView(dcid):
+        return lambda request_view: request_view.GetDestinationCid() == dcid
+
+    @staticmethod
     def DisconnectionRequest(scid, dcid):
         return lambda packet: L2capMatchers._is_matching_disconnection_request(packet, scid, dcid)
 
     @staticmethod
     def DisconnectionResponse(scid, dcid):
         return lambda packet: L2capMatchers._is_matching_disconnection_response(packet, scid, dcid)
+
+    @staticmethod
+    def EchoResponse():
+        return lambda packet: L2capMatchers._is_control_frame_with_code(packet, CommandCode.ECHO_RESPONSE)
 
     @staticmethod
     def CommandReject():
@@ -147,12 +189,11 @@ class L2capMatchers(object):
 
     @staticmethod
     def LeConnectionParameterUpdateRequest():
-        return lambda packet: L2capMatchers._is_le_control_frame_with_code(packet, LeCommandCode.CONNECTION_PARAMETER_UPDATE_REQUEST)
+        return lambda packet: L2capMatchers._is_le_control_frame_with_code(
+            packet, LeCommandCode.CONNECTION_PARAMETER_UPDATE_REQUEST)
 
     @staticmethod
-    def LeConnectionParameterUpdateResponse(
-            result=l2cap_packets.ConnectionParameterUpdateResponseResult.
-            ACCEPTED):
+    def LeConnectionParameterUpdateResponse(result=l2cap_packets.ConnectionParameterUpdateResponseResult.ACCEPTED):
         return lambda packet: L2capMatchers._is_matching_connection_parameter_update_response(packet, result)
 
     @staticmethod
@@ -160,13 +201,14 @@ class L2capMatchers(object):
         return lambda packet: L2capMatchers._is_matching_credit_based_connection_request(packet, psm)
 
     @staticmethod
-    def CreditBasedConnectionResponse(
-            result=LeCreditBasedConnectionResponseResult.SUCCESS):
+    def CreditBasedConnectionResponse(result=LeCreditBasedConnectionResponseResult.SUCCESS):
         return lambda packet: L2capMatchers._is_matching_credit_based_connection_response(packet, result)
 
     @staticmethod
     def CreditBasedConnectionResponseUsedCid():
-        return lambda packet: L2capMatchers._is_matching_credit_based_connection_response(packet, LeCreditBasedConnectionResponseResult.SOURCE_CID_ALREADY_ALLOCATED) or L2capMatchers._is_le_control_frame_with_code(packet, LeCommandCode.COMMAND_REJECT)
+        return lambda packet: L2capMatchers._is_matching_credit_based_connection_response(
+            packet, LeCreditBasedConnectionResponseResult.SOURCE_CID_ALREADY_ALLOCATED
+        ) or L2capMatchers._is_le_control_frame_with_code(packet, LeCommandCode.COMMAND_REJECT)
 
     @staticmethod
     def LeDisconnectionRequest(scid, dcid):
@@ -241,21 +283,20 @@ class L2capMatchers(object):
                                             supports_streaming=None,
                                             supports_fcs=None,
                                             supports_fixed_channels=None):
-        return lambda packet: L2capMatchers._is_matching_information_response_extended_features(packet, supports_ertm, supports_streaming, supports_fcs, supports_fixed_channels)
+        return lambda packet: L2capMatchers._is_matching_information_response_extended_features(
+            packet, supports_ertm, supports_streaming, supports_fcs, supports_fixed_channels)
 
     @staticmethod
     def _basic_frame(packet):
         if packet is None:
             return None
-        return l2cap_packets.BasicFrameView(
-            bt_packets.PacketViewLittleEndian(list(packet.payload)))
+        return l2cap_packets.BasicFrameView(bt_packets.PacketViewLittleEndian(list(packet.payload)))
 
     @staticmethod
     def _basic_frame_with_fcs(packet):
         if packet is None:
             return None
-        return l2cap_packets.BasicFrameWithFcsView(
-            bt_packets.PacketViewLittleEndian(list(packet.payload)))
+        return l2cap_packets.BasicFrameWithFcsView(bt_packets.PacketViewLittleEndian(list(packet.payload)))
 
     @staticmethod
     def _basic_frame_for(packet, scid):
@@ -302,8 +343,7 @@ class L2capMatchers(object):
         start_frame = L2capMatchers._information_frame_with_fcs(packet)
         if start_frame is None:
             return None
-        return l2cap_packets.EnhancedInformationStartFrameWithFcsView(
-            start_frame)
+        return l2cap_packets.EnhancedInformationStartFrameWithFcsView(start_frame)
 
     @staticmethod
     def _supervisory_frame(packet):
@@ -329,11 +369,7 @@ class L2capMatchers(object):
         return True
 
     @staticmethod
-    def _is_matching_information_start_frame(packet,
-                                             tx_seq,
-                                             payload,
-                                             f,
-                                             fcs=False):
+    def _is_matching_information_start_frame(packet, tx_seq, payload, f, fcs=False):
         if fcs:
             frame = L2capMatchers._information_start_frame_with_fcs(packet)
         else:
@@ -366,8 +402,7 @@ class L2capMatchers(object):
     @staticmethod
     def _is_matching_first_le_i_frame(packet, payload, sdu_size):
         first_le_i_frame = l2cap_packets.FirstLeInformationFrameView(packet)
-        return first_le_i_frame.GetPayload().GetBytes(
-        ) == payload and first_le_i_frame.GetL2capSduLength() == sdu_size
+        return first_le_i_frame.GetPayload().GetBytes() == payload and first_le_i_frame.GetL2capSduLength() == sdu_size
 
     @staticmethod
     def _control_frame(packet):
@@ -401,13 +436,11 @@ class L2capMatchers(object):
 
     @staticmethod
     def _is_le_control_frame_with_code(packet, code):
-        return L2capMatchers.le_control_frame_with_code(packet,
-                                                        code) is not None
+        return L2capMatchers.le_control_frame_with_code(packet, code) is not None
 
     @staticmethod
     def _is_matching_connection_request(packet, psm):
-        frame = L2capMatchers.control_frame_with_code(
-            packet, CommandCode.CONNECTION_REQUEST)
+        frame = L2capMatchers.control_frame_with_code(packet, CommandCode.CONNECTION_REQUEST)
         if frame is None:
             return False
         request = l2cap_packets.ConnectionRequestView(frame)
@@ -415,19 +448,16 @@ class L2capMatchers(object):
 
     @staticmethod
     def _is_matching_connection_response(packet, scid):
-        frame = L2capMatchers.control_frame_with_code(
-            packet, CommandCode.CONNECTION_RESPONSE)
+        frame = L2capMatchers.control_frame_with_code(packet, CommandCode.CONNECTION_RESPONSE)
         if frame is None:
             return False
         response = l2cap_packets.ConnectionResponseView(frame)
         return response.GetSourceCid() == scid and response.GetResult(
-        ) == ConnectionResponseResult.SUCCESS and response.GetDestinationCid(
-        ) != 0
+        ) == ConnectionResponseResult.SUCCESS and response.GetDestinationCid() != 0
 
     @staticmethod
     def _is_matching_configuration_request_with_cid(packet, cid=None):
-        frame = L2capMatchers.control_frame_with_code(
-            packet, CommandCode.CONFIGURATION_REQUEST)
+        frame = L2capMatchers.control_frame_with_code(packet, CommandCode.CONFIGURATION_REQUEST)
         if frame is None:
             return False
         request = l2cap_packets.ConfigurationRequestView(frame)
@@ -436,8 +466,7 @@ class L2capMatchers(object):
 
     @staticmethod
     def _is_matching_configuration_request_with_ertm(packet):
-        frame = L2capMatchers.control_frame_with_code(
-            packet, CommandCode.CONFIGURATION_REQUEST)
+        frame = L2capMatchers.control_frame_with_code(packet, CommandCode.CONFIGURATION_REQUEST)
         if frame is None:
             return False
         request = l2cap_packets.ConfigurationRequestView(frame)
@@ -446,10 +475,8 @@ class L2capMatchers(object):
         return b"\x04\x09\x03" in config_bytes
 
     @staticmethod
-    def _is_matching_configuration_response(
-            packet, result=ConfigurationResponseResult.SUCCESS):
-        frame = L2capMatchers.control_frame_with_code(
-            packet, CommandCode.CONFIGURATION_RESPONSE)
+    def _is_matching_configuration_response(packet, result=ConfigurationResponseResult.SUCCESS):
+        frame = L2capMatchers.control_frame_with_code(packet, CommandCode.CONFIGURATION_RESPONSE)
         if frame is None:
             return False
         response = l2cap_packets.ConfigurationResponseView(frame)
@@ -457,48 +484,39 @@ class L2capMatchers(object):
 
     @staticmethod
     def _is_matching_disconnection_request(packet, scid, dcid):
-        frame = L2capMatchers.control_frame_with_code(
-            packet, CommandCode.DISCONNECTION_REQUEST)
+        frame = L2capMatchers.control_frame_with_code(packet, CommandCode.DISCONNECTION_REQUEST)
         if frame is None:
             return False
         request = l2cap_packets.DisconnectionRequestView(frame)
-        return request.GetSourceCid() == scid and request.GetDestinationCid(
-        ) == dcid
+        return request.GetSourceCid() == scid and request.GetDestinationCid() == dcid
 
     @staticmethod
     def _is_matching_disconnection_response(packet, scid, dcid):
-        frame = L2capMatchers.control_frame_with_code(
-            packet, CommandCode.DISCONNECTION_RESPONSE)
+        frame = L2capMatchers.control_frame_with_code(packet, CommandCode.DISCONNECTION_RESPONSE)
         if frame is None:
             return False
         response = l2cap_packets.DisconnectionResponseView(frame)
-        return response.GetSourceCid() == scid and response.GetDestinationCid(
-        ) == dcid
+        return response.GetSourceCid() == scid and response.GetDestinationCid() == dcid
 
     @staticmethod
     def _is_matching_le_disconnection_response(packet, scid, dcid):
-        frame = L2capMatchers.le_control_frame_with_code(
-            packet, LeCommandCode.DISCONNECTION_RESPONSE)
+        frame = L2capMatchers.le_control_frame_with_code(packet, LeCommandCode.DISCONNECTION_RESPONSE)
         if frame is None:
             return False
         response = l2cap_packets.LeDisconnectionResponseView(frame)
-        return response.GetSourceCid() == scid and response.GetDestinationCid(
-        ) == dcid
+        return response.GetSourceCid() == scid and response.GetDestinationCid() == dcid
 
     @staticmethod
     def _is_matching_le_disconnection_request(packet, scid, dcid):
-        frame = L2capMatchers.le_control_frame_with_code(
-            packet, LeCommandCode.DISCONNECTION_REQUEST)
+        frame = L2capMatchers.le_control_frame_with_code(packet, LeCommandCode.DISCONNECTION_REQUEST)
         if frame is None:
             return False
         request = l2cap_packets.LeDisconnectionRequestView(frame)
-        return request.GetSourceCid() == scid and request.GetDestinationCid(
-        ) == dcid
+        return request.GetSourceCid() == scid and request.GetDestinationCid() == dcid
 
     @staticmethod
     def _is_matching_le_flow_control_credit(packet, cid):
-        frame = L2capMatchers.le_control_frame_with_code(
-            packet, LeCommandCode.LE_FLOW_CONTROL_CREDIT)
+        frame = L2capMatchers.le_control_frame_with_code(packet, LeCommandCode.LE_FLOW_CONTROL_CREDIT)
         if frame is None:
             return False
         request = l2cap_packets.LeFlowControlCreditView(frame)
@@ -506,8 +524,7 @@ class L2capMatchers(object):
 
     @staticmethod
     def _information_request_with_type(packet, info_type):
-        frame = L2capMatchers.control_frame_with_code(
-            packet, CommandCode.INFORMATION_REQUEST)
+        frame = L2capMatchers.control_frame_with_code(packet, CommandCode.INFORMATION_REQUEST)
         if frame is None:
             return None
         request = l2cap_packets.InformationRequestView(frame)
@@ -517,8 +534,7 @@ class L2capMatchers(object):
 
     @staticmethod
     def _information_response_with_type(packet, info_type):
-        frame = L2capMatchers.control_frame_with_code(
-            packet, CommandCode.INFORMATION_RESPONSE)
+        frame = L2capMatchers.control_frame_with_code(packet, CommandCode.INFORMATION_RESPONSE)
         if frame is None:
             return None
         response = l2cap_packets.InformationResponseView(frame)
@@ -527,39 +543,33 @@ class L2capMatchers(object):
         return response
 
     @staticmethod
-    def _is_matching_information_response_extended_features(
-            packet, supports_ertm, supports_streaming, supports_fcs,
-            supports_fixed_channels):
-        frame = L2capMatchers._information_response_with_type(
-            packet, InformationRequestInfoType.EXTENDED_FEATURES_SUPPORTED)
+    def _is_matching_information_response_extended_features(packet, supports_ertm, supports_streaming, supports_fcs,
+                                                            supports_fixed_channels):
+        frame = L2capMatchers._information_response_with_type(packet,
+                                                              InformationRequestInfoType.EXTENDED_FEATURES_SUPPORTED)
         if frame is None:
             return False
         features = l2cap_packets.InformationResponseExtendedFeaturesView(frame)
-        if supports_ertm is not None and features.GetEnhancedRetransmissionMode(
-        ) != supports_ertm:
+        if supports_ertm is not None and features.GetEnhancedRetransmissionMode() != supports_ertm:
             return False
         if supports_streaming is not None and features.GetStreamingMode != supports_streaming:
             return False
         if supports_fcs is not None and features.GetFcsOption() != supports_fcs:
             return False
-        if supports_fixed_channels is not None and features.GetFixedChannels(
-        ) != supports_fixed_channels:
+        if supports_fixed_channels is not None and features.GetFixedChannels() != supports_fixed_channels:
             return False
         return True
 
     @staticmethod
     def _is_matching_connection_parameter_update_response(packet, result):
-        frame = L2capMatchers.le_control_frame_with_code(
-            packet, LeCommandCode.CONNECTION_PARAMETER_UPDATE_RESPONSE)
+        frame = L2capMatchers.le_control_frame_with_code(packet, LeCommandCode.CONNECTION_PARAMETER_UPDATE_RESPONSE)
         if frame is None:
             return False
-        return l2cap_packets.ConnectionParameterUpdateResponseView(
-            frame).GetResult() == result
+        return l2cap_packets.ConnectionParameterUpdateResponseView(frame).GetResult() == result
 
     @staticmethod
     def _is_matching_credit_based_connection_request(packet, psm):
-        frame = L2capMatchers.le_control_frame_with_code(
-            packet, LeCommandCode.LE_CREDIT_BASED_CONNECTION_REQUEST)
+        frame = L2capMatchers.le_control_frame_with_code(packet, LeCommandCode.LE_CREDIT_BASED_CONNECTION_REQUEST)
         if frame is None:
             return False
         request = l2cap_packets.LeCreditBasedConnectionRequestView(frame)
@@ -567,11 +577,9 @@ class L2capMatchers(object):
 
     @staticmethod
     def _is_matching_credit_based_connection_response(packet, result):
-        frame = L2capMatchers.le_control_frame_with_code(
-            packet, LeCommandCode.LE_CREDIT_BASED_CONNECTION_RESPONSE)
+        frame = L2capMatchers.le_control_frame_with_code(packet, LeCommandCode.LE_CREDIT_BASED_CONNECTION_RESPONSE)
         if frame is None:
             return False
         response = l2cap_packets.LeCreditBasedConnectionResponseView(frame)
-        return response.GetResult() == result and (
-            result != LeCreditBasedConnectionResponseResult.SUCCESS or
-            response.GetDestinationCid() != 0)
+        return response.GetResult() == result and (result != LeCreditBasedConnectionResponseResult.SUCCESS or
+                                                   response.GetDestinationCid() != 0)

@@ -16,19 +16,44 @@
 
 #pragma once
 
+#include <fuzzer/FuzzedDataProvider.h>
+
 #include <cstdint>
 #include <vector>
-#include "os/handler.h"
 
-#include <fuzzer/FuzzedDataProvider.h>
+#include "os/handler.h"
 
 namespace bluetooth {
 namespace fuzz {
 
-std::vector<std::vector<uint8_t>> SplitInput(const uint8_t* data, size_t size, const uint8_t* separator,
-                                             size_t separatorSize);
+std::vector<std::vector<uint8_t>> SplitInput(
+    const uint8_t* data, size_t size, const uint8_t* separator, size_t separatorSize);
 
 std::vector<uint8_t> GetArbitraryBytes(FuzzedDataProvider* fdp);
+
+#define CONSTRUCT_VALID_UNIQUE_OTHERWISE_BAIL(T, name, data) \
+  auto name = std::make_unique<T>(T::FromBytes(data));       \
+  if (!name->IsValid()) {                                    \
+    return;                                                  \
+  }
+
+template <typename TView>
+void InvokeIfValid(common::ContextualOnceCallback<void(TView)> callback, std::vector<uint8_t> data) {
+  auto packet = TView::FromBytes(data);
+  if (!packet.IsValid()) {
+    return;
+  }
+  callback.InvokeIfNotEmpty(packet);
+}
+
+template <typename TView>
+void InvokeIfValid(common::ContextualCallback<void(TView)> callback, std::vector<uint8_t> data) {
+  auto packet = TView::FromBytes(data);
+  if (!packet.IsValid()) {
+    return;
+  }
+  callback.InvokeIfNotEmpty(packet);
+}
 
 }  // namespace fuzz
 }  // namespace bluetooth

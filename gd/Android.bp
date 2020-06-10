@@ -114,20 +114,29 @@ cc_defaults {
             srcs: [
                 ":BluetoothOsSources_linux_generic",
             ],
+            shared_libs: [
+                "libprotobuf-cpp-full",
+            ],
         },
         host: {
             srcs: [
                 ":BluetoothHalSources_hci_rootcanal",
+                ":BluetoothOsSources_host",
+            ],
+            shared_libs: [
+                "libprotobuf-cpp-full",
             ],
         },
         android: {
             srcs: [
                 ":BluetoothHalSources_hci_android_hidl",
+                ":BluetoothOsSources_android",
             ],
             shared_libs: [
                 "android.hardware.bluetooth@1.0",
                 "libhidlbase",
                 "libutils",
+                "libcutils",
             ],
         },
     },
@@ -153,6 +162,9 @@ cc_defaults {
         "libchrome",
         "libcrypto",
     ],
+    static_libs: [
+        "libbluetooth-protos",
+    ]
 }
 
 cc_library {
@@ -205,12 +217,15 @@ cc_binary {
     ],
     static_libs: [
         "libbluetooth_gd",
+        "libbluetooth-protos",
+        "breakpad_client",
     ],
     shared_libs: [
         "libchrome",
         "libcrypto",
         "libgrpc++_unsecure",
         "libprotobuf-cpp-full",
+        "libbacktrace",
     ],
     target: {
         android: {
@@ -253,11 +268,13 @@ cc_test {
         android: {
             srcs: [
                 ":BluetoothHalTestSources_hci_android_hidl",
+                ":BluetoothOsTestSources_android",
             ],
             shared_libs: [
                 "android.hardware.bluetooth@1.0",
                 "libhidlbase",
                 "libutils",
+                "libcutils",
             ],
         },
     },
@@ -279,12 +296,14 @@ cc_test {
         "BluetoothGeneratedPackets_h",
     ],
     static_libs: [
+        "libbluetooth-protos",
         "libbluetooth_gd",
         "libgmock",
     ],
     shared_libs: [
         "libchrome",
         "libcrypto",
+        "libprotobuf-cpp-full",
     ],
     sanitize: {
         address: true,
@@ -320,6 +339,7 @@ cc_defaults {
         ":BluetoothHciFuzzHelperSources",
     ],
     static_libs: [
+        "libbluetooth-protos",
         "libbluetooth_gd_fuzzing",
         "libchrome",
         "libgmock",
@@ -331,6 +351,7 @@ cc_defaults {
     ],
     shared_libs: [
         "libcrypto",
+        "libprotobuf-cpp-full",
     ],
     cflags: [
         "-DFUZZ_TARGET",
@@ -459,6 +480,7 @@ filegroup {
         "hci/facade/controller_facade.proto",
         "hci/facade/le_acl_manager_facade.proto",
         "hci/facade/le_advertising_manager_facade.proto",
+        "hci/facade/le_initiator_address_facade.proto",
         "hci/facade/le_scanning_manager_facade.proto",
         "neighbor/facade/facade.proto",
         "l2cap/classic/facade.proto",
@@ -494,6 +516,8 @@ genrule {
         "hci/facade/le_acl_manager_facade.pb.h",
         "hci/facade/le_advertising_manager_facade.grpc.pb.h",
         "hci/facade/le_advertising_manager_facade.pb.h",
+        "hci/facade/le_initiator_address_facade.grpc.pb.h",
+        "hci/facade/le_initiator_address_facade.pb.h",
         "hci/facade/le_scanning_manager_facade.grpc.pb.h",
         "hci/facade/le_scanning_manager_facade.pb.h",
         "l2cap/classic/facade.grpc.pb.h",
@@ -534,6 +558,8 @@ genrule {
         "hci/facade/le_acl_manager_facade.pb.cc",
         "hci/facade/le_advertising_manager_facade.grpc.pb.cc",
         "hci/facade/le_advertising_manager_facade.pb.cc",
+        "hci/facade/le_initiator_address_facade.grpc.pb.cc",
+        "hci/facade/le_initiator_address_facade.pb.cc",
         "hci/facade/le_scanning_manager_facade.grpc.pb.cc",
         "hci/facade/le_scanning_manager_facade.pb.cc",
         "l2cap/classic/facade.grpc.pb.cc",

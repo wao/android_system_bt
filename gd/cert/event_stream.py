@@ -43,9 +43,7 @@ class FilteringEventStream(IEventStream):
         self.event_queue = SimpleQueue()
         self.stream = stream
 
-        self.stream.register_callback(
-            self.__event_callback,
-            lambda packet: self.filter_fn(packet) is not None)
+        self.stream.register_callback(self.__event_callback, lambda packet: self.filter_fn(packet) is not None)
 
     def __event_callback(self, event):
         self.event_queue.put(self.filter_fn(event))
@@ -55,6 +53,10 @@ class FilteringEventStream(IEventStream):
 
     def unregister(self):
         self.stream.unregister(self.__event_callback)
+
+
+def pretty_print(proto_event):
+    return '{} {}'.format(type(proto_event).__name__, text_format.MessageToString(proto_event, as_one_line=True))
 
 
 DEFAULT_TIMEOUT_SECONDS = 3
@@ -75,34 +77,33 @@ class EventStream(IEventStream, Closable):
         self.event_queue = SimpleQueue()
         self.handlers = []
         self.executor = ThreadPoolExecutor()
-        self.future = self.executor.submit(EventStream._event_loop, self)
+        self.future = self.executor.submit(EventStream.__event_loop, self)
 
     def get_event_queue(self):
         return self.event_queue
 
     def close(self):
         """
-        Stop the gRPC lambda so that event_callback will not be invoked after th
-        method returns.
+        Stop the gRPC lambda so that event_callback will not be invoked after
+        the method returns.
 
-        This object will be useless after this call as there is no way to restart
-        the gRPC callback. You would have to create a new EventStream
+        This object will be useless after this call as there is no way to
+        restart the gRPC callback. You would have to create a new EventStream
 
-        :return: None on success, exception object on failure
+        :raise None on success, or the same exception as __event_loop(), or
+               concurrent.futures.TimeoutError if underlying stream failed to
+               terminate within DEFAULT_TIMEOUT_SECONDS
         """
-        while not self.server_stream_call.done():
-            self.server_stream_call.cancel()
-        exception_for_return = None
+        # Try to cancel the execution, don't care the result, non-blocking
+        self.server_stream_call.cancel()
         try:
-            result = self.future.result()
-            if result:
-                logging.warning("Inner loop error %s" % result)
-                raise result
-        except Exception as exp:
-            logging.warning("Exception: %s" % (exp))
-            exception_for_return = exp
-        self.executor.shutdown()
-        return exception_for_return
+            # cancelling gRPC stream should cause __event_loop() to quit
+            # same exception will be raised by future.result() or
+            # concurrent.futures.TimeoutError will be raised after timeout
+            self.future.result(timeout=DEFAULT_TIMEOUT_SECONDS)
+        finally:
+            # Make sure we force shutdown the executor regardless of the result
+            self.executor.shutdown(wait=False)
 
     def register_callback(self, callback, matcher_fn=None):
         """
@@ -139,11 +140,11 @@ class EventStream(IEventStream, Closable):
             raise ValueError("callback must not be None")
         self.handlers.remove((callback, matcher_fn))
 
-    def _event_loop(self):
+    def __event_loop(self):
         """
         Main loop for consuming the gRPC stream events.
         Blocks until computation is cancelled
-        :return: None on success, exception object on failure
+        :raise grpc.Error on failure
         """
         try:
             for event in self.server_stream_call:
@@ -151,40 +152,15 @@ class EventStream(IEventStream, Closable):
                 for (callback, matcher_fn) in self.handlers:
                     if not matcher_fn or matcher_fn(event):
                         callback(event)
-            return None
         except RpcError as exp:
+            # Underlying gRPC stream should run indefinitely until cancelled
+            # Hence any other reason besides CANCELLED is raised as an error
             if self.server_stream_call.cancelled():
                 logging.debug("Cancelled")
-                return None
             else:
-                logging.warning("Some RPC error not due to cancellation")
-            return exp
+                raise exp
 
-    def assert_none(self, timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
-        """
-        Assert no event happens within timeout period
-
-        :param timeout: a timedelta object
-        :return:
-        """
-        NOT_FOR_YOU_assert_none(self, timeout)
-
-    def assert_none_matching(
-            self, match_fn, timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
-        """
-        Assert no events where match_fn(event) is True happen within timeout
-        period
-
-        :param match_fn: return True/False on match_fn(event)
-        :param timeout: a timedelta object
-        :return:
-        """
-        NOT_FOR_YOU_assert_none_matching(self, match_fn, timeout)
-
-    def assert_event_occurs(self,
-                            match_fn,
-                            at_least_times=1,
-                            timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
+    def assert_event_occurs(self, match_fn, at_least_times=1, timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
         """
         Assert at least |at_least_times| instances of events happen where
         match_fn(event) returns True within timeout period
@@ -197,11 +173,7 @@ class EventStream(IEventStream, Closable):
         """
         NOT_FOR_YOU_assert_event_occurs(self, match_fn, at_least_times, timeout)
 
-    def assert_event_occurs_at_most(
-            self,
-            match_fn,
-            at_most_times,
-            timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
+    def assert_event_occurs_at_most(self, match_fn, at_most_times, timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
         """
         Assert at most |at_most_times| instances of events happen where
         match_fn(event) returns True within timeout period
@@ -217,11 +189,9 @@ class EventStream(IEventStream, Closable):
         end_time = datetime.now() + timeout
         while len(event_list) <= at_most_times and datetime.now() < end_time:
             remaining = static_remaining_time_delta(end_time)
-            logging.debug("Waiting for event iteration (%fs remaining)" %
-                          (remaining.total_seconds()))
+            logging.debug("Waiting for event iteration (%fs remaining)" % (remaining.total_seconds()))
             try:
-                current_event = self.event_queue.get(
-                    timeout=remaining.total_seconds())
+                current_event = self.event_queue.get(timeout=remaining.total_seconds())
                 if match_fn(current_event):
                     event_list.append(current_event)
             except Empty:
@@ -229,16 +199,7 @@ class EventStream(IEventStream, Closable):
         logging.debug("Done waiting, got %d events" % len(event_list))
         asserts.assert_true(
             len(event_list) <= at_most_times,
-            msg=("Expected at most %d events, but got %d" % (at_most_times,
-                                                             len(event_list))))
-
-    def assert_all_events_occur(
-            self,
-            match_fns,
-            order_matters,
-            timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
-        NOT_FOR_YOU_assert_all_events_occur(self, match_fns, order_matters,
-                                            timeout)
+            msg=("Expected at most %d events, but got %d" % (at_most_times, len(event_list))))
 
 
 def static_remaining_time_delta(end_time):
@@ -248,22 +209,18 @@ def static_remaining_time_delta(end_time):
     return remaining
 
 
-def NOT_FOR_YOU_assert_event_occurs(
-        istream,
-        match_fn,
-        at_least_times=1,
-        timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
-    logging.debug("assert_event_occurs %d %fs" % (at_least_times,
-                                                  timeout.total_seconds()))
+def NOT_FOR_YOU_assert_event_occurs(istream,
+                                    match_fn,
+                                    at_least_times=1,
+                                    timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
+    logging.debug("assert_event_occurs %d %fs" % (at_least_times, timeout.total_seconds()))
     event_list = []
     end_time = datetime.now() + timeout
     while len(event_list) < at_least_times and datetime.now() < end_time:
         remaining = static_remaining_time_delta(end_time)
-        logging.debug(
-            "Waiting for event (%fs remaining)" % (remaining.total_seconds()))
+        logging.debug("Waiting for event (%fs remaining)" % (remaining.total_seconds()))
         try:
-            current_event = istream.get_event_queue().get(
-                timeout=remaining.total_seconds())
+            current_event = istream.get_event_queue().get(timeout=remaining.total_seconds())
             logging.debug("current_event: %s", current_event)
             if match_fn(current_event):
                 event_list.append(current_event)
@@ -272,26 +229,22 @@ def NOT_FOR_YOU_assert_event_occurs(
     logging.debug("Done waiting for event, received %d", len(event_list))
     asserts.assert_true(
         len(event_list) >= at_least_times,
-        msg=("Expected at least %d events, but got %d" % (at_least_times,
-                                                          len(event_list))))
+        msg=("Expected at least %d events, but got %d" % (at_least_times, len(event_list))))
 
 
-def NOT_FOR_YOU_assert_all_events_occur(
-        istream,
-        match_fns,
-        order_matters,
-        timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
+def NOT_FOR_YOU_assert_all_events_occur(istream,
+                                        match_fns,
+                                        order_matters,
+                                        timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
     logging.debug("assert_all_events_occur %fs" % timeout.total_seconds())
     pending_matches = list(match_fns)
     matched_order = []
     end_time = datetime.now() + timeout
     while len(pending_matches) > 0 and datetime.now() < end_time:
         remaining = static_remaining_time_delta(end_time)
-        logging.debug(
-            "Waiting for event (%fs remaining)" % (remaining.total_seconds()))
+        logging.debug("Waiting for event (%fs remaining)" % (remaining.total_seconds()))
         try:
-            current_event = istream.get_event_queue().get(
-                timeout=remaining.total_seconds())
+            current_event = istream.get_event_queue().get(timeout=remaining.total_seconds())
             for match_fn in pending_matches:
                 if match_fn(current_event):
                     pending_matches.remove(match_fn)
@@ -301,8 +254,7 @@ def NOT_FOR_YOU_assert_all_events_occur(
     logging.debug("Done waiting for event")
     asserts.assert_true(
         len(matched_order) == len(match_fns),
-        msg=("Expected at least %d events, but got %d" % (len(match_fns),
-                                                          len(matched_order))))
+        msg=("Expected at least %d events, but got %d" % (len(match_fns), len(matched_order))))
     if order_matters:
         correct_order = True
         i = 0
@@ -311,23 +263,18 @@ def NOT_FOR_YOU_assert_all_events_occur(
                 correct_order = False
                 break
             i += 1
-        asserts.assert_true(
-            correct_order, "Events not received in correct order %s %s" %
-            (match_fns, matched_order))
+        asserts.assert_true(correct_order, "Events not received in correct order %s %s" % (match_fns, matched_order))
 
 
-def NOT_FOR_YOU_assert_none_matching(
-        istream, match_fn, timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
+def NOT_FOR_YOU_assert_none_matching(istream, match_fn, timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
     logging.debug("assert_none_matching %fs" % (timeout.total_seconds()))
     event = None
     end_time = datetime.now() + timeout
     while event is None and datetime.now() < end_time:
         remaining = static_remaining_time_delta(end_time)
-        logging.debug(
-            "Waiting for event (%fs remaining)" % (remaining.total_seconds()))
+        logging.debug("Waiting for event (%fs remaining)" % (remaining.total_seconds()))
         try:
-            current_event = istream.get_event_queue().get(
-                timeout=remaining.total_seconds())
+            current_event = istream.get_event_queue().get(timeout=remaining.total_seconds())
             if match_fn(current_event):
                 event = current_event
         except Empty:
@@ -335,20 +282,13 @@ def NOT_FOR_YOU_assert_none_matching(
     logging.debug("Done waiting for an event")
     if event is None:
         return  # Avoid an assert in MessageToString(None, ...)
-    asserts.assert_true(
-        event is None,
-        msg=("Expected None matching, but got %s" % text_format.MessageToString(
-            event, as_one_line=True)))
+    asserts.assert_true(event is None, msg='Expected None matching, but got {}'.format(pretty_print(event)))
 
 
-def NOT_FOR_YOU_assert_none(istream,
-                            timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
+def NOT_FOR_YOU_assert_none(istream, timeout=timedelta(seconds=DEFAULT_TIMEOUT_SECONDS)):
     logging.debug("assert_none %fs" % (timeout.total_seconds()))
     try:
         event = istream.get_event_queue().get(timeout=timeout.total_seconds())
-        asserts.assert_true(
-            event is None,
-            msg=("Expected None, but got %s" % text_format.MessageToString(
-                event, as_one_line=True)))
+        asserts.assert_true(event is None, msg='Expected None, but got {}'.format(pretty_print(event)))
     except Empty:
         return

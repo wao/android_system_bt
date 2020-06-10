@@ -15,12 +15,13 @@
  */
 
 #include "hci/fuzz/hci_layer_fuzz_client.h"
-
-using bluetooth::hci::AclPacketView;
+#include "fuzz/helpers.h"
 
 namespace bluetooth {
 namespace hci {
 namespace fuzz {
+using bluetooth::fuzz::GetArbitraryBytes;
+using bluetooth::hci::AclPacketView;
 
 const ModuleFactory HciLayerFuzzClient::Factory = ModuleFactory([]() { return new HciLayerFuzzClient(); });
 
@@ -32,19 +33,49 @@ void HciLayerFuzzClient::Start() {
 
   // Can't do security right now, due to the Encryption Change conflict between ACL manager & security
   // security_interface_ = hci_->GetSecurityInterface(common::Bind([](EventPacketView){}), GetHandler());
-  le_security_interface_ = hci_->GetLeSecurityInterface(common::Bind([](LeMetaEventView) {}), GetHandler());
-  acl_connection_interface_ = hci_->GetAclConnectionInterface(
-      common::Bind([](EventPacketView) {}), common::Bind([](uint16_t, hci::ErrorCode) {}), GetHandler());
-  le_acl_connection_interface_ = hci_->GetLeAclConnectionInterface(
-      common::Bind([](LeMetaEventView) {}), common::Bind([](uint16_t, hci::ErrorCode) {}), GetHandler());
-  le_advertising_interface_ = hci_->GetLeAdvertisingInterface(common::Bind([](LeMetaEventView) {}), GetHandler());
-  le_scanning_interface_ = hci_->GetLeScanningInterface(common::Bind([](LeMetaEventView) {}), GetHandler());
+  le_security_interface_ = hci_->GetLeSecurityInterface(GetHandler()->Bind([](LeMetaEventView) {}));
+  acl_connection_interface_ = hci_->GetAclConnectionInterface(GetHandler()->Bind([](EventPacketView) {}),
+                                                              GetHandler()->Bind([](uint16_t, hci::ErrorCode) {}));
+  le_acl_connection_interface_ = hci_->GetLeAclConnectionInterface(GetHandler()->Bind([](LeMetaEventView) {}),
+                                                                   GetHandler()->Bind([](uint16_t, hci::ErrorCode) {}));
+  le_advertising_interface_ = hci_->GetLeAdvertisingInterface(GetHandler()->Bind([](LeMetaEventView) {}));
+  le_scanning_interface_ = hci_->GetLeScanningInterface(GetHandler()->Bind([](LeMetaEventView) {}));
 }
 
 void HciLayerFuzzClient::Stop() {
   aclDevNull_->Stop();
   delete aclDevNull_;
   delete aclInject_;
+}
+
+void HciLayerFuzzClient::injectArbitrary(FuzzedDataProvider& fdp) {
+  const uint8_t action = fdp.ConsumeIntegralInRange(0, 8);
+  switch (action) {
+    case 1:
+      injectAclData(GetArbitraryBytes(&fdp));
+      break;
+    case 2:
+      injectHciCommand(GetArbitraryBytes(&fdp));
+      break;
+    case 3:
+      // TODO: injectSecurityCommand(GetArbitraryBytes(&fdp));
+      break;
+    case 4:
+      injectLeSecurityCommand(GetArbitraryBytes(&fdp));
+      break;
+    case 5:
+      injectAclConnectionCommand(GetArbitraryBytes(&fdp));
+      break;
+    case 6:
+      injectLeAclConnectionCommand(GetArbitraryBytes(&fdp));
+      break;
+    case 7:
+      injectLeAdvertisingCommand(GetArbitraryBytes(&fdp));
+      break;
+    case 8:
+      injectLeScanningCommand(GetArbitraryBytes(&fdp));
+      break;
+  }
 }
 
 void HciLayerFuzzClient::injectAclData(std::vector<uint8_t> data) {

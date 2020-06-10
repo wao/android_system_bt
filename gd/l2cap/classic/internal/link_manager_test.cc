@@ -26,6 +26,7 @@
 #include "hci/address.h"
 #include "l2cap/cid.h"
 #include "l2cap/classic/fixed_channel_manager.h"
+#include "l2cap/classic/internal/dynamic_channel_service_impl_mock.h"
 #include "l2cap/classic/internal/fixed_channel_service_impl_mock.h"
 #include "l2cap/classic/internal/fixed_channel_service_manager_impl_mock.h"
 #include "l2cap/internal/parameter_provider_mock.h"
@@ -47,6 +48,7 @@ using l2cap::internal::testing::MockParameterProvider;
 using ::testing::_;  // Matcher to any value
 using ::testing::ByMove;
 using ::testing::DoAll;
+using testing::MockDynamicChannelServiceImpl;
 using testing::MockDynamicChannelServiceManagerImpl;
 using testing::MockFixedChannelServiceImpl;
 using testing::MockFixedChannelServiceManagerImpl;
@@ -89,15 +91,23 @@ class L2capClassicLinkManagerTest : public ::testing::Test {
 TEST_F(L2capClassicLinkManagerTest, connect_fixed_channel_service_without_acl) {
   MockFixedChannelServiceManagerImpl mock_classic_fixed_channel_service_manager;
   MockDynamicChannelServiceManagerImpl mock_classic_dynamic_channel_service_manager;
+  SecurityEnforcementRejectAllImpl security_module_impl;
+  MockDynamicChannelServiceImpl service;
+  ON_CALL(service, GetSecurityPolicy())
+      .WillByDefault(Return(SecurityPolicy::_SDP_ONLY_NO_SECURITY_WHATSOEVER_PLAINTEXT_TRANSPORT_OK));
+
+  ON_CALL(mock_classic_dynamic_channel_service_manager, GetSecurityEnforcementInterface())
+      .WillByDefault(Return(&security_module_impl));
   MockAclManager mock_acl_manager;
   hci::Address device{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}};
   auto user_handler = std::make_unique<os::Handler>(thread_);
 
   // Step 1: Verify callback registration with HCI
-  hci::ConnectionCallbacks* hci_connection_callbacks = nullptr;
+  hci::acl_manager::ConnectionCallbacks* hci_connection_callbacks = nullptr;
   os::Handler* hci_callback_handler = nullptr;
   EXPECT_CALL(mock_acl_manager, RegisterCallbacks(_, _))
       .WillOnce(DoAll(SaveArg<0>(&hci_connection_callbacks), SaveArg<1>(&hci_callback_handler)));
+  ON_CALL(mock_classic_dynamic_channel_service_manager, GetService(_)).WillByDefault(Return(&service));
   LinkManager classic_link_manager(l2cap_handler_, &mock_acl_manager, &mock_classic_fixed_channel_service_manager,
                                    &mock_classic_dynamic_channel_service_manager, mock_parameter_provider_);
   EXPECT_EQ(hci_connection_callbacks, &classic_link_manager);
@@ -122,8 +132,6 @@ TEST_F(L2capClassicLinkManagerTest, connect_fixed_channel_service_without_acl) {
   std::unique_ptr<MockClassicAclConnection> acl_connection = std::make_unique<MockClassicAclConnection>();
   EXPECT_CALL(*acl_connection, GetAddress()).WillRepeatedly(Return(device));
   EXPECT_CALL(*acl_connection, RegisterCallbacks(_, l2cap_handler_)).Times(1);
-  EXPECT_CALL(*acl_connection, RegisterDisconnectCallback(_, l2cap_handler_)).Times(1);
-  EXPECT_CALL(*acl_connection, UnregisterCallbacks(_)).Times(1);
   std::unique_ptr<FixedChannel> channel_1, channel_2;
   std::promise<void> promise_1, promise_2;
   auto future_1 = promise_1.get_future();
@@ -138,7 +146,7 @@ TEST_F(L2capClassicLinkManagerTest, connect_fixed_channel_service_without_acl) {
         channel_2 = std::move(channel);
         promise_2.set_value();
       });
-  hci_callback_handler->Post(common::BindOnce(&hci::ConnectionCallbacks::OnConnectSuccess,
+  hci_callback_handler->Post(common::BindOnce(&hci::acl_manager::ConnectionCallbacks::OnConnectSuccess,
                                               common::Unretained(hci_connection_callbacks), std::move(acl_connection)));
   SyncHandler(hci_callback_handler);
   auto future_1_status = future_1.wait_for(kTestIdleDisconnectTimeoutShort);
@@ -185,7 +193,7 @@ TEST_F(L2capClassicLinkManagerTest, connect_fixed_channel_service_without_acl_wi
   auto user_handler = std::make_unique<os::Handler>(thread_);
 
   // Step 1: Verify callback registration with HCI
-  hci::ConnectionCallbacks* hci_connection_callbacks = nullptr;
+  hci::acl_manager::ConnectionCallbacks* hci_connection_callbacks = nullptr;
   os::Handler* hci_callback_handler = nullptr;
   EXPECT_CALL(mock_acl_manager, RegisterCallbacks(_, _))
       .WillOnce(DoAll(SaveArg<0>(&hci_connection_callbacks), SaveArg<1>(&hci_callback_handler)));
@@ -219,7 +227,7 @@ TEST_F(L2capClassicLinkManagerTest, connect_fixed_channel_service_without_acl_wi
   auto user_handler = std::make_unique<os::Handler>(thread_);
 
   // Step 1: Verify callback registration with HCI
-  hci::ConnectionCallbacks* hci_connection_callbacks = nullptr;
+  hci::acl_manager::ConnectionCallbacks* hci_connection_callbacks = nullptr;
   os::Handler* hci_callback_handler = nullptr;
   EXPECT_CALL(mock_acl_manager, RegisterCallbacks(_, _))
       .WillOnce(DoAll(SaveArg<0>(&hci_connection_callbacks), SaveArg<1>(&hci_callback_handler)));
@@ -245,7 +253,7 @@ TEST_F(L2capClassicLinkManagerTest, connect_fixed_channel_service_without_acl_wi
 
   // Step 3: ACL connection failure event should trigger connection failure callback
   EXPECT_CALL(mock_service_1, NotifyChannelCreation(_)).Times(0);
-  hci_callback_handler->Post(common::BindOnce(&hci::ConnectionCallbacks::OnConnectFail,
+  hci_callback_handler->Post(common::BindOnce(&hci::acl_manager::ConnectionCallbacks::OnConnectFail,
                                               common::Unretained(hci_connection_callbacks), device,
                                               hci::ErrorCode::PAGE_TIMEOUT));
   SyncHandler(hci_callback_handler);
@@ -265,7 +273,7 @@ TEST_F(L2capClassicLinkManagerTest, not_acquiring_channels_should_disconnect_acl
   auto user_handler = std::make_unique<os::Handler>(thread_);
 
   // Step 1: Verify callback registration with HCI
-  hci::ConnectionCallbacks* hci_connection_callbacks = nullptr;
+  hci::acl_manager::ConnectionCallbacks* hci_connection_callbacks = nullptr;
   os::Handler* hci_callback_handler = nullptr;
   EXPECT_CALL(mock_acl_manager, RegisterCallbacks(_, _))
       .WillOnce(DoAll(SaveArg<0>(&hci_connection_callbacks), SaveArg<1>(&hci_callback_handler)));
@@ -293,8 +301,6 @@ TEST_F(L2capClassicLinkManagerTest, not_acquiring_channels_should_disconnect_acl
   std::unique_ptr<MockClassicAclConnection> acl_connection(raw_acl_connection);
   EXPECT_CALL(*acl_connection, GetAddress()).WillRepeatedly(Return(device));
   EXPECT_CALL(*acl_connection, RegisterCallbacks(_, l2cap_handler_)).Times(1);
-  EXPECT_CALL(*acl_connection, RegisterDisconnectCallback(_, l2cap_handler_)).Times(1);
-  EXPECT_CALL(*acl_connection, UnregisterCallbacks(_)).Times(1);
   std::unique_ptr<FixedChannel> channel_1, channel_2;
   std::promise<void> promise_1, promise_2;
   auto future_1 = promise_1.get_future();
@@ -309,7 +315,7 @@ TEST_F(L2capClassicLinkManagerTest, not_acquiring_channels_should_disconnect_acl
         channel_2 = std::move(channel);
         promise_2.set_value();
       });
-  hci_callback_handler->Post(common::BindOnce(&hci::ConnectionCallbacks::OnConnectSuccess,
+  hci_callback_handler->Post(common::BindOnce(&hci::acl_manager::ConnectionCallbacks::OnConnectSuccess,
                                               common::Unretained(hci_connection_callbacks), std::move(acl_connection)));
   SyncHandler(hci_callback_handler);
   auto future_1_status = future_1.wait_for(kTestIdleDisconnectTimeoutShort);
@@ -329,12 +335,6 @@ TEST_F(L2capClassicLinkManagerTest, not_acquiring_channels_should_disconnect_acl
   EXPECT_CALL(*raw_acl_connection, Disconnect(hci::DisconnectReason::REMOTE_USER_TERMINATED_CONNECTION)).Times(1);
   std::this_thread::sleep_for(kTestIdleDisconnectTimeoutShort * 1.2);
 
-  // Step 5: Link disconnect will trigger all callbacks
-  classic_link_manager.OnDisconnect(device, hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST);
-  SyncHandler(user_handler.get());
-  EXPECT_EQ(hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST, status_1);
-  EXPECT_EQ(hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST, status_2);
-
   user_handler->Clear();
 }
 
@@ -347,7 +347,7 @@ TEST_F(L2capClassicLinkManagerTest, acquiring_channels_should_not_disconnect_acl
   auto user_handler = std::make_unique<os::Handler>(thread_);
 
   // Step 1: Verify callback registration with HCI
-  hci::ConnectionCallbacks* hci_connection_callbacks = nullptr;
+  hci::acl_manager::ConnectionCallbacks* hci_connection_callbacks = nullptr;
   os::Handler* hci_callback_handler = nullptr;
   EXPECT_CALL(mock_acl_manager, RegisterCallbacks(_, _))
       .WillOnce(DoAll(SaveArg<0>(&hci_connection_callbacks), SaveArg<1>(&hci_callback_handler)));
@@ -375,8 +375,6 @@ TEST_F(L2capClassicLinkManagerTest, acquiring_channels_should_not_disconnect_acl
   std::unique_ptr<MockClassicAclConnection> acl_connection(raw_acl_connection);
   EXPECT_CALL(*acl_connection, GetAddress()).WillRepeatedly(Return(device));
   EXPECT_CALL(*acl_connection, RegisterCallbacks(_, l2cap_handler_)).Times(1);
-  EXPECT_CALL(*acl_connection, RegisterDisconnectCallback(_, l2cap_handler_)).Times(1);
-  EXPECT_CALL(*acl_connection, UnregisterCallbacks(_)).Times(1);
   std::unique_ptr<FixedChannel> channel_1, channel_2;
   std::promise<void> promise_1, promise_2;
   auto future_1 = promise_1.get_future();
@@ -391,7 +389,7 @@ TEST_F(L2capClassicLinkManagerTest, acquiring_channels_should_not_disconnect_acl
         channel_2 = std::move(channel);
         promise_2.set_value();
       });
-  hci_callback_handler->Post(common::BindOnce(&hci::ConnectionCallbacks::OnConnectSuccess,
+  hci_callback_handler->Post(common::BindOnce(&hci::acl_manager::ConnectionCallbacks::OnConnectSuccess,
                                               common::Unretained(hci_connection_callbacks), std::move(acl_connection)));
   SyncHandler(hci_callback_handler);
   auto future_1_status = future_1.wait_for(kTestIdleDisconnectTimeoutShort);
@@ -413,12 +411,6 @@ TEST_F(L2capClassicLinkManagerTest, acquiring_channels_should_not_disconnect_acl
   EXPECT_CALL(*raw_acl_connection, Disconnect(hci::DisconnectReason::REMOTE_USER_TERMINATED_CONNECTION)).Times(0);
   std::this_thread::sleep_for(kTestIdleDisconnectTimeoutShort * 2);
 
-  // Step 5: Link disconnect will trigger all callbacks
-  classic_link_manager.OnDisconnect(device, hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST);
-  SyncHandler(user_handler.get());
-  EXPECT_EQ(hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST, status_1);
-  EXPECT_EQ(hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST, status_2);
-
   user_handler->Clear();
 }
 
@@ -431,7 +423,7 @@ TEST_F(L2capClassicLinkManagerTest, acquiring_and_releasing_channels_should_even
   auto user_handler = std::make_unique<os::Handler>(thread_);
 
   // Step 1: Verify callback registration with HCI
-  hci::ConnectionCallbacks* hci_connection_callbacks = nullptr;
+  hci::acl_manager::ConnectionCallbacks* hci_connection_callbacks = nullptr;
   os::Handler* hci_callback_handler = nullptr;
   EXPECT_CALL(mock_acl_manager, RegisterCallbacks(_, _))
       .WillOnce(DoAll(SaveArg<0>(&hci_connection_callbacks), SaveArg<1>(&hci_callback_handler)));
@@ -459,8 +451,6 @@ TEST_F(L2capClassicLinkManagerTest, acquiring_and_releasing_channels_should_even
   std::unique_ptr<MockClassicAclConnection> acl_connection(raw_acl_connection);
   EXPECT_CALL(*acl_connection, GetAddress()).WillRepeatedly(Return(device));
   EXPECT_CALL(*acl_connection, RegisterCallbacks(_, l2cap_handler_)).Times(1);
-  EXPECT_CALL(*acl_connection, RegisterDisconnectCallback(_, l2cap_handler_)).Times(1);
-  EXPECT_CALL(*acl_connection, UnregisterCallbacks(_)).Times(1);
   std::unique_ptr<FixedChannel> channel_1, channel_2;
   std::promise<void> promise_1, promise_2;
   auto future_1 = promise_1.get_future();
@@ -475,7 +465,7 @@ TEST_F(L2capClassicLinkManagerTest, acquiring_and_releasing_channels_should_even
         channel_2 = std::move(channel);
         promise_2.set_value();
       });
-  hci_callback_handler->Post(common::BindOnce(&hci::ConnectionCallbacks::OnConnectSuccess,
+  hci_callback_handler->Post(common::BindOnce(&hci::acl_manager::ConnectionCallbacks::OnConnectSuccess,
                                               common::Unretained(hci_connection_callbacks), std::move(acl_connection)));
   SyncHandler(hci_callback_handler);
   auto future_1_status = future_1.wait_for(kTestIdleDisconnectTimeoutShort);
@@ -501,12 +491,6 @@ TEST_F(L2capClassicLinkManagerTest, acquiring_and_releasing_channels_should_even
   channel_1->Release();
   EXPECT_CALL(*raw_acl_connection, Disconnect(hci::DisconnectReason::REMOTE_USER_TERMINATED_CONNECTION)).Times(1);
   std::this_thread::sleep_for(kTestIdleDisconnectTimeoutShort * 1.2);
-
-  // Step 6: Link disconnect will trigger all callbacks
-  classic_link_manager.OnDisconnect(device, hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST);
-  SyncHandler(user_handler.get());
-  EXPECT_EQ(hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST, status_1);
-  EXPECT_EQ(hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST, status_2);
 
   user_handler->Clear();
 }
