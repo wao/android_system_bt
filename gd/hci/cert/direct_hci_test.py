@@ -97,7 +97,7 @@ class DirectHciTest(GdBaseTestClass):
 
         self.dut_hci.send_command_with_complete(
             hci_packets.LeSetExtendedScanParametersBuilder(hci_packets.AddressType.RANDOM_DEVICE_ADDRESS,
-                                                           hci_packets.LeSetScanningFilterPolicy.ACCEPT_ALL, 1,
+                                                           hci_packets.LeScanningFilterPolicy.ACCEPT_ALL, 1,
                                                            [phy_scan_params]))
         self.dut_hci.send_command_with_complete(
             hci_packets.LeSetExtendedScanEnableBuilder(hci_packets.Enable.ENABLED,
@@ -125,7 +125,7 @@ class DirectHciTest(GdBaseTestClass):
             hci_packets.LeSetExtendedAdvertisingRandomAddressBuilder(advertising_handle, '0C:05:04:03:02:01'))
         gap_name = hci_packets.GapData()
         gap_name.data_type = hci_packets.GapDataType.COMPLETE_LOCAL_NAME
-        gap_name.data = list(bytes(b'Im_A_Cert!'))  # TODO: Fix and remove !
+        gap_name.data = list(bytes(b'Im_A_Cert'))
 
         self.send_hal_hci_command(
             hci_packets.LeSetExtendedAdvertisingDataBuilder(
@@ -253,16 +253,16 @@ class DirectHciTest(GdBaseTestClass):
         assertThat(self.dut_hci.get_raw_acl_stream()).emits(
             lambda packet: logging.debug(packet.data) or b'SomeMoreAclData' in packet.data)
 
-    def test_le_white_list_connection_cert_advertises(self):
+    def test_le_connect_list_connection_cert_advertises(self):
         self.dut_hci.register_for_le_events(hci_packets.SubeventCode.CONNECTION_COMPLETE)
         # DUT Connects
         self.dut_hci.send_command_with_complete(hci_packets.LeSetRandomAddressBuilder('0D:05:04:03:02:01'))
         self.dut_hci.send_command_with_complete(
-            hci_packets.LeAddDeviceToWhiteListBuilder(hci_packets.WhiteListAddressType.RANDOM, '0C:05:04:03:02:01'))
+            hci_packets.LeAddDeviceToConnectListBuilder(hci_packets.ConnectListAddressType.RANDOM, '0C:05:04:03:02:01'))
         phy_scan_params = DirectHciTest._create_phy_scan_params()
         self.dut_hci.send_command_with_status(
             hci_packets.LeExtendedCreateConnectionBuilder(
-                hci_packets.InitiatorFilterPolicy.USE_WHITE_LIST, hci_packets.OwnAddressType.RANDOM_DEVICE_ADDRESS,
+                hci_packets.InitiatorFilterPolicy.USE_CONNECT_LIST, hci_packets.OwnAddressType.RANDOM_DEVICE_ADDRESS,
                 hci_packets.AddressType.RANDOM_DEVICE_ADDRESS, 'BA:D5:A4:A3:A2:A1', 1, [phy_scan_params]))
 
         # CERT Advertises
@@ -288,7 +288,7 @@ class DirectHciTest(GdBaseTestClass):
 
         gap_name = hci_packets.GapData()
         gap_name.data_type = hci_packets.GapDataType.COMPLETE_LOCAL_NAME
-        gap_name.data = list(bytes(b'Im_A_Cert!'))  # TODO: Fix and remove !
+        gap_name.data = list(bytes(b'Im_A_Cert'))
 
         self.send_hal_hci_command(
             hci_packets.LeSetExtendedAdvertisingDataBuilder(

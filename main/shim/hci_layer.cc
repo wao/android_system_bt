@@ -37,15 +37,12 @@
  * Upon completion a token for a corresponding command transmit.
  * request is returned from the Gd layer.
  */
-using CommandCallbackData = struct {
-  void* context;
-};
+using CommandCallbackData = struct { void* context; };
 
 constexpr size_t kBtHdrSize = sizeof(BT_HDR);
 constexpr size_t kCommandLengthSize = sizeof(uint8_t);
 constexpr size_t kCommandOpcodeSize = sizeof(uint16_t);
 
-static hci_t interface;
 static base::Callback<void(const base::Location&, BT_HDR*)> send_data_upwards;
 
 namespace {
@@ -103,25 +100,6 @@ std::unique_ptr<bluetooth::packet::RawBuilder> MakeUniquePacket(
   return payload;
 }
 }  // namespace
-
-static future_t* hci_module_shut_down(void);
-static future_t* hci_module_start_up(void);
-
-EXPORT_SYMBOL extern const module_t gd_hci_module = {
-    .name = GD_HCI_MODULE,
-    .init = nullptr,
-    .start_up = hci_module_start_up,
-    .shut_down = hci_module_shut_down,
-    .clean_up = nullptr,
-    .dependencies = {GD_SHIM_MODULE, nullptr}};
-
-static future_t* hci_module_start_up(void) {
-  return nullptr;
-}
-
-static future_t* hci_module_shut_down(void) {
-  return nullptr;
-}
 
 static void set_data_cb(
     base::Callback<void(const base::Location&, BT_HDR*)> send_data_cb) {
@@ -190,14 +168,9 @@ static void transmit_command(BT_HDR* command,
   }
 }
 
-const hci_t* bluetooth::shim::hci_layer_get_interface() {
-  static bool loaded = false;
-  if (!loaded) {
-    loaded = true;
-    interface.set_data_cb = set_data_cb;
-    interface.transmit_command = transmit_command;
-    interface.transmit_command_futured = nullptr;
-    interface.transmit_downward = nullptr;
-  }
-  return &interface;
-}
+static hci_t interface = {.set_data_cb = set_data_cb,
+                          .transmit_command = transmit_command,
+                          .transmit_command_futured = nullptr,
+                          .transmit_downward = nullptr};
+
+const hci_t* bluetooth::shim::hci_layer_get_interface() { return &interface; }

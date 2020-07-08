@@ -137,14 +137,15 @@ void AclManager::CreateConnection(Address address) {
 
 void AclManager::CreateLeConnection(AddressWithType address_with_type) {
   GetHandler()->Post(
-      common::BindOnce(&le_impl::create_le_connection, common::Unretained(pimpl_->le_impl_), address_with_type));
+      common::BindOnce(&le_impl::create_le_connection, common::Unretained(pimpl_->le_impl_), address_with_type, true));
 }
 
-void AclManager::SetPrivacyPolicyForInitiatorAddress(LeAddressRotator::AddressPolicy address_policy,
-                                                     AddressWithType fixed_address,
-                                                     crypto_toolbox::Octet16 rotation_irk,
-                                                     std::chrono::milliseconds minimum_rotation_time,
-                                                     std::chrono::milliseconds maximum_rotation_time) {
+void AclManager::SetPrivacyPolicyForInitiatorAddress(
+    LeAddressManager::AddressPolicy address_policy,
+    AddressWithType fixed_address,
+    crypto_toolbox::Octet16 rotation_irk,
+    std::chrono::milliseconds minimum_rotation_time,
+    std::chrono::milliseconds maximum_rotation_time) {
   GetHandler()->Post(common::BindOnce(&le_impl::set_privacy_policy_for_initiator_address,
                                       common::Unretained(pimpl_->le_impl_), address_policy, fixed_address, rotation_irk,
                                       minimum_rotation_time, maximum_rotation_time));
@@ -152,6 +153,20 @@ void AclManager::SetPrivacyPolicyForInitiatorAddress(LeAddressRotator::AddressPo
 
 void AclManager::CancelConnect(Address address) {
   GetHandler()->Post(BindOnce(&classic_impl::cancel_connect, common::Unretained(pimpl_->classic_impl_), address));
+}
+
+void AclManager::CancelLeConnect(AddressWithType address_with_type) {
+  GetHandler()->Post(BindOnce(&le_impl::cancel_connect, common::Unretained(pimpl_->le_impl_), address_with_type));
+}
+
+void AclManager::AddDeviceToConnectList(AddressWithType address_with_type) {
+  GetHandler()->Post(
+      BindOnce(&le_impl::add_device_to_connect_list, common::Unretained(pimpl_->le_impl_), address_with_type));
+}
+
+void AclManager::RemoveDeviceFromConnectList(AddressWithType address_with_type) {
+  GetHandler()->Post(
+      BindOnce(&le_impl::remove_device_from_connect_list, common::Unretained(pimpl_->le_impl_), address_with_type));
 }
 
 void AclManager::MasterLinkKey(KeyFlag key_flag) {
@@ -178,8 +193,16 @@ void AclManager::SetSecurityModule(security::SecurityModule* security_module) {
       BindOnce(&classic_impl::set_security_module, common::Unretained(pimpl_->classic_impl_), security_module));
 }
 
-LeAddressRotator* AclManager::GetLeAddressRotator() {
-  return pimpl_->le_impl_->le_address_rotator_;
+LeAddressManager* AclManager::GetLeAddressManager() {
+  return pimpl_->le_impl_->le_address_manager_;
+}
+
+uint16_t AclManager::HACK_GetHandle(Address address) {
+  return pimpl_->classic_impl_->HACK_get_handle(address);
+}
+
+uint16_t AclManager::HACK_GetLeHandle(Address address) {
+  return pimpl_->le_impl_->HACK_get_handle(address);
 }
 
 void AclManager::ListDependencies(ModuleList* list) {

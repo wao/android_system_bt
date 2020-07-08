@@ -175,23 +175,27 @@ class TestHciLayer : public HciLayer {
   std::unique_ptr<std::promise<void>> command_promise_{};
 };
 
-class TestLeAddressRotator : public LeAddressRotator {
+class TestLeAddressManager : public LeAddressManager {
  public:
-  TestLeAddressRotator(
-      common::Callback<void(Address address)> set_random_address, os::Handler* handler, Address public_address)
-      : LeAddressRotator(set_random_address, handler, public_address) {}
+  TestLeAddressManager(
+      common::Callback<void(std::unique_ptr<CommandPacketBuilder>)> enqueue_command,
+      os::Handler* handler,
+      Address public_address,
+      uint8_t connect_list_size,
+      uint8_t resolving_list_size)
+      : LeAddressManager(enqueue_command, handler, public_address, connect_list_size, resolving_list_size) {}
 
-  AddressPolicy Register(LeAddressRotatorCallback* callback) override {
+  AddressPolicy Register(LeAddressManagerCallback* callback) override {
     return AddressPolicy::USE_STATIC_ADDRESS;
   }
 
-  void Unregister(LeAddressRotatorCallback* callback) override {}
+  void Unregister(LeAddressManagerCallback* callback) override {}
 };
 
 class TestAclManager : public AclManager {
  public:
-  LeAddressRotator* GetLeAddressRotator() override {
-    return test_le_address_rotator_;
+  LeAddressManager* GetLeAddressManager() override {
+    return test_le_address_manager_;
   }
 
  protected:
@@ -199,12 +203,12 @@ class TestAclManager : public AclManager {
     thread_ = new os::Thread("thread", os::Thread::Priority::NORMAL);
     handler_ = new os::Handler(thread_);
     Address address({0x01, 0x02, 0x03, 0x04, 0x05, 0x06});
-    test_le_address_rotator_ = new TestLeAddressRotator(
-        common::Bind(&TestAclManager::SetRandomAddress, common::Unretained(this)), handler_, address);
+    test_le_address_manager_ = new TestLeAddressManager(
+        common::Bind(&TestAclManager::enqueue_command, common::Unretained(this)), handler_, address, 0x3F, 0x3F);
   }
 
   void Stop() override {
-    delete test_le_address_rotator_;
+    delete test_le_address_manager_;
     handler_->Clear();
     delete handler_;
     delete thread_;
@@ -214,9 +218,11 @@ class TestAclManager : public AclManager {
 
   void SetRandomAddress(Address address) {}
 
+  void enqueue_command(std::unique_ptr<CommandPacketBuilder> command_packet){};
+
   os::Thread* thread_;
   os::Handler* handler_;
-  TestLeAddressRotator* test_le_address_rotator_;
+  TestLeAddressManager* test_le_address_manager_;
 };
 
 class LeScanningManagerTest : public ::testing::Test {

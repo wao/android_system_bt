@@ -43,7 +43,11 @@ cc_library_static {
         "system/security/keystore/include",
         "hardware/interfaces/keymaster/4.0/support/include",
     ],
+    shared_libs: [
+            "libflatbuffers-cpp",
+    ],
     generated_headers: [
+        "BluetoothGeneratedDumpsysDataSchema_h",
         "BluetoothGeneratedPackets_h",
     ],
     host_supported: true,
@@ -86,6 +90,7 @@ cc_library_shared {
         "libaaudio",
         "libcutils",
         "libdl",
+        "libflatbuffers-cpp",
         "libfmq",
         "libhidlbase",
         "liblog",
@@ -95,9 +100,6 @@ cc_library_shared {
         "libtinyxml2",
         "libz",
         "libcrypto",
-        //"android.hardware.keymaster@4.0",
-        //"libkeymaster4support",
-        //"libkeystore_binder",
     ],
     static_libs: [
         "libbte",
@@ -162,9 +164,13 @@ cc_library_static {
     ],
     generated_headers: [
         "BluetoothGeneratedPackets_h",
+        "BluetoothGeneratedDumpsysDataSchema_h",
     ],
     cflags: [
         "-DBUILDCFG",
+    ],
+    shared_libs: [
+        "libflatbuffers-cpp",
     ],
     whole_static_libs: [
         "libbluetooth_gd", // Gabeldorsche

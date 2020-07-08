@@ -42,21 +42,28 @@ class LeInitiatorAddressFacadeService : public LeInitiatorAddressFacade::Service
  public:
   LeInitiatorAddressFacadeService(AclManager* acl_manager, ::bluetooth::os::Handler* facade_handler)
       : acl_manager_(acl_manager),
-        address_rotator_(acl_manager_->GetLeAddressRotator()),
+        address_manager_(acl_manager_->GetLeAddressManager()),
         facade_handler_(facade_handler) {
     ASSERT(facade_handler_ != nullptr);
   }
 
   ::grpc::Status SetPrivacyPolicyForInitiatorAddress(
       ::grpc::ServerContext* context, const PrivacyPolicy* request, ::google::protobuf::Empty* writer) override {
-    Address address;
-    ASSERT(Address::FromString(request->address_with_type().address().address(), address));
-    LeAddressRotator::AddressPolicy address_policy =
-        static_cast<LeAddressRotator::AddressPolicy>(request->address_policy());
+    Address address = Address::kEmpty;
+    LeAddressManager::AddressPolicy address_policy =
+        static_cast<LeAddressManager::AddressPolicy>(request->address_policy());
+    if (address_policy == LeAddressManager::AddressPolicy::USE_STATIC_ADDRESS) {
+      ASSERT(Address::FromString(request->address_with_type().address().address(), address));
+    }
     AddressWithType address_with_type(address, static_cast<AddressType>(request->address_with_type().type()));
-    std::vector<uint8_t> irk_data(request->rotation_irk().begin(), request->rotation_irk().end());
     crypto_toolbox::Octet16 irk = {};
-    std::copy_n(irk_data.begin(), crypto_toolbox::OCTET16_LEN, irk.begin());
+    auto request_irk_length = request->rotation_irk().end() - request->rotation_irk().begin();
+    if (request_irk_length == crypto_toolbox::OCTET16_LEN) {
+      std::vector<uint8_t> irk_data(request->rotation_irk().begin(), request->rotation_irk().end());
+      std::copy_n(irk_data.begin(), crypto_toolbox::OCTET16_LEN, irk.begin());
+    } else {
+      ASSERT(request_irk_length == 0);
+    }
     auto minimum_rotation_time = std::chrono::milliseconds(request->minimum_rotation_time());
     auto maximum_rotation_time = std::chrono::milliseconds(request->maximum_rotation_time());
     acl_manager_->SetPrivacyPolicyForInitiatorAddress(
@@ -68,7 +75,7 @@ class LeInitiatorAddressFacadeService : public LeInitiatorAddressFacade::Service
       ::grpc::ServerContext* context,
       const ::google::protobuf::Empty* request,
       ::bluetooth::facade::BluetoothAddressWithType* response) override {
-    AddressWithType current = address_rotator_->GetCurrentAddress();
+    AddressWithType current = address_manager_->GetCurrentAddress();
     auto bluetooth_address = new ::bluetooth::facade::BluetoothAddress();
     bluetooth_address->set_address(current.GetAddress().ToString());
     response->set_type(static_cast<::bluetooth::facade::BluetoothAddressTypeEnum>(current.GetAddressType()));
@@ -80,7 +87,7 @@ class LeInitiatorAddressFacadeService : public LeInitiatorAddressFacade::Service
       ::grpc::ServerContext* context,
       const ::google::protobuf::Empty* request,
       ::bluetooth::facade::BluetoothAddressWithType* response) override {
-    AddressWithType another = address_rotator_->GetAnotherAddress();
+    AddressWithType another = address_manager_->GetAnotherAddress();
     auto bluetooth_address = new ::bluetooth::facade::BluetoothAddress();
     bluetooth_address->set_address(another.GetAddress().ToString());
     response->set_type(static_cast<::bluetooth::facade::BluetoothAddressTypeEnum>(another.GetAddressType()));
@@ -90,7 +97,7 @@ class LeInitiatorAddressFacadeService : public LeInitiatorAddressFacade::Service
 
  private:
   AclManager* acl_manager_;
-  LeAddressRotator* address_rotator_;
+  LeAddressManager* address_manager_;
   ::bluetooth::os::Handler* facade_handler_;
 };
 

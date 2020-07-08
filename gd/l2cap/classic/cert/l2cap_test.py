@@ -41,7 +41,7 @@ SAMPLE_PACKET_DATA = b"\x19\x26\x08\x17"
 SAMPLE_PACKET = RawBuilder([x for x in SAMPLE_PACKET_DATA])
 
 
-class L2capTest(GdBaseTestClass):
+class L2capTestBase(GdBaseTestClass):
 
     def setup_class(self):
         super().setup_class(dut_module='L2CAP', cert_module='HCI_INTERFACES')
@@ -121,6 +121,9 @@ class L2capTest(GdBaseTestClass):
         cert_channel.verify_configuration_response()
 
         return (dut_channel, cert_channel)
+
+
+class L2capTest(L2capTestBase):
 
     def test_connect_dynamic_channel_and_send_data(self):
         self._setup_link_from_cert()
@@ -768,7 +771,8 @@ class L2capTest(GdBaseTestClass):
 
         dut_channel.set_traffic_paused(True)
 
-        buffer_size = self.dut_l2cap.get_channel_queue_buffer_size()
+        # Allow 1 additional packet in channel queue buffer
+        buffer_size = self.dut_l2cap.get_channel_queue_buffer_size() + 1
 
         for i in range(buffer_size):
             cert_channel.send_i_frame(tx_seq=i + 1, req_seq=1, payload=SAMPLE_PACKET)
@@ -954,7 +958,7 @@ class L2capTest(GdBaseTestClass):
         for i in range(1, tx_window_size):
             cert_channel.send_i_frame(tx_seq=i, req_seq=0, f=Final.NOT_SET, payload=SAMPLE_PACKET)
         assertThat(cert_channel).emits(
-            L2capMatchers.SFrame(req_seq=i + 1, f=Final.NOT_SET, s=SupervisoryFunction.RECEIVER_READY, p=Poll.NOT_SET))
+            L2capMatchers.SFrame(req_seq=i + 1, f=Final.NOT_SET, s=SupervisoryFunction.RECEIVER_READY))
 
     @metadata(pts_test_id="L2CAP/ERM/BV-18-C", pts_test_name="Receive S-Frame [RR] Final Bit = 1")
     def test_receive_s_frame_rr_final_bit_set(self):
@@ -1035,7 +1039,8 @@ class L2capTest(GdBaseTestClass):
 
         dut_channel.set_traffic_paused(True)
 
-        buffer_size = self.dut_l2cap.get_channel_queue_buffer_size()
+        # Allow 1 additional packet in channel queue buffer
+        buffer_size = self.dut_l2cap.get_channel_queue_buffer_size() + 1
 
         for i in range(buffer_size):
             cert_channel.send_i_frame(tx_seq=i + 1, req_seq=1, payload=SAMPLE_PACKET)

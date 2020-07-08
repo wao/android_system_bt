@@ -17,24 +17,47 @@
  */
 #include "facade_configuration_api.h"
 
+#include "common/bind.h"
+#include "l2cap/classic/security_enforcement_interface.h"
 #include "os/log.h"
 
 namespace bluetooth {
 namespace security {
 
 void FacadeConfigurationApi::SetIoCapability(hci::IoCapability io_capability) {
-  security_handler_->Post(common::BindOnce(&internal::SecurityManagerImpl::SetIoCapability,
-                                           common::Unretained(security_manager_impl_), io_capability));
+  security_handler_->CallOn(security_manager_impl_, &internal::SecurityManagerImpl::SetIoCapability, io_capability);
 }
 
 void FacadeConfigurationApi::SetAuthenticationRequirements(hci::AuthenticationRequirements authentication_requirement) {
-  security_handler_->Post(common::BindOnce(&internal::SecurityManagerImpl::SetAuthenticationRequirements,
-                                           common::Unretained(security_manager_impl_), authentication_requirement));
+  security_handler_->CallOn(
+      security_manager_impl_,
+      &internal::SecurityManagerImpl::SetAuthenticationRequirements,
+      authentication_requirement);
 }
 
 void FacadeConfigurationApi::SetOobData(hci::OobDataPresent data_present) {
-  security_handler_->Post(common::BindOnce(&internal::SecurityManagerImpl::SetOobDataPresent,
-                                           common::Unretained(security_manager_impl_), data_present));
+  security_handler_->CallOn(security_manager_impl_, &internal::SecurityManagerImpl::SetOobDataPresent, data_present);
 }
+
+void FacadeConfigurationApi::SetLeIoCapability(security::IoCapability io_capability) {
+  security_handler_->CallOn(security_manager_impl_, &internal::SecurityManagerImpl::SetLeIoCapability, io_capability);
+}
+
+void FacadeConfigurationApi::SetLeAuthReq(uint8_t auth_req) {
+  security_handler_->CallOn(security_manager_impl_, &internal::SecurityManagerImpl::SetLeAuthReq, auth_req);
+}
+
+void FacadeConfigurationApi::EnforceSecurityPolicy(
+    hci::AddressWithType remote,
+    l2cap::classic::SecurityPolicy policy,
+    l2cap::classic::SecurityEnforcementInterface::ResultCallback callback) {
+  security_handler_->CallOn(
+      security_manager_impl_,
+      &internal::SecurityManagerImpl::EnforceSecurityPolicy,
+      remote,
+      policy,
+      std::move(callback));
+}
+
 }  // namespace security
 }  // namespace bluetooth

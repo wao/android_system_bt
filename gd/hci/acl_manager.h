@@ -26,7 +26,7 @@
 #include "hci/address_with_type.h"
 #include "hci/hci_layer.h"
 #include "hci/hci_packets.h"
-#include "hci/le_address_rotator.h"
+#include "hci/le_address_manager.h"
 #include "module.h"
 #include "os/handler.h"
 
@@ -35,10 +35,14 @@ namespace bluetooth {
 namespace security {
 class SecurityModule;
 }
+namespace shim {
+class Btm;
+}
 
 namespace hci {
 
 class AclManager : public Module {
+ friend class bluetooth::shim::Btm;
  public:
   AclManager();
   // NOTE: It is necessary to forward declare a default destructor that overrides the base class one, because
@@ -60,14 +64,20 @@ class AclManager : public Module {
   // Generates OnLeConnectSuccess if connected, or OnLeConnectFail otherwise
   virtual void CreateLeConnection(AddressWithType address_with_type);
 
-  virtual void SetPrivacyPolicyForInitiatorAddress(LeAddressRotator::AddressPolicy address_policy,
-                                                   AddressWithType fixed_address, crypto_toolbox::Octet16 rotation_irk,
-                                                   std::chrono::milliseconds minimum_rotation_time,
-                                                   std::chrono::milliseconds maximum_rotation_time);
+  virtual void SetPrivacyPolicyForInitiatorAddress(
+      LeAddressManager::AddressPolicy address_policy,
+      AddressWithType fixed_address,
+      crypto_toolbox::Octet16 rotation_irk,
+      std::chrono::milliseconds minimum_rotation_time,
+      std::chrono::milliseconds maximum_rotation_time);
 
   // Generates OnConnectFail with error code "terminated by local host 0x16" if cancelled, or OnConnectSuccess if not
   // successfully cancelled and already connected
   virtual void CancelConnect(Address address);
+
+  virtual void CancelLeConnect(AddressWithType address_with_type);
+  virtual void AddDeviceToConnectList(AddressWithType address_with_type);
+  virtual void RemoveDeviceFromConnectList(AddressWithType address_with_type);
 
   virtual void MasterLinkKey(KeyFlag key_flag);
   virtual void SwitchRole(Address address, Role role);
@@ -77,7 +87,7 @@ class AclManager : public Module {
   // In order to avoid circular dependency use setter rather than module dependency.
   virtual void SetSecurityModule(security::SecurityModule* security_module);
 
-  virtual LeAddressRotator* GetLeAddressRotator();
+  virtual LeAddressManager* GetLeAddressManager();
 
   static const ModuleFactory Factory;
 
@@ -91,6 +101,9 @@ class AclManager : public Module {
   std::string ToString() const override;
 
  private:
+  virtual uint16_t HACK_GetHandle(const Address address);
+  virtual uint16_t HACK_GetLeHandle(const Address address);
+
   struct impl;
   std::unique_ptr<impl> pimpl_;
 

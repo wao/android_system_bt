@@ -20,11 +20,13 @@ from bluetooth_packets_python3 import hci_packets
 from cert.closable import Closable
 from cert.closable import safeClose
 from cert.event_stream import EventStream
+from cert.truth import assertThat
 from facade import common_pb2 as common
 from google.protobuf import empty_pb2 as empty_proto
 from hci.facade import facade_pb2 as hci_facade
 from security.facade_pb2 import IoCapabilityMessage
 from security.facade_pb2 import AuthenticationRequirementsMessage
+from security.facade_pb2 import SecurityPolicyMessage
 from security.facade_pb2 import OobDataMessage
 from security.facade_pb2 import UiCallbackMsg
 from security.facade_pb2 import UiCallbackType
@@ -53,11 +55,12 @@ class PySecurity(Closable):
         self._device.security.CreateBond(
             common.BluetoothAddressWithType(address=common.BluetoothAddress(address=address), type=type))
 
-    def remove_bond(self, address_with_type):
+    def remove_bond(self, address, type):
         """
             Removes bond from stack under test
         """
-        self._device.security.RemoveBond(address_with_type)
+        self._device.security.RemoveBond(
+            common.BluetoothAddressWithType(address=common.BluetoothAddress(address=address), type=type))
 
     def set_io_capabilities(self, io_capabilities):
         """
@@ -127,7 +130,7 @@ class PySecurity(Closable):
             return False
 
         logging.info("DUT: Waiting for expected UI event")
-        self._ui_event_stream.assert_event_occurs(get_unique_id)
+        assertThat(self._ui_event_stream).emits(get_unique_id)
         # TODO(optedoblivion): Make UiCallbackType dynamic for PASSKEY when added
         self.send_ui_callback(cert_address, UiCallbackType.YES_NO, reply_boolean, ui_id)
 
@@ -140,7 +143,17 @@ class PySecurity(Closable):
             is complete.  For the DUT we need to wait for it,
             for Cert it isn't needed.
         """
-        self._bond_event_stream.assert_event_occurs(lambda event: event.message_type == expected_bond_event)
+        logging.info("DUT: Waiting for Bond Event")
+        assertThat(self._bond_event_stream).emits(lambda event: event.message_type == expected_bond_event)
+
+    def enforce_security_policy(self, address, type, policy):
+        """
+            Call to enforce classic security policy
+        """
+        self._device.security.EnforceSecurityPolicy(
+            SecurityPolicyMessage(
+                address=common.BluetoothAddressWithType(address=common.BluetoothAddress(address=address), type=type),
+                policy=policy))
 
     def close(self):
         if self._ui_event_stream is not None:

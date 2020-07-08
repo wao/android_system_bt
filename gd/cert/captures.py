@@ -20,6 +20,8 @@ from bluetooth_packets_python3 import l2cap_packets
 from bluetooth_packets_python3.l2cap_packets import CommandCode, LeCommandCode
 from cert.capture import Capture
 from cert.matchers import L2capMatchers
+from cert.matchers import SecurityMatchers
+from security.facade_pb2 import UiMsgType
 
 
 class HalCaptures(object):
@@ -27,20 +29,26 @@ class HalCaptures(object):
     @staticmethod
     def ReadBdAddrCompleteCapture():
         return Capture(
-            lambda packet: b'\x0e\x0a\x01\x09\x10' in packet.payload, lambda packet: hci_packets.ReadBdAddrCompleteView(
+            lambda packet: packet.payload[0:5] == b'\x0e\x0a\x01\x09\x10', lambda packet: hci_packets.ReadBdAddrCompleteView(
                 hci_packets.CommandCompleteView(
                     hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet.payload))))))
 
     @staticmethod
     def ConnectionRequestCapture():
         return Capture(
-            lambda packet: b'\x04\x0a' in packet.payload, lambda packet: hci_packets.ConnectionRequestView(
+            lambda packet: packet.payload[0:2] == b'\x04\x0a', lambda packet: hci_packets.ConnectionRequestView(
                 hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet.payload)))))
 
     @staticmethod
     def ConnectionCompleteCapture():
         return Capture(
-            lambda packet: b'\x03\x0b\x00' in packet.payload, lambda packet: hci_packets.ConnectionCompleteView(
+            lambda packet: packet.payload[0:3] == b'\x03\x0b\x00', lambda packet: hci_packets.ConnectionCompleteView(
+                hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet.payload)))))
+
+    @staticmethod
+    def DisconnectionCompleteCapture():
+        return Capture(
+            lambda packet: packet.payload[0:2] == b'\x05\x04', lambda packet: hci_packets.DisconnectionCompleteView(
                 hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet.payload)))))
 
     @staticmethod
@@ -57,20 +65,26 @@ class HciCaptures(object):
     @staticmethod
     def ReadBdAddrCompleteCapture():
         return Capture(
-            lambda packet: b'\x0e\x0a\x01\x09\x10' in packet.event, lambda packet: hci_packets.ReadBdAddrCompleteView(
+            lambda packet: packet.event[0:5] == b'\x0e\x0a\x01\x09\x10', lambda packet: hci_packets.ReadBdAddrCompleteView(
                 hci_packets.CommandCompleteView(
                     hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet.event))))))
 
     @staticmethod
     def ConnectionRequestCapture():
         return Capture(
-            lambda packet: b'\x04\x0a' in packet.event, lambda packet: hci_packets.ConnectionRequestView(
+            lambda packet: packet.event[0:2] == b'\x04\x0a', lambda packet: hci_packets.ConnectionRequestView(
                 hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet.event)))))
 
     @staticmethod
     def ConnectionCompleteCapture():
         return Capture(
-            lambda packet: b'\x03\x0b\x00' in packet.event, lambda packet: hci_packets.ConnectionCompleteView(
+            lambda packet: packet.event[0:3] == b'\x03\x0b\x00', lambda packet: hci_packets.ConnectionCompleteView(
+                hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet.event)))))
+
+    @staticmethod
+    def DisconnectionCompleteCapture():
+        return Capture(
+            lambda packet: packet.event[0:2] == b'\x05\x04', lambda packet: hci_packets.DisconnectionCompleteView(
                 hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet.event)))))
 
     @staticmethod
@@ -130,3 +144,16 @@ class L2capCaptures(object):
     def _extract_credit_based_connection_response(packet):
         frame = L2capMatchers.le_control_frame_with_code(packet, LeCommandCode.LE_CREDIT_BASED_CONNECTION_RESPONSE)
         return l2cap_packets.LeCreditBasedConnectionResponseView(frame)
+
+
+class SecurityCaptures(object):
+
+    @staticmethod
+    def DisplayPasskey():
+        return Capture(SecurityMatchers.UiMsg(UiMsgType.DISPLAY_PASSKEY), SecurityCaptures._extract_passkey)
+
+    @staticmethod
+    def _extract_passkey(event):
+        if event is None:
+            return None
+        return event.numeric_value

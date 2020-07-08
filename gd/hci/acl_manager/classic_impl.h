@@ -497,18 +497,22 @@ struct classic_impl : public DisconnectorForLe, public security::ISecurityManage
 
   void OnEncryptionStateChanged(EncryptionChangeView encryption_change_view) override {
     if (!encryption_change_view.IsValid()) {
-      LOG_ERROR("Received on_encryption_change with invalid packet");
+      LOG_ERROR("Invalid packet");
       return;
     } else if (encryption_change_view.GetStatus() != ErrorCode::SUCCESS) {
       auto status = encryption_change_view.GetStatus();
       std::string error_code = ErrorCodeText(status);
-      LOG_ERROR("Received on_change_connection_link_key_complete with error code %s", error_code.c_str());
+      LOG_ERROR("error_code %s", error_code.c_str());
       return;
     }
     uint16_t handle = encryption_change_view.GetConnectionHandle();
-    auto& acl_connection = classic_impl_->acl_connections_.find(handle)->second;
+    auto acl_connection = acl_connections_.find(handle);
+    if (acl_connection == acl_connections_.end()) {
+      LOG_INFO("Invalid handle (already closed?) %d", handle);
+      return;
+    }
     EncryptionEnabled enabled = encryption_change_view.GetEncryptionEnabled();
-    acl_connection.connection_management_callbacks_->OnEncryptionChange(enabled);
+    acl_connection->second.connection_management_callbacks_->OnEncryptionChange(enabled);
   }
 
   void set_security_module(security::SecurityModule* security_module) {
@@ -516,11 +520,19 @@ struct classic_impl : public DisconnectorForLe, public security::ISecurityManage
     security_manager_->RegisterCallbackListener(this, handler_);
   }
 
+  uint16_t HACK_get_handle(Address address) {
+    for (auto it = acl_connections_.begin(); it != acl_connections_.end(); it++) {
+      if (it->second.address_with_type_.GetAddress() == address) {
+        return it->first;
+      }
+    }
+    return 0xFFFF;
+  }
+
   HciLayer* hci_layer_ = nullptr;
   Controller* controller_ = nullptr;
   RoundRobinScheduler* round_robin_scheduler_ = nullptr;
   AclConnectionInterface* acl_connection_interface_ = nullptr;
-  classic_impl* classic_impl_ = nullptr;
   os::Handler* handler_ = nullptr;
   ConnectionCallbacks* client_callbacks_ = nullptr;
   os::Handler* client_handler_ = nullptr;

@@ -46,8 +46,8 @@
 #include "btif_util.h"
 #include "btu.h"
 #include "device/include/interop.h"
-#include "log/log.h"
 #include "osi/include/list.h"
+#include "osi/include/log.h"
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
 
@@ -1912,6 +1912,12 @@ static bt_status_t get_element_attr_rsp(const RawAddress& bd_addr,
   BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
 
+  if (num_attr > BTRC_MAX_ELEM_ATTR_SIZE) {
+    LOG(WARNING) << __func__
+                 << " Exceeded number attributes:" << static_cast<int>(num_attr)
+                 << " max:" << BTRC_MAX_ELEM_ATTR_SIZE;
+    num_attr = BTRC_MAX_ELEM_ATTR_SIZE;
+  }
   memset(element_attrs, 0, sizeof(tAVRC_ATTR_ENTRY) * num_attr);
 
   if (num_attr == 0) {
@@ -1920,7 +1926,8 @@ static bt_status_t get_element_attr_rsp(const RawAddress& bd_addr,
     for (i = 0; i < num_attr; i++) {
       element_attrs[i].attr_id = p_attrs[i].attr_id;
       element_attrs[i].name.charset_id = AVRC_CHARSET_ID_UTF8;
-      element_attrs[i].name.str_len = (uint16_t)strlen((char*)p_attrs[i].text);
+      element_attrs[i].name.str_len =
+          (uint16_t)strnlen((char*)p_attrs[i].text, BTRC_MAX_ATTR_STR_LEN);
       element_attrs[i].name.p_str = p_attrs[i].text;
       BTIF_TRACE_DEBUG(
           "%s: attr_id: 0x%x, charset_id: 0x%x, str_len: %d, str: %s", __func__,
@@ -3368,10 +3375,6 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg,
         /* Start timer to get play status periodically
          * if the play state is playing.
          */
-        if (p_rsp->param.play_status == AVRC_PLAYSTATE_PLAYING) {
-          get_metadata_attribute_cmd(attr_list_size, attr_list,
-                                    p_dev);
-        }
         do_in_jni_thread(
             FROM_HERE,
             base::Bind(bt_rc_ctrl_callbacks->play_status_changed_cb,

@@ -1,6 +1,5 @@
 cc_defaults {
     name: "gd_defaults",
-    include_dirs: ["external/protobuf/src"],
     target: {
         android: {
             test_config_template: "AndroidTestTemplate.xml",
@@ -114,26 +113,23 @@ cc_defaults {
             srcs: [
                 ":BluetoothOsSources_linux_generic",
             ],
-            shared_libs: [
-                "libprotobuf-cpp-full",
-            ],
         },
         host: {
             srcs: [
                 ":BluetoothHalSources_hci_rootcanal",
-            ],
-            shared_libs: [
-                "libprotobuf-cpp-full",
+                ":BluetoothOsSources_host",
             ],
         },
         android: {
             srcs: [
                 ":BluetoothHalSources_hci_android_hidl",
+                ":BluetoothOsSources_android",
             ],
             shared_libs: [
                 "android.hardware.bluetooth@1.0",
                 "libhidlbase",
                 "libutils",
+                "libcutils",
             ],
         },
     },
@@ -153,11 +149,15 @@ cc_defaults {
         ":BluetoothStorageSources",
     ],
     generated_headers: [
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysDataSchema_h",
+        "BluetoothGeneratedDumpsysModuleSchema_h",
         "BluetoothGeneratedPackets_h",
     ],
     shared_libs: [
         "libchrome",
         "libcrypto",
+        "libflatbuffers-cpp",
     ],
     static_libs: [
         "libbluetooth-protos",
@@ -203,8 +203,11 @@ cc_binary {
         ":BluetoothFacade_security_layer",
     ],
     generated_headers: [
-        "BluetoothGeneratedPackets_h",
         "BluetoothFacadeGeneratedStub_h",
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysDataSchema_h",
+        "BluetoothGeneratedDumpsysModuleSchema_h",
+        "BluetoothGeneratedPackets_h",
         // Needed here to guarantee that generated zip file is created before
         // bluetooth_cert_tests.zip is packaged
         "BluetoothFacadeAndCertGeneratedStub_py",
@@ -213,16 +216,17 @@ cc_binary {
         "BluetoothFacadeGeneratedStub_cc",
     ],
     static_libs: [
-        "libbluetooth_gd",
-        "libbluetooth-protos",
         "breakpad_client",
+        "libbluetooth-protos",
+        "libbluetooth_gd",
+        "libflatbuffers-cpp",
     ],
     shared_libs: [
+        "libbacktrace",
         "libchrome",
         "libcrypto",
         "libgrpc++_unsecure",
         "libprotobuf-cpp-full",
-        "libbacktrace",
     ],
     target: {
         android: {
@@ -230,6 +234,7 @@ cc_binary {
                 "android.hardware.bluetooth@1.0",
                 "libhidlbase",
                 "libutils",
+                "libcutils",
             ],
         },
         host: {
@@ -265,11 +270,13 @@ cc_test {
         android: {
             srcs: [
                 ":BluetoothHalTestSources_hci_android_hidl",
+                ":BluetoothOsTestSources_android",
             ],
             shared_libs: [
                 "android.hardware.bluetooth@1.0",
                 "libhidlbase",
                 "libutils",
+                "libcutils",
             ],
         },
     },
@@ -288,17 +295,21 @@ cc_test {
         ":BluetoothStorageTestSources",
     ],
     generated_headers: [
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysDataSchema_h",
+        "BluetoothGeneratedDumpsysModuleSchema_h",
         "BluetoothGeneratedPackets_h",
     ],
     static_libs: [
         "libbluetooth-protos",
         "libbluetooth_gd",
+        "libc++fs",
+        "libflatbuffers-cpp",
         "libgmock",
     ],
     shared_libs: [
         "libchrome",
         "libcrypto",
-        "libprotobuf-cpp-full",
     ],
     sanitize: {
         address: true,
@@ -342,11 +353,14 @@ cc_defaults {
     ],
     host_supported: true,
     generated_headers: [
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysDataSchema_h",
+        "BluetoothGeneratedDumpsysModuleSchema_h",
         "BluetoothGeneratedPackets_h",
     ],
     shared_libs: [
         "libcrypto",
-        "libprotobuf-cpp-full",
+        "libflatbuffers-cpp",
     ],
     cflags: [
         "-DFUZZ_TARGET",
@@ -428,6 +442,53 @@ genrule {
         "hci/hci_packets.h",
         "l2cap/l2cap_packets.h",
         "security/smp_packets.h",
+    ],
+}
+
+// Generates binary schema data to be bundled and source file generated
+genrule {
+    name: "BluetoothGeneratedDumpsysBinarySchema_bfbs",
+    tools: [
+        "flatc",
+    ],
+    cmd: "$(location flatc) -I system/bt/gd -b --schema -o $(genDir) $(in) ",
+    srcs: [
+        "dumpsys_data.fbs",
+        "shim/dumpsys.fbs",
+    ],
+    out: [
+        "dumpsys_data.bfbs",
+        "dumpsys.bfbs",
+    ],
+}
+
+genrule {
+    name: "BluetoothGeneratedDumpsysDataSchema_h",
+    tools: [
+        "flatc",
+    ],
+    cmd: "$(location flatc) -I system/bt/gd -o $(genDir) --cpp $(in) ",
+    srcs: [
+        "dumpsys_data.fbs",
+        "shim/dumpsys.fbs",
+    ],
+    out: [
+        "dumpsys_data_generated.h",
+        "dumpsys_generated.h",
+    ],
+}
+
+genrule {
+    name: "BluetoothGeneratedDumpsysModuleSchema_h",
+    tools: [
+            "bluetooth_flatbuffer_bundler",
+    ],
+    cmd: "$(location bluetooth_flatbuffer_bundler) -w -m bluetooth.DumpsysData -f dumpsys_module_schema_data -n bluetooth::dumpsys -g $(genDir) $(locations :BluetoothGeneratedDumpsysBinarySchema_bfbs)",
+    srcs: [
+        ":BluetoothGeneratedDumpsysBinarySchema_bfbs",
+    ],
+    out: [
+         "dumpsys_module_schema_data.h",
     ],
 }
 
