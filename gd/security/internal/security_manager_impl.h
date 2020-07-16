@@ -20,7 +20,6 @@
 #include <utility>
 
 #include "hci/acl_manager.h"
-#include "hci/classic_device.h"
 #include "l2cap/classic/security_enforcement_interface.h"
 #include "l2cap/le/l2cap_le_module.h"
 #include "l2cap/le/security_enforcement_interface.h"
@@ -170,7 +169,7 @@ class SecurityManagerImpl : public channel::ISecurityManagerChannelListener, pub
   void SetAuthenticationRequirements(hci::AuthenticationRequirements authentication_requirements);
   void SetOobDataPresent(hci::OobDataPresent data_present);
   void SetLeIoCapability(security::IoCapability io_capability);
-  void SetLeAuthReq(uint8_t auth_req);
+  void SetLeAuthRequirements(uint8_t auth_req);
 
   void EnforceSecurityPolicy(hci::AddressWithType remote, l2cap::classic::SecurityPolicy policy,
                              l2cap::classic::SecurityEnforcementInterface::ResultCallback result_callback);
