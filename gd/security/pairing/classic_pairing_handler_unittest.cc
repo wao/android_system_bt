@@ -59,6 +59,14 @@ class FakeSecurityManagerChannel : public channel::SecurityManagerChannel {
   void OnLinkDisconnected(hci::Address address) override {
     LOG_ERROR("CALLED");
   }
+
+  void OnEncryptionChange(hci::Address address, bool encrypted) override {
+    LOG_ERROR("CALLED");
+  }
+
+  void OnAuthenticationComplete(hci::Address remote) override {
+    LOG_ERROR("CALLED");
+  }
 };
 
 class SecurityManagerChannelCallback : public ISecurityManagerChannelListener {
@@ -115,6 +123,8 @@ class SecurityManagerChannelCallback : public ISecurityManagerChannelListener {
   void OnConnectionClosed(hci::Address address) override {
     LOG_DEBUG("Called");
   }
+
+  void OnEncryptionChange(hci::Address address, bool encrypted) override {}
 
  private:
   pairing::ClassicPairingHandler* pairing_handler_ = nullptr;
@@ -218,8 +228,8 @@ class ClassicPairingHandlerTest : public ::testing::Test {
 //  <- IoCapabilityResponse
 //  <- UserConfirmationRequest
 //  -> UserConfirmationRequestReply (auto)
-//  <- LinkKeyNotification
 //  <- SimplePairingComplete
+//  <- LinkKeyNotification
 //  <- AuthenticationComplete
 //  -> SetConnectionEncryption
 //  <- EncryptionChange
@@ -311,7 +321,7 @@ TEST_F(ClassicPairingHandlerTest, locally_initiatied_display_only_display_yes_no
   ReceiveLinkKeyNotification(device_, link_key, key_type);
   ASSERT_EQ(link_key, security_record_->GetLinkKey());
   ASSERT_EQ(key_type, security_record_->GetKeyType());
-  ASSERT_FALSE(security_record_->IsAuthenticated());
+  ASSERT_TRUE(security_record_->IsAuthenticated());
   ASSERT_FALSE(security_record_->RequiresMitmProtection());
 }
 
@@ -349,7 +359,7 @@ TEST_F(ClassicPairingHandlerTest, locally_initiatied_display_only_no_input_no_ou
   ReceiveLinkKeyNotification(device_, link_key, key_type);
   ASSERT_EQ(link_key, security_record_->GetLinkKey());
   ASSERT_EQ(key_type, security_record_->GetKeyType());
-  ASSERT_FALSE(security_record_->IsAuthenticated());
+  ASSERT_TRUE(security_record_->IsAuthenticated());
   ASSERT_FALSE(security_record_->RequiresMitmProtection());
 }
 

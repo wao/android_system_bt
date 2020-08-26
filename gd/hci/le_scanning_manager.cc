@@ -218,8 +218,9 @@ struct LeScanningManager::impl : public bluetooth::hci::LeAddressManagerCallback
 
   void OnResume() override {
     if (cached_registered_callback_ != nullptr) {
-      start_scan(cached_registered_callback_);
+      auto cached_registered_callback = cached_registered_callback_;
       cached_registered_callback_ = nullptr;
+      start_scan(cached_registered_callback);
     }
     le_address_manager_->AckResume(this);
   }
@@ -238,8 +239,8 @@ struct LeScanningManager::impl : public bluetooth::hci::LeAddressManagerCallback
 
   uint32_t interval_ms_{1000};
   uint16_t window_ms_{1000};
-  AddressType own_address_type_{AddressType::PUBLIC_DEVICE_ADDRESS};
-  LeSetScanningFilterPolicy filter_policy_{LeSetScanningFilterPolicy::ACCEPT_ALL};
+  OwnAddressType own_address_type_{OwnAddressType::PUBLIC_DEVICE_ADDRESS};
+  LeScanningFilterPolicy filter_policy_{LeScanningFilterPolicy::ACCEPT_ALL};
 
   static void check_status(CommandCompleteView view) {
     switch (view.GetCommandOpCode()) {

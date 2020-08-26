@@ -113,8 +113,10 @@ void PairingHandlerLe::PairingMain(InitialInformations i) {
     if (IAmMaster(i)) {
       LOG_INFO("Sending start encryption request");
       SendHciLeStartEncryption(i, i.connection_handle, {0}, {0}, ltk);
+    } else {
+      auto ltk_req = WaitLeLongTermKeyRequest();
+      SendHciLeLongTermKeyReply(i, i.connection_handle, ltk);
     }
-
   } else {
     // 2.3.5.5 LE legacy pairing phase 2
     LOG_INFO("Pairing Phase 2 LE legacy pairing Started");
@@ -136,7 +138,11 @@ void PairingHandlerLe::PairingMain(InitialInformations i) {
 
     Octet16 stk = std::get<Octet16>(stage2result);
     if (IAmMaster(i)) {
+      LOG_INFO("Sending start encryption request");
       SendHciLeStartEncryption(i, i.connection_handle, {0}, {0}, stk);
+    } else {
+      auto ltk_req = WaitLeLongTermKeyRequest();
+      SendHciLeLongTermKeyReply(i, i.connection_handle, stk);
     }
   }
 
@@ -303,7 +309,7 @@ DistributedKeysOrFailure PairingHandlerLe::DistributeKeys(const InitialInformati
     keys_i_receive = (~KeyMaskEnc) & keys_i_receive;
   }
 
-  LOG_INFO("Key distribution start, keys_i_send=%02x, keys_i_receive=%02x", keys_i_send, keys_i_receive);
+  LOG_INFO("Key distribution start, keys_i_send=0x%02x, keys_i_receive=0x%02x", keys_i_send, keys_i_receive);
 
   // TODO: obtain actual values!
   Octet16 my_ltk = {0};

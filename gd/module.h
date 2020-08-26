@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include <google/protobuf/message.h>
+#include <flatbuffers/flatbuffers.h>
 #include <functional>
 #include <future>
 #include <map>
@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "common/bind.h"
+#include "dumpsys_data_generated.h"
 #include "os/handler.h"
 #include "os/log.h"
 #include "os/thread.h"
@@ -61,6 +62,8 @@ public:
   std::vector<const ModuleFactory*> list_;
 };
 
+using DumpsysDataFinisher = std::function<void(DumpsysDataBuilder* dumpsys_data_builder)>;
+
 // Each leaf node module must have a factory like so:
 //
 // static const ModuleFactory Factory;
@@ -87,7 +90,7 @@ class Module {
   virtual void Stop() = 0;
 
   // Get relevant state data from the module
-  virtual std::unique_ptr<google::protobuf::Message> DumpState() const;
+  virtual DumpsysDataFinisher GetDumpsysData(flatbuffers::FlatBufferBuilder* builder) const;
 
   virtual std::string ToString() const;
 
@@ -157,11 +160,13 @@ class ModuleRegistry {
 
 class ModuleDumper {
  public:
-  ModuleDumper(ModuleRegistry& module_registry) : module_registry_(module_registry) {}
-  void DumpState() const;
+  ModuleDumper(const ModuleRegistry& module_registry, const char* title)
+      : module_registry_(module_registry), title_(title) {}
+  void DumpState(std::string* output) const;
 
  private:
-  ModuleRegistry& module_registry_;
+  const ModuleRegistry& module_registry_;
+  const std::string title_;
 };
 
 class TestModuleRegistry : public ModuleRegistry {

@@ -24,10 +24,10 @@ namespace acl_manager {
 RoundRobinScheduler::RoundRobinScheduler(os::Handler* handler, Controller* controller,
                                          common::BidiQueueEnd<AclPacketBuilder, AclPacketView>* hci_queue_end)
     : handler_(handler), controller_(controller), hci_queue_end_(hci_queue_end) {
-  max_acl_packet_credits_ = controller_->GetControllerNumAclPacketBuffers();
+  max_acl_packet_credits_ = controller_->GetNumAclPacketBuffers();
   acl_packet_credits_ = max_acl_packet_credits_;
-  hci_mtu_ = controller_->GetControllerAclPacketLength();
-  LeBufferSize le_buffer_size = controller_->GetControllerLeBufferSize();
+  hci_mtu_ = controller_->GetAclPacketLength();
+  LeBufferSize le_buffer_size = controller_->GetLeBufferSize();
   le_max_acl_packet_credits_ = le_buffer_size.total_num_le_packets_;
   le_acl_packet_credits_ = le_max_acl_packet_credits_;
   le_hci_mtu_ = le_buffer_size.le_data_packet_length_;
@@ -118,13 +118,14 @@ void RoundRobinScheduler::buffer_packet(std::map<uint16_t, acl_queue_handler>::i
 
   ConnectionType connection_type = acl_queue_handler->second.connection_type_;
   size_t mtu = connection_type == ConnectionType::CLASSIC ? hci_mtu_ : le_hci_mtu_;
+  PacketBoundaryFlag packet_boundary_flag =
+      (connection_type == ConnectionType::CLASSIC ? PacketBoundaryFlag::FIRST_AUTOMATICALLY_FLUSHABLE
+                                                  : PacketBoundaryFlag::FIRST_NON_AUTOMATICALLY_FLUSHABLE);
   if (packet->size() <= mtu) {
     fragments_to_send_.push(std::make_pair(
-        connection_type, AclPacketBuilder::Create(handle, PacketBoundaryFlag::FIRST_AUTOMATICALLY_FLUSHABLE,
-                                                  broadcast_flag, std::move(packet))));
+        connection_type, AclPacketBuilder::Create(handle, packet_boundary_flag, broadcast_flag, std::move(packet))));
   } else {
     auto fragments = AclFragmenter(mtu, std::move(packet)).GetFragments();
-    PacketBoundaryFlag packet_boundary_flag = PacketBoundaryFlag::FIRST_AUTOMATICALLY_FLUSHABLE;
     for (size_t i = 0; i < fragments.size(); i++) {
       fragments_to_send_.push(std::make_pair(
           connection_type,

@@ -36,6 +36,38 @@ TEST(LruCacheTest, empty_test) {
   EXPECT_FALSE(cache.extract(42));
 }
 
+TEST(LruCacheTest, comparison_test) {
+  LruCache<int, int> cache_1(2);
+  cache_1.insert_or_assign(1, 10);
+  cache_1.insert_or_assign(2, 20);
+  LruCache<int, int> cache_2(2);
+  cache_2.insert_or_assign(1, 10);
+  cache_2.insert_or_assign(2, 20);
+  EXPECT_EQ(cache_1, cache_2);
+  // Cache with different order should not be equal
+  cache_2.find(1);
+  EXPECT_NE(cache_1, cache_2);
+  cache_1.find(1);
+  EXPECT_EQ(cache_1, cache_2);
+  // Cache with different value should be different
+  cache_2.insert_or_assign(1, 11);
+  EXPECT_NE(cache_1, cache_2);
+  // Cache with different capacity should not be equal
+  LruCache<int, int> cache_3(3);
+  cache_3.insert_or_assign(1, 10);
+  cache_3.insert_or_assign(2, 20);
+  EXPECT_NE(cache_1, cache_3);
+  // Empty cache should not be equal to non-empty ones
+  LruCache<int, int> cache_4(2);
+  EXPECT_NE(cache_1, cache_4);
+  // Empty caches should be equal
+  LruCache<int, int> cache_5(2);
+  EXPECT_EQ(cache_4, cache_5);
+  // Empty caches with different capacity should not be equal
+  LruCache<int, int> cache_6(3);
+  EXPECT_NE(cache_4, cache_6);
+}
+
 TEST(LruCacheTest, try_emplace_test) {
   LruCache<int, int> cache(2);
   cache.insert_or_assign(1, 10);
@@ -421,8 +453,8 @@ TEST(LruCacheTest, pressure_test) {
   // test execution time
   auto done = std::chrono::high_resolution_clock::now();
   int execution_time = std::chrono::duration_cast<std::chrono::microseconds>(done - started).count();
-  // Shouldn't be more than 1000ms
-  int execution_time_per_cycle_us = 15;
+  // Shouldn't be more than 1120ms
+  int execution_time_per_cycle_us = 17;
   EXPECT_LT(execution_time, execution_time_per_cycle_us * capacity);
 }
 

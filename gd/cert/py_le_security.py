@@ -17,18 +17,23 @@
 import logging
 
 from bluetooth_packets_python3 import hci_packets
+from cert.captures import SecurityCaptures
 from cert.closable import Closable
 from cert.closable import safeClose
 from cert.event_stream import EventStream
+from cert.matchers import SecurityMatchers
+from cert.truth import assertThat
 from datetime import timedelta
 from facade import common_pb2 as common
 from google.protobuf import empty_pb2 as empty_proto
 from hci.facade import facade_pb2 as hci_facade
 from security.facade_pb2 import IoCapabilityMessage
 from security.facade_pb2 import AuthenticationRequirementsMessage
-from security.facade_pb2 import OobDataMessage
+from security.facade_pb2 import LeAuthRequirementsMessage
+from security.facade_pb2 import OobDataPresentMessage
 from security.facade_pb2 import UiCallbackMsg
 from security.facade_pb2 import UiCallbackType
+from security.facade_pb2 import HelperMsgType
 
 
 class PyLeSecurity(Closable):
@@ -38,6 +43,7 @@ class PyLeSecurity(Closable):
 
     _ui_event_stream = None
     _bond_event_stream = None
+    _helper_event_stream = None
 
     def __init__(self, device):
         logging.info("DUT: Init")
@@ -45,14 +51,24 @@ class PyLeSecurity(Closable):
         self._device.wait_channel_ready()
         self._ui_event_stream = EventStream(self._device.security.FetchUiEvents(empty_proto.Empty()))
         self._bond_event_stream = EventStream(self._device.security.FetchBondEvents(empty_proto.Empty()))
+        self._helper_event_stream = EventStream(self._device.security.FetchHelperEvents(empty_proto.Empty()))
 
-    def wait_for_bond_event(self, expected_bond_event, timeout=timedelta(seconds=3)):
-        self._bond_event_stream.assert_event_occurs(
-            match_fn=lambda event: event.message_type == expected_bond_event, timeout=timeout)
+    def get_ui_stream(self):
+        return self._ui_event_stream
 
-    def wait_for_ui_event(self, expected_ui_event, timeout=timedelta(seconds=3)):
-        self._ui_event_stream.assert_event_occurs(
-            match_fn=lambda event: event.message_type == expected_ui_event, timeout=timeout)
+    def get_bond_stream(self):
+        return self._bond_event_stream
+
+    def wait_for_ui_event_passkey(self, timeout=timedelta(seconds=3)):
+        display_passkey_capture = SecurityCaptures.DisplayPasskey()
+        assertThat(self._ui_event_stream).emits(display_passkey_capture, timeout=timeout)
+        return display_passkey_capture.get()
+
+    def wait_device_disconnect(self, address):
+        assertThat(self._helper_event_stream).emits(SecurityMatchers.HelperMsg(HelperMsgType.DEVICE_DISCONNECTED))
+
+    def SetLeAuthRequirements(self, *args, **kwargs):
+        return self._device.security.SetLeAuthRequirements(LeAuthRequirementsMessage(*args, **kwargs))
 
     def close(self):
         if self._ui_event_stream is not None:
@@ -64,3 +80,8 @@ class PyLeSecurity(Closable):
             safeClose(self._bond_event_stream)
         else:
             logging.info("DUT: Bond Event Stream is None!")
+
+        if self._helper_event_stream is not None:
+            safeClose(self._helper_event_stream)
+        else:
+            logging.info("DUT: Helper Event Stream is None!")

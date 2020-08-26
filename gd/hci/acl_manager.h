@@ -35,10 +35,14 @@ namespace bluetooth {
 namespace security {
 class SecurityModule;
 }
+namespace shim {
+class Btm;
+}
 
 namespace hci {
 
 class AclManager : public Module {
+ friend class bluetooth::shim::Btm;
  public:
   AclManager();
   // NOTE: It is necessary to forward declare a default destructor that overrides the base class one, because
@@ -60,7 +64,18 @@ class AclManager : public Module {
   // Generates OnLeConnectSuccess if connected, or OnLeConnectFail otherwise
   virtual void CreateLeConnection(AddressWithType address_with_type);
 
+  // Ask the controller for specific data parameters
+  virtual void SetLeSuggestedDefaultDataParameters(uint16_t octets, uint16_t time);
+
   virtual void SetPrivacyPolicyForInitiatorAddress(
+      LeAddressManager::AddressPolicy address_policy,
+      AddressWithType fixed_address,
+      crypto_toolbox::Octet16 rotation_irk,
+      std::chrono::milliseconds minimum_rotation_time,
+      std::chrono::milliseconds maximum_rotation_time);
+
+  // TODO(jpawlowski): remove once we have config file abstraction in cert tests
+  virtual void SetPrivacyPolicyForInitiatorAddressForTest(
       LeAddressManager::AddressPolicy address_policy,
       AddressWithType fixed_address,
       crypto_toolbox::Octet16 rotation_irk,
@@ -70,6 +85,15 @@ class AclManager : public Module {
   // Generates OnConnectFail with error code "terminated by local host 0x16" if cancelled, or OnConnectSuccess if not
   // successfully cancelled and already connected
   virtual void CancelConnect(Address address);
+
+  virtual void CancelLeConnect(AddressWithType address_with_type);
+  virtual void AddDeviceToConnectList(AddressWithType address_with_type);
+  virtual void AddDeviceToResolvingList(
+      AddressWithType address_with_type,
+      const std::array<uint8_t, 16>& peer_irk,
+      const std::array<uint8_t, 16>& local_irk);
+  virtual void RemoveDeviceFromConnectList(AddressWithType address_with_type);
+  virtual void RemoveDeviceFromResolvingList(AddressWithType address_with_type);
 
   virtual void MasterLinkKey(KeyFlag key_flag);
   virtual void SwitchRole(Address address, Role role);
@@ -93,6 +117,9 @@ class AclManager : public Module {
   std::string ToString() const override;
 
  private:
+  virtual uint16_t HACK_GetHandle(const Address address);
+  virtual uint16_t HACK_GetLeHandle(const Address address);
+
   struct impl;
   std::unique_ptr<impl> pimpl_;
 

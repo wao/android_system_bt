@@ -3,6 +3,7 @@ SimpleHalTest
 DirectHciTest
 LeAdvertisingManagerTest
 LeScanningManagerTest
+LeScanningWithSecurityTest
 NeighborTest
 ControllerTest
 AclManagerTest
@@ -13,3 +14,5 @@ LeL2capTest
 DualL2capTest
 LeSecurityTest
 L2capPerformanceTest
+SecurityTest
+ShimTest

@@ -98,9 +98,13 @@ class ClassicPairingHandler : public PairingHandler {
   std::string device_name_;
   bool is_cancelled_ = false;
 
+  bool has_gotten_io_cap_response_ = false;
+  std::optional<hci::UserConfirmationRequestView> user_confirmation_request_ = std::nullopt;
+
   hci::ErrorCode last_status_ = hci::ErrorCode::UNKNOWN_HCI_COMMAND;
   bool locally_initiated_ = false;
   uint32_t passkey_ = 0;
+  bool already_link_key_replied_ = false;
 };
 
 }  // namespace pairing

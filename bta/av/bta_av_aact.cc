@@ -35,25 +35,19 @@
 #include "a2dp_sbc.h"
 #include "avdt_api.h"
 #include "avrcp_service.h"
-#include "bt_utils.h"
 #include "bta_av_int.h"
 #include "btif/include/btif_av_co.h"
 #include "btif/include/btif_config.h"
 #include "btif/include/btif_storage.h"
-#include "btm_int.h"
-#include "device/include/controller.h"
 #include "device/include/interop.h"
 #include "l2c_api.h"
 #include "l2cdefs.h"
 #include "osi/include/log.h"
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
+#include "stack/include/acl_api.h"
 #include "utl.h"
-#if (BTA_AR_INCLUDED == TRUE)
 #include "bta_ar_api.h"
-#endif
-#include "btif/include/btif_av.h"
-#include "btif/include/btif_hf.h"
 
 /*****************************************************************************
  *  Constants
@@ -844,16 +838,10 @@ void bta_av_do_disc_a2dp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   }
 
   if (bta_av_cb.features & BTA_AV_FEAT_MASTER) {
-    L2CA_SetDesireRole(L2CAP_ROLE_DISALLOW_SWITCH);
-
-    if (bta_av_cb.audio_open_cnt == 1) {
-      /* there's already an A2DP connection. do not allow switch */
-      bta_sys_clear_default_policy(BTA_ID_AV, HCI_ENABLE_MASTER_SLAVE_SWITCH);
-    }
+    BTM_default_block_role_switch();
   }
   /* store peer addr other parameters */
   bta_av_save_addr(p_scb, p_data->api_open.bd_addr);
-  p_scb->sec_mask = p_data->api_open.sec_mask;
   p_scb->use_rc = p_data->api_open.use_rc;
 
   bta_sys_app_open(BTA_ID_AV, p_scb->app_id, p_scb->PeerAddress());
@@ -1273,9 +1261,7 @@ void bta_av_str_opened(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
         }
       }
     }
-#if (BTA_AR_INCLUDED == TRUE)
     bta_ar_avdt_conn(BTA_ID_AV, open.bd_addr, p_scb->hdi);
-#endif
     if (p_scb->seps[p_scb->sep_idx].tsep == AVDT_TSEP_SRC) {
       open.starting = false;
       open.sep = AVDT_TSEP_SNK;
@@ -1414,8 +1400,7 @@ void bta_av_connect_req(tBTA_AV_SCB* p_scb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
     return;
   }
 
-  AVDT_ConnectReq(p_scb->PeerAddress(), p_scb->hdi, p_scb->sec_mask,
-                  &bta_av_proc_stream_evt);
+  AVDT_ConnectReq(p_scb->PeerAddress(), p_scb->hdi, &bta_av_proc_stream_evt);
 }
 
 /*******************************************************************************
@@ -1854,7 +1839,6 @@ void bta_av_conn_failed(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
  *
  ******************************************************************************/
 void bta_av_do_start(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
-  uint8_t clear_policy = 0;
   uint8_t cur_role;
 
   LOG_INFO("%s: peer %s sco_occupied:%s role:0x%x started:%s wait:0x%x",
@@ -1870,11 +1854,9 @@ void bta_av_do_start(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
    * i.e. allow role switch, if we are slave.
    * It would not hurt us, if the peer device wants us to be master */
   if ((BTM_GetRole(p_scb->PeerAddress(), &cur_role) == BTM_SUCCESS) &&
-      (cur_role == BTM_ROLE_MASTER)) {
-    clear_policy |= HCI_ENABLE_MASTER_SLAVE_SWITCH;
+      (cur_role == HCI_ROLE_MASTER)) {
+    BTM_block_role_switch_for(p_scb->PeerAddress());
   }
-
-  bta_sys_clear_policy(BTA_ID_AV, clear_policy, p_scb->PeerAddress());
 
   if (p_scb->started) {
     p_scb->role |= BTA_AV_ROLE_START_INT;
@@ -1935,7 +1917,6 @@ void bta_av_str_stopped(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   uint8_t start = p_scb->started;
   bool sus_evt = true;
   BT_HDR* p_buf;
-  uint8_t set_policy = HCI_ENABLE_SNIFF_MODE;
 
   APPL_TRACE_ERROR(
       "%s: peer %s bta_handle:0x%x audio_open_cnt:%d, p_data %p start:%d",
@@ -1945,9 +1926,8 @@ void bta_av_str_stopped(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   bta_sys_idle(BTA_ID_AV, bta_av_cb.audio_open_cnt, p_scb->PeerAddress());
   if ((bta_av_cb.features & BTA_AV_FEAT_MASTER) == 0 ||
       bta_av_cb.audio_open_cnt == 1) {
-    set_policy |= HCI_ENABLE_MASTER_SLAVE_SWITCH;
+    BTM_unblock_role_switch_for(p_scb->PeerAddress());
   }
-  bta_sys_set_policy(BTA_ID_AV, set_policy, p_scb->PeerAddress());
 
   if (p_scb->co_started) {
     if (p_scb->offload_started) {
@@ -2244,7 +2224,6 @@ void bta_av_start_ok(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   uint16_t flush_to;
   uint8_t new_role = p_scb->role;
   BT_HDR hdr;
-  uint8_t clear_policy = 0;
   uint8_t cur_role;
   uint8_t local_tsep = p_scb->seps[p_scb->sep_idx].tsep;
 
@@ -2380,11 +2359,9 @@ void bta_av_start_ok(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
        * Because it would not hurt source, if the peer device wants source to be
        * master */
       if ((BTM_GetRole(p_scb->PeerAddress(), &cur_role) == BTM_SUCCESS) &&
-          (cur_role == BTM_ROLE_MASTER)) {
-        clear_policy |= HCI_ENABLE_MASTER_SLAVE_SWITCH;
+          (cur_role == HCI_ROLE_MASTER)) {
+        BTM_block_role_switch_for(p_scb->PeerAddress());
       }
-
-      bta_sys_clear_policy(BTA_ID_AV, clear_policy, p_scb->PeerAddress());
     }
 
     p_scb->role = new_role;
@@ -2435,8 +2412,6 @@ void bta_av_start_ok(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
  *
  ******************************************************************************/
 void bta_av_start_failed(tBTA_AV_SCB* p_scb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
-  uint8_t set_policy = (HCI_ENABLE_SNIFF_MODE | HCI_ENABLE_MASTER_SLAVE_SWITCH);
-
   APPL_TRACE_ERROR(
       "%s: peer %s bta_handle:0x%x audio_open_cnt:%d started:%s co_started:%d",
       __func__, p_scb->PeerAddress().ToString().c_str(), p_scb->hndl,
@@ -2448,7 +2423,7 @@ void bta_av_start_failed(tBTA_AV_SCB* p_scb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
     notify_start_failed(p_scb);
   }
 
-  bta_sys_set_policy(BTA_ID_AV, set_policy, p_scb->PeerAddress());
+  BTM_unblock_role_switch_for(p_scb->PeerAddress());
   p_scb->sco_suspend = false;
 }
 
@@ -2464,7 +2439,6 @@ void bta_av_start_failed(tBTA_AV_SCB* p_scb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
 void bta_av_str_closed(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   tBTA_AV data;
   tBTA_AV_EVT event;
-  uint8_t set_policy = HCI_ENABLE_SNIFF_MODE;
 
   APPL_TRACE_WARNING(
       "%s: peer %s bta_handle:0x%x open_status:%d chnl:%d co_started:%d",
@@ -2473,12 +2447,10 @@ void bta_av_str_closed(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
   if ((bta_av_cb.features & BTA_AV_FEAT_MASTER) == 0 ||
       bta_av_cb.audio_open_cnt == 1) {
-    set_policy |= HCI_ENABLE_MASTER_SLAVE_SWITCH;
+    BTM_unblock_role_switch_for(p_scb->PeerAddress());
   }
-  bta_sys_set_policy(BTA_ID_AV, set_policy, p_scb->PeerAddress());
   if (bta_av_cb.audio_open_cnt <= 1) {
-    /* last connection - restore the allow switch flag */
-    L2CA_SetDesireRole(L2CAP_ROLE_ALLOW_SWITCH);
+    BTM_default_unblock_role_switch();
   }
 
   if (p_scb->open_status != BTA_AV_SUCCESS) {
@@ -2546,7 +2518,6 @@ void bta_av_clr_cong(tBTA_AV_SCB* p_scb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
 void bta_av_suspend_cfm(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   tBTA_AV_SUSPEND suspend_rsp;
   uint8_t err_code = p_data->str_msg.msg.hdr.err_code;
-  uint8_t set_policy = HCI_ENABLE_SNIFF_MODE;
 
   APPL_TRACE_DEBUG("%s: peer %s bta_handle:0x%x audio_open_cnt:%d err_code:%d",
                    __func__, p_scb->PeerAddress().ToString().c_str(),
@@ -2587,9 +2558,8 @@ void bta_av_suspend_cfm(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   bta_sys_idle(BTA_ID_AV, bta_av_cb.audio_open_cnt, p_scb->PeerAddress());
   if ((bta_av_cb.features & BTA_AV_FEAT_MASTER) == 0 ||
       bta_av_cb.audio_open_cnt == 1) {
-    set_policy |= HCI_ENABLE_MASTER_SLAVE_SWITCH;
+    BTM_unblock_role_switch_for(p_scb->PeerAddress());
   }
-  bta_sys_set_policy(BTA_ID_AV, set_policy, p_scb->PeerAddress());
 
   /* in case that we received suspend_ind, we may need to call co_stop here */
   if (p_scb->co_started) {
@@ -2721,8 +2691,7 @@ void bta_av_rcfg_connect(tBTA_AV_SCB* p_scb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
     /* let bta_av_rcfg_failed report fail */
     bta_av_rcfg_failed(p_scb, NULL);
   } else {
-    AVDT_ConnectReq(p_scb->PeerAddress(), p_scb->hdi, p_scb->sec_mask,
-                    &bta_av_proc_stream_evt);
+    AVDT_ConnectReq(p_scb->PeerAddress(), p_scb->hdi, &bta_av_proc_stream_evt);
   }
 }
 
@@ -2753,8 +2722,7 @@ void bta_av_rcfg_discntd(tBTA_AV_SCB* p_scb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
     /* report close event & go to init state */
     bta_av_ssm_execute(p_scb, BTA_AV_STR_DISC_FAIL_EVT, NULL);
   } else {
-    AVDT_ConnectReq(p_scb->PeerAddress(), p_scb->hdi, p_scb->sec_mask,
-                    &bta_av_proc_stream_evt);
+    AVDT_ConnectReq(p_scb->PeerAddress(), p_scb->hdi, &bta_av_proc_stream_evt);
   }
 }
 
@@ -3297,8 +3265,7 @@ static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb,
       p_a2dp_offload->sample_rate = BTAV_A2DP_CODEC_SAMPLE_RATE_96000;
       break;
   }
-  if (L2CA_GetIdentifiers(p_scb->l2c_cid, &p_a2dp_offload->l2c_rcid, NULL) ==
-      false) {
+  if (L2CA_GetRemoteCid(p_scb->l2c_cid, &p_a2dp_offload->l2c_rcid) == false) {
     APPL_TRACE_ERROR("%s: Failed to fetch l2c rcid", __func__);
     return;
   }

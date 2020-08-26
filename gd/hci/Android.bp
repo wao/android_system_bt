@@ -10,12 +10,12 @@ filegroup {
         "address.cc",
         "class_of_device.cc",
         "controller.cc",
-        "device.cc",
-        "device_database.cc",
         "hci_layer.cc",
         "le_address_manager.cc",
         "le_advertising_manager.cc",
         "le_scanning_manager.cc",
+        "link_key.cc",
+        "uuid.cc",
     ],
 }
 
@@ -29,14 +29,12 @@ filegroup {
         "address_with_type_test.cc",
         "class_of_device_unittest.cc",
         "controller_test.cc",
-        "device_test.cc",
-        "device_database_test.cc",
-        "dual_device_test.cc",
         "hci_layer_test.cc",
         "hci_packets_test.cc",
         "le_address_manager_test.cc",
         "le_advertising_manager_test.cc",
         "le_scanning_manager_test.cc",
+        "uuid_unittest.cc",
     ],
 }
 

@@ -25,19 +25,56 @@
 namespace bluetooth {
 namespace common {
 
+const std::string kGdHciFlag = "INIT_gd_hci";
+bool InitFlags::gd_hci_enabled = false;
+
+const std::string kGdControllerFlag = "INIT_gd_controller";
+bool InitFlags::gd_controller_enabled = false;
+
 const std::string kGdCoreFlag = "INIT_gd_core";
 bool InitFlags::gd_core_enabled = false;
 
+const std::string kGattRobustCachingFlag = "INIT_gatt_robust_caching";
+bool InitFlags::gatt_robust_caching_enabled = false;
+
 void InitFlags::Load(const char** flags) {
-  gd_core_enabled = false;
+  SetAll(false);
   while (flags != nullptr && *flags != nullptr) {
     if (kGdCoreFlag == *flags) {
       gd_core_enabled = true;
+    } else if (kGdHciFlag == *flags) {
+      gd_hci_enabled = true;
+    } else if (kGdControllerFlag == *flags) {
+      gd_controller_enabled = true;
+    } else if (kGattRobustCachingFlag == *flags) {
+      gatt_robust_caching_enabled = true;
     }
     flags++;
   }
 
-  LOG_INFO("Flags loaded: gd_core_enabled: %s", gd_core_enabled ? "true" : "false");
+  if (gd_core_enabled && !gd_controller_enabled) {
+    gd_controller_enabled = true;
+  }
+  if (gd_controller_enabled && !gd_hci_enabled) {
+    gd_hci_enabled = true;
+  }
+
+  LOG_INFO(
+      "Flags loaded: gd_hci_enabled: %s, gd_controller_enabled: %s, gd_core_enabled: %s",
+      gd_hci_enabled ? "true" : "false",
+      gd_controller_enabled ? "true" : "false",
+      gd_core_enabled ? "true" : "false");
+}
+
+void InitFlags::SetAll(bool value) {
+  gd_core_enabled = value;
+  gd_controller_enabled = value;
+  gd_hci_enabled = value;
+  gatt_robust_caching_enabled = value;
+}
+
+void InitFlags::SetAllForTesting() {
+  SetAll(true);
 }
 
 }  // namespace common

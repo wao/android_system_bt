@@ -637,7 +637,7 @@ TEST_F(HciTest, createConnectionTest) {
   ASSERT_EQ(incoming_acl_status, std::future_status::ready);
   auto acl_view = upper->GetReceivedAcl();
   ASSERT_TRUE(acl_view.IsValid());
-  ASSERT_EQ(sizeof(bd_addr) + sizeof(handle), acl_view.GetPayload().size());
+  ASSERT_EQ(bd_addr.length() + sizeof(handle), acl_view.GetPayload().size());
   auto itr = acl_view.GetPayload().begin();
   ASSERT_EQ(bd_addr, itr.extract<Address>());
   ASSERT_EQ(handle, itr.extract<uint16_t>());
@@ -658,7 +658,7 @@ TEST_F(HciTest, createConnectionTest) {
   ASSERT_LT(0, sent_acl.size());
   AclPacketView sent_acl_view = AclPacketView::Create(sent_acl);
   ASSERT_TRUE(sent_acl_view.IsValid());
-  ASSERT_EQ(sizeof(bd_addr) + sizeof(handle), sent_acl_view.GetPayload().size());
+  ASSERT_EQ(bd_addr.length() + sizeof(handle), sent_acl_view.GetPayload().size());
   auto sent_itr = sent_acl_view.GetPayload().begin();
   ASSERT_EQ(handle, sent_itr.extract<uint16_t>());
   ASSERT_EQ(bd_addr, sent_itr.extract<Address>());
@@ -682,15 +682,18 @@ TEST_F(HciTest, receiveMultipleAclPackets) {
   auto incoming_acl_future = upper->GetReceivedAclFuture();
   uint16_t received_packets = 0;
   while (received_packets < num_packets - 1) {
-    auto incoming_acl_status = incoming_acl_future.wait_for(kAclTimeout);
-    // Get the next future.
-    incoming_acl_future = upper->GetReceivedAclFuture();
-    ASSERT_EQ(incoming_acl_status, std::future_status::ready);
     size_t num_packets = upper->GetNumReceivedAclPackets();
+    if (num_packets == 0) {
+      auto incoming_acl_status = incoming_acl_future.wait_for(kAclTimeout);
+      // Get the next future.
+      ASSERT_EQ(incoming_acl_status, std::future_status::ready);
+      incoming_acl_future = upper->GetReceivedAclFuture();
+      num_packets = upper->GetNumReceivedAclPackets();
+    }
     for (size_t i = 0; i < num_packets; i++) {
       auto acl_view = upper->GetReceivedAcl();
       ASSERT_TRUE(acl_view.IsValid());
-      ASSERT_EQ(sizeof(bd_addr) + sizeof(handle) + sizeof(received_packets), acl_view.GetPayload().size());
+      ASSERT_EQ(bd_addr.length() + sizeof(handle) + sizeof(received_packets), acl_view.GetPayload().size());
       auto itr = acl_view.GetPayload().begin();
       ASSERT_EQ(bd_addr, itr.extract<Address>());
       ASSERT_EQ(handle, itr.extract<uint16_t>());
@@ -717,7 +720,7 @@ TEST_F(HciTest, receiveMultipleAclPackets) {
   ASSERT_EQ(incoming_acl_status, std::future_status::ready);
   auto acl_view = upper->GetReceivedAcl();
   ASSERT_TRUE(acl_view.IsValid());
-  ASSERT_EQ(sizeof(bd_addr) + sizeof(handle) + sizeof(received_packets), acl_view.GetPayload().size());
+  ASSERT_EQ(bd_addr.length() + sizeof(handle) + sizeof(received_packets), acl_view.GetPayload().size());
   auto itr = acl_view.GetPayload().begin();
   ASSERT_EQ(bd_addr, itr.extract<Address>());
   ASSERT_EQ(handle, itr.extract<uint16_t>());

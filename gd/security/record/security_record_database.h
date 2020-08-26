@@ -16,7 +16,11 @@
 
 #pragma once
 
+#include <set>
+
+#include "hci/address_with_type.h"
 #include "security/record/security_record.h"
+#include "security/record/security_record_storage.h"
 
 namespace bluetooth {
 namespace security {
@@ -24,16 +28,20 @@ namespace record {
 
 class SecurityRecordDatabase {
  public:
-  using iterator = std::vector<record::SecurityRecord>::iterator;
+  SecurityRecordDatabase(record::SecurityRecordStorage security_record_storage)
+      : security_record_storage_(security_record_storage) {}
 
-  record::SecurityRecord& FindOrCreate(hci::AddressWithType address) {
+  using iterator = std::set<std::shared_ptr<SecurityRecord>>::iterator;
+
+  std::shared_ptr<SecurityRecord> FindOrCreate(hci::AddressWithType address) {
     auto it = Find(address);
     // Security record check
     if (it != records_.end()) return *it;
 
     // No security record, create one
-    records_.emplace_back(address);
-    return records_.back();
+    auto record_ptr = std::make_shared<SecurityRecord>(address);
+    records_.insert(record_ptr);
+    return record_ptr;
   }
 
   void Remove(const hci::AddressWithType& address) {
@@ -42,22 +50,30 @@ class SecurityRecordDatabase {
     // No record exists
     if (it == records_.end()) return;
 
-    record::SecurityRecord& last = records_.back();
-    *it = std::move(last);
-    records_.pop_back();
+    records_.erase(it);
+    security_record_storage_.RemoveDevice(address);
   }
 
   iterator Find(hci::AddressWithType address) {
     for (auto it = records_.begin(); it != records_.end(); ++it) {
-      record::SecurityRecord& record = *it;
-      if (record.identity_address_.has_value() && record.identity_address_.value() == address) return it;
-      if (record.GetPseudoAddress() == address) return it;
-      if (record.irk.has_value() && address.IsRpaThatMatchesIrk(record.irk.value())) return it;
+      std::shared_ptr<SecurityRecord> record = *it;
+      if (record->identity_address_.has_value() && record->identity_address_.value() == address) return it;
+      if (record->GetPseudoAddress() == address) return it;
+      if (record->irk.has_value() && address.IsRpaThatMatchesIrk(record->irk.value())) return it;
     }
     return records_.end();
   }
 
-  std::vector<record::SecurityRecord> records_;
+  void LoadRecordsFromStorage() {
+    security_record_storage_.LoadSecurityRecords(&records_);
+  }
+
+  void SaveRecordsToStorage() {
+    security_record_storage_.SaveSecurityRecords(&records_);
+  }
+
+  std::set<std::shared_ptr<SecurityRecord>> records_;
+  record::SecurityRecordStorage security_record_storage_;
 };
 
 }  // namespace record

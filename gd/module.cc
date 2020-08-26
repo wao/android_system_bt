@@ -15,7 +15,7 @@
  */
 
 #include "module.h"
-#include "bluetooth/dumpmod.pb.h"
+#include "dumpsys/init_flags.h"
 
 using ::bluetooth::os::Handler;
 using ::bluetooth::os::Thread;
@@ -27,10 +27,6 @@ constexpr std::chrono::milliseconds kModuleStopTimeout = std::chrono::millisecon
 ModuleFactory::ModuleFactory(std::function<Module*()> ctor) : ctor_(ctor) {
 }
 
-std::unique_ptr<google::protobuf::Message> Module::DumpState() const {
-  return nullptr;
-}
-
 std::string Module::ToString() const {
   return "Module";
 }
@@ -38,6 +34,11 @@ std::string Module::ToString() const {
 Handler* Module::GetHandler() const {
   ASSERT_LOG(handler_ != nullptr, "Can't get handler when it's not started");
   return handler_;
+}
+
+DumpsysDataFinisher EmptyDumpsysDataFinisher = [](DumpsysDataBuilder* dumpsys_data_builder) {};
+DumpsysDataFinisher Module::GetDumpsysData(flatbuffers::FlatBufferBuilder* builder) const {
+  return EmptyDumpsysDataFinisher;
 }
 
 const ModuleRegistry* Module::GetModuleRegistry() const {
@@ -126,21 +127,32 @@ os::Handler* ModuleRegistry::GetModuleHandler(const ModuleFactory* module) const
   return nullptr;
 }
 
-void ModuleDumper::DumpState() const {
-  Dumpmod dumpmod;
+void ModuleDumper::DumpState(std::string* output) const {
+  ASSERT(output != nullptr);
 
+  flatbuffers::FlatBufferBuilder builder(1024);
+  auto title = builder.CreateString(title_);
+
+  auto init_flags_offset = dumpsys::InitFlags::Dump(&builder);
+
+  std::queue<DumpsysDataFinisher> queue;
   for (auto it = module_registry_.start_order_.rbegin(); it != module_registry_.start_order_.rend(); it++) {
     auto instance = module_registry_.started_modules_.find(*it);
     ASSERT(instance != module_registry_.started_modules_.end());
-    std::unique_ptr<google::protobuf::Message> message = instance->second->DumpState();
-    if (message == nullptr) {
-      continue;
-    }
-    ModuleDumpState dump_state;
-    dump_state.set_name(instance->second->ToString());
-    dump_state.mutable_data()->PackFrom(*message);
-    dumpmod.mutable_module_dump_states()->insert({dump_state.name(), dump_state});
+    queue.push(instance->second->GetDumpsysData(&builder));
   }
+
+  DumpsysDataBuilder data_builder(builder);
+  data_builder.add_title(title);
+  data_builder.add_init_flags(init_flags_offset);
+
+  while (!queue.empty()) {
+    queue.front()(&data_builder);
+    queue.pop();
+  }
+
+  builder.Finish(data_builder.Finish());
+  *output = std::string(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
 }
 
 }  // namespace bluetooth

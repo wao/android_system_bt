@@ -57,8 +57,9 @@ from l2cap.classic import facade_pb2_grpc as l2cap_facade_pb2_grpc
 from l2cap.le import facade_pb2_grpc as l2cap_le_facade_pb2_grpc
 from neighbor.facade import facade_pb2_grpc as neighbor_facade_pb2_grpc
 from security import facade_pb2_grpc as security_facade_pb2_grpc
+from shim.facade import facade_pb2_grpc as shim_facade_pb2_grpc
 
-ACTS_CONTROLLER_CONFIG_NAME = "GdDevice"
+MOBLY_CONTROLLER_CONFIG_NAME = "GdDevice"
 ACTS_CONTROLLER_REFERENCE_NAME = "gd_devices"
 
 
@@ -93,11 +94,11 @@ def get_instances_with_configs(configs):
         verbose_mode = bool(config.get('verbose_mode', False))
         if config.get("serial_number"):
             device = GdAndroidDevice(config["grpc_port"], config["grpc_root_server_port"], config["signal_port"],
-                                     resolved_cmd, config["label"], ACTS_CONTROLLER_CONFIG_NAME, config["name"],
+                                     resolved_cmd, config["label"], MOBLY_CONTROLLER_CONFIG_NAME, config["name"],
                                      config["serial_number"], verbose_mode)
         else:
             device = GdHostOnlyDevice(config["grpc_port"], config["grpc_root_server_port"], config["signal_port"],
-                                      resolved_cmd, config["label"], ACTS_CONTROLLER_CONFIG_NAME, config["name"],
+                                      resolved_cmd, config["label"], MOBLY_CONTROLLER_CONFIG_NAME, config["name"],
                                       verbose_mode)
         device.setup()
         devices.append(device)
@@ -167,6 +168,8 @@ class GdDeviceBase(ABC):
                                                      '%s_%s_backing_logs.txt' % (self.type_identifier, self.label))
         if "--btsnoop=" not in " ".join(cmd):
             cmd.append("--btsnoop=%s" % os.path.join(self.log_path_base, '%s_btsnoop_hci.log' % self.label))
+        if "--btconfig=" not in " ".join(cmd):
+            cmd.append("--btconfig=%s" % os.path.join(self.log_path_base, '%s_bt_config.conf' % self.label))
         self.cmd = cmd
         self.environment = os.environ.copy()
         if "cert" in self.label:
@@ -190,6 +193,7 @@ class GdDeviceBase(ABC):
             signal_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             signal_socket.bind(("localhost", self.signal_port))
             signal_socket.listen(1)
+            signal_socket.settimeout(300)  # 5 minute timeout for blocking socket operations
 
             # Start backing process
             logging.debug("Running %s" % " ".join(self.cmd))
@@ -206,6 +210,7 @@ class GdDeviceBase(ABC):
                 msg="backing_process stopped immediately after running " + " ".join(self.cmd))
 
             # Wait for process to be ready
+            logging.debug("Waiting for backing_process accept.")
             signal_socket.accept()
 
         self.backing_process_logger = AsyncSubprocessLogger(
@@ -241,6 +246,7 @@ class GdDeviceBase(ABC):
             self.grpc_channel)
         self.neighbor = neighbor_facade_pb2_grpc.NeighborFacadeStub(self.grpc_channel)
         self.security = security_facade_pb2_grpc.SecurityModuleFacadeStub(self.grpc_channel)
+        self.shim = shim_facade_pb2_grpc.ShimFacadeStub(self.grpc_channel)
 
     def get_crash_snippet_and_log_tail(self):
         if is_subprocess_alive(self.backing_process):
@@ -288,7 +294,7 @@ class GdHostOnlyDevice(GdDeviceBase):
 
     def __init__(self, grpc_port: str, grpc_root_server_port: str, signal_port: str, cmd: List[str], label: str,
                  type_identifier: str, name: str, verbose_mode: bool):
-        super().__init__(grpc_port, grpc_root_server_port, signal_port, cmd, label, ACTS_CONTROLLER_CONFIG_NAME, name,
+        super().__init__(grpc_port, grpc_root_server_port, signal_port, cmd, label, MOBLY_CONTROLLER_CONFIG_NAME, name,
                          verbose_mode)
         # Enable LLVM code coverage output for host only tests
         self.backing_process_profraw_path = pathlib.Path(self.log_path_base).joinpath(

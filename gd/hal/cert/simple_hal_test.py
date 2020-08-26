@@ -25,6 +25,8 @@ from hal import facade_pb2 as hal_facade_pb2
 from bluetooth_packets_python3 import hci_packets
 import bluetooth_packets_python3 as bt_packets
 
+_GRPC_TIMEOUT = 10
+
 
 class SimpleHalTest(GdBaseTestClass):
 
@@ -38,7 +40,9 @@ class SimpleHalTest(GdBaseTestClass):
         self.send_cert_hci_command(hci_packets.ResetBuilder())
 
     def send_cert_hci_command(self, command):
-        self.cert.hal.SendHciCommand(hal_facade_pb2.HciCommandPacket(payload=bytes(command.Serialize())))
+        self.cert.hal.SendHciCommand(
+            hal_facade_pb2.HciCommandPacket(payload=bytes(command.Serialize())),
+            timeout=_GRPC_TIMEOUT)
 
     def send_cert_acl_data(self, handle, pb_flag, b_flag, acl):
         lower = handle & 0xff
@@ -51,7 +55,9 @@ class SimpleHalTest(GdBaseTestClass):
         self.cert.hal.SendHciAcl(hal_facade_pb2.HciAclPacket(payload=concatenated))
 
     def send_dut_hci_command(self, command):
-        self.dut.hal.SendHciCommand(hal_facade_pb2.HciCommandPacket(payload=bytes(command.Serialize())))
+        self.dut.hal.SendHciCommand(
+            hal_facade_pb2.HciCommandPacket(payload=bytes(command.Serialize())),
+            timeout=_GRPC_TIMEOUT)
 
     def send_dut_acl_data(self, handle, pb_flag, b_flag, acl):
         lower = handle & 0xff
@@ -61,7 +67,9 @@ class SimpleHalTest(GdBaseTestClass):
         lower_length = len(acl) & 0xff
         upper_length = (len(acl) & 0xff00) >> 8
         concatenated = bytes([lower, upper, lower_length, upper_length] + list(acl))
-        self.dut.hal.SendHciAcl(hal_facade_pb2.HciAclPacket(payload=concatenated))
+        self.dut.hal.SendHciAcl(
+            hal_facade_pb2.HciAclPacket(payload=concatenated),
+            timeout=_GRPC_TIMEOUT)
 
     def test_none_event(self):
         with EventStream(self.dut.hal.FetchHciEvent(empty_pb2.Empty())) as hci_event_stream:
@@ -71,8 +79,9 @@ class SimpleHalTest(GdBaseTestClass):
         with EventStream(self.dut.hal.FetchHciEvent(empty_pb2.Empty())) as hci_event_stream:
 
             self.send_dut_hci_command(
-                hci_packets.LeAddDeviceToWhiteListBuilder(hci_packets.WhiteListAddressType.RANDOM, '0C:05:04:03:02:01'))
-            event = hci_packets.LeAddDeviceToWhiteListCompleteBuilder(1, hci_packets.ErrorCode.SUCCESS)
+                hci_packets.LeAddDeviceToConnectListBuilder(hci_packets.ConnectListAddressType.RANDOM,
+                                                            '0C:05:04:03:02:01'))
+            event = hci_packets.LeAddDeviceToConnectListCompleteBuilder(1, hci_packets.ErrorCode.SUCCESS)
 
             assertThat(hci_event_stream).emits(lambda packet: bytes(event.Serialize()) in packet.payload)
 
@@ -81,8 +90,8 @@ class SimpleHalTest(GdBaseTestClass):
 
             self.send_dut_hci_command(hci_packets.WriteLoopbackModeBuilder(hci_packets.LoopbackMode.ENABLE_LOCAL))
 
-            command = hci_packets.LeAddDeviceToWhiteListBuilder(hci_packets.WhiteListAddressType.RANDOM,
-                                                                '0C:05:04:03:02:01')
+            command = hci_packets.LeAddDeviceToConnectListBuilder(hci_packets.ConnectListAddressType.RANDOM,
+                                                                  '0C:05:04:03:02:01')
             self.send_dut_hci_command(command)
 
             assertThat(hci_event_stream).emits(lambda packet: bytes(command.Serialize()) in packet.payload)
@@ -110,8 +119,8 @@ class SimpleHalTest(GdBaseTestClass):
             phy_scan_params.le_scan_type = hci_packets.LeScanType.ACTIVE
 
             self.send_dut_hci_command(
-                hci_packets.LeSetExtendedScanParametersBuilder(hci_packets.AddressType.RANDOM_DEVICE_ADDRESS,
-                                                               hci_packets.LeSetScanningFilterPolicy.ACCEPT_ALL, 1,
+                hci_packets.LeSetExtendedScanParametersBuilder(hci_packets.OwnAddressType.RANDOM_DEVICE_ADDRESS,
+                                                               hci_packets.LeScanningFilterPolicy.ACCEPT_ALL, 1,
                                                                [phy_scan_params]))
             self.send_dut_hci_command(
                 hci_packets.LeSetExtendedScanEnableBuilder(hci_packets.Enable.ENABLED,
@@ -140,7 +149,7 @@ class SimpleHalTest(GdBaseTestClass):
 
             gap_name = hci_packets.GapData()
             gap_name.data_type = hci_packets.GapDataType.COMPLETE_LOCAL_NAME
-            gap_name.data = list(bytes(b'Im_A_Cert!'))  # TODO: Fix and remove !
+            gap_name.data = list(bytes(b'Im_A_Cert'))
 
             self.send_cert_hci_command(
                 hci_packets.LeSetExtendedAdvertisingDataBuilder(
@@ -210,7 +219,7 @@ class SimpleHalTest(GdBaseTestClass):
 
             gap_name = hci_packets.GapData()
             gap_name.data_type = hci_packets.GapDataType.COMPLETE_LOCAL_NAME
-            gap_name.data = list(bytes(b'Im_The_DUT!'))  # TODO: Fix and remove !
+            gap_name.data = list(bytes(b'Im_The_DUT'))
 
             self.send_dut_hci_command(
                 hci_packets.LeSetExtendedAdvertisingDataBuilder(
@@ -261,14 +270,15 @@ class SimpleHalTest(GdBaseTestClass):
             assertThat(cert_acl_data_stream).emits(lambda packet: b'SomeAclData' in packet.payload)
             assertThat(acl_data_stream).emits(lambda packet: b'SomeMoreAclData' in packet.payload)
 
-    def test_le_white_list_connection_cert_advertises(self):
+    def test_le_connect_list_connection_cert_advertises(self):
         with EventStream(self.dut.hal.FetchHciEvent(empty_pb2.Empty())) as hci_event_stream, \
             EventStream(self.cert.hal.FetchHciEvent(empty_pb2.Empty())) as cert_hci_event_stream:
 
             # DUT Connects
             self.send_dut_hci_command(hci_packets.LeSetRandomAddressBuilder('0D:05:04:03:02:01'))
             self.send_dut_hci_command(
-                hci_packets.LeAddDeviceToWhiteListBuilder(hci_packets.WhiteListAddressType.RANDOM, '0C:05:04:03:02:01'))
+                hci_packets.LeAddDeviceToConnectListBuilder(hci_packets.ConnectListAddressType.RANDOM,
+                                                            '0C:05:04:03:02:01'))
             phy_scan_params = hci_packets.LeCreateConnPhyScanParameters()
             phy_scan_params.scan_interval = 0x60
             phy_scan_params.scan_window = 0x30
@@ -279,9 +289,10 @@ class SimpleHalTest(GdBaseTestClass):
             phy_scan_params.min_ce_length = 0
             phy_scan_params.max_ce_length = 0
             self.send_dut_hci_command(
-                hci_packets.LeExtendedCreateConnectionBuilder(
-                    hci_packets.InitiatorFilterPolicy.USE_WHITE_LIST, hci_packets.OwnAddressType.RANDOM_DEVICE_ADDRESS,
-                    hci_packets.AddressType.RANDOM_DEVICE_ADDRESS, 'BA:D5:A4:A3:A2:A1', 1, [phy_scan_params]))
+                hci_packets.LeExtendedCreateConnectionBuilder(hci_packets.InitiatorFilterPolicy.USE_CONNECT_LIST,
+                                                              hci_packets.OwnAddressType.RANDOM_DEVICE_ADDRESS,
+                                                              hci_packets.AddressType.RANDOM_DEVICE_ADDRESS,
+                                                              'BA:D5:A4:A3:A2:A1', 1, [phy_scan_params]))
 
             # CERT Advertises
             advertising_handle = 1
@@ -306,7 +317,7 @@ class SimpleHalTest(GdBaseTestClass):
 
             gap_name = hci_packets.GapData()
             gap_name.data_type = hci_packets.GapDataType.COMPLETE_LOCAL_NAME
-            gap_name.data = list(bytes(b'Im_A_Cert!'))  # TODO: Fix and remove !
+            gap_name.data = list(bytes(b'Im_A_Cert'))
 
             self.send_cert_hci_command(
                 hci_packets.LeSetExtendedAdvertisingDataBuilder(

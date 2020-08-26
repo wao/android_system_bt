@@ -102,7 +102,7 @@ class CertSecurity(PySecurity):
         logging.info("Cert: Creating bond to '%s' from '%s'" % (str(address), str(self._device.address)))
         # TODO(optedoblivion): Trigger connection to Send AuthenticationRequested
 
-    def remove_bond(self, address):
+    def remove_bond(self, address, type):
         """
             We store the link key locally in the test and pretend
             So to remove_bond we need to Remove the "stored" data
@@ -113,14 +113,16 @@ class CertSecurity(PySecurity):
         """
             Set the IO Capabilities used for the cert
         """
-        logging.info("Cert: setting IO Capabilities data to '%s'" % io_capabilities)
-        self._io_caps = self._io_cap_lookup.get(io_capabilities, hci_packets.IoCapability.DISPLAY_YES_NO)
+        logging.info("Cert: setting IO Capabilities data to '%s'" % self._io_capabilities_name_lookup.get(
+            io_capabilities, "ERROR"))
+        self._io_caps = self._io_cap_lookup.get(io_capabilities, hci_packets.IoCapability.DISPLAY_ONLY)
 
     def set_authentication_requirements(self, auth_reqs):
         """
             Establish authentication requirements for the stack
         """
-        logging.info("Cert: setting Authentication Requirements data to '%s'" % auth_reqs)
+        logging.info("Cert: setting Authentication Requirements data to '%s'" % self._auth_reqs_name_lookup.get(
+            auth_reqs, "ERROR"))
         self._auth_reqs = self._auth_req_lookup.get(auth_reqs, hci_packets.AuthenticationRequirements.GENERAL_BONDING)
 
     def set_oob_data(self, data):
@@ -166,10 +168,10 @@ class CertSecurity(PySecurity):
         if reply_boolean:
             logging.info("Cert: Sending USER_CONFIRMATION_REQUEST_REPLY")
             self._enqueue_hci_command(hci_packets.UserConfirmationRequestReplyBuilder(dut_address.decode('utf8')), True)
-            logging.info("Cert: Waiting for LINK_KEY_NOTIFICATION")
-            assertThat(self._hci_event_stream).emits(HciMatchers.LinkKeyNotification())
             logging.info("Cert: Waiting for SIMPLE_PAIRING_COMPLETE")
             assertThat(self._hci_event_stream).emits(HciMatchers.SimplePairingComplete())
+            logging.info("Cert: Waiting for LINK_KEY_NOTIFICATION")
+            assertThat(self._hci_event_stream).emits(HciMatchers.LinkKeyNotification())
         else:
             logging.info("Cert: Sending USER_CONFIRMATION_REQUEST_NEGATIVE_REPLY")
             self._enqueue_hci_command(
@@ -197,6 +199,19 @@ class CertSecurity(PySecurity):
             Pass for now
         """
         pass
+
+    def wait_for_enforce_security_event(self, expected_enforce_security_event):
+        """
+            Cert side needs to pass
+        """
+        pass
+
+    def wait_for_disconnect_event(self):
+        """
+            Cert side needs to pass
+        """
+        logging.info("Cert: Waiting for DISCONNECT_COMPLETE")
+        assertThat(self._hci_event_stream).emits(HciMatchers.DisconnectionComplete())
 
     def close(self):
         safeClose(self._hci)
