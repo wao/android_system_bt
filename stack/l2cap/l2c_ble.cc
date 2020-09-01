@@ -26,7 +26,6 @@
 #include <base/strings/stringprintf.h>
 #include "bt_target.h"
 #include "bta_hearing_aid_api.h"
-#include "btm_int.h"
 #include "device/include/controller.h"
 #include "hcimsgs.h"
 #include "l2c_api.h"
@@ -331,6 +330,13 @@ void l2cble_conn_comp(uint16_t handle, uint8_t role, const RawAddress& bda,
       l2cu_process_fixed_chnl_resp(p_lcb);
     }
   }
+}
+
+void l2cble_conn_comp_from_address_with_type(
+    uint16_t handle, uint8_t role, const tBLE_BD_ADDR& address_with_type,
+    uint16_t conn_interval, uint16_t conn_latency, uint16_t conn_timeout) {
+  l2cble_conn_comp(handle, role, address_with_type.bda, address_with_type.type,
+                   conn_interval, conn_latency, conn_timeout);
 }
 
 /*******************************************************************************

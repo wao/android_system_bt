@@ -125,7 +125,6 @@ void l2c_link_hci_conn_comp(uint8_t status, uint16_t handle,
   tL2C_CONN_INFO ci;
   tL2C_LCB* p_lcb;
   tL2C_CCB* p_ccb;
-  tBTM_SEC_DEV_REC* p_dev_info = NULL;
 
   /* Save the parameters */
   ci.status = status;
@@ -170,13 +169,7 @@ void l2c_link_hci_conn_comp(uint8_t status, uint16_t handle,
     l2cu_send_peer_info_req(p_lcb, L2CAP_EXTENDED_FEATURES_INFO_TYPE);
 
     /* Tell BTM Acl management about the link */
-    p_dev_info = btm_find_dev(p_bda);
-    if (p_dev_info != NULL)
-      btm_acl_created(ci.bd_addr, handle, p_lcb->LinkRole(),
-                      BT_TRANSPORT_BR_EDR);
-    else
-      btm_acl_created(ci.bd_addr, handle, p_lcb->LinkRole(),
-                      BT_TRANSPORT_BR_EDR);
+    btm_acl_created(ci.bd_addr, handle, p_lcb->LinkRole(), BT_TRANSPORT_BR_EDR);
 
     BTM_SetLinkSuperTout(ci.bd_addr, acl_get_link_supervision_timeout());
 
@@ -1156,13 +1149,6 @@ void l2c_link_process_num_completed_pkts(uint8_t* p, uint8_t evt_len) {
     STREAM_TO_UINT16(num_sent, p);
 
     p_lcb = l2cu_find_lcb_by_handle(handle);
-
-    /* Callback for number of completed packet event    */
-    /* Originally designed for [3DSG]                   */
-    if ((p_lcb != NULL) && (p_lcb->p_nocp_cb)) {
-      L2CAP_TRACE_DEBUG("L2CAP - calling NoCP callback");
-      (*p_lcb->p_nocp_cb)(p_lcb->remote_bd_addr);
-    }
 
     if (p_lcb) {
       if (p_lcb && (p_lcb->transport == BT_TRANSPORT_LE))

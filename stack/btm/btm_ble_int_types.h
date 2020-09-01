@@ -86,9 +86,6 @@ typedef uint8_t tBTM_BLE_SEC_REQ_ACT;
 #define BTM_BLE_IS_INQ_ACTIVE(x) ((x)&BTM_BLE_INQUIRY_MASK)
 #define BTM_BLE_IS_OBS_ACTIVE(x) ((x)&BTM_LE_OBSERVE_ACTIVE)
 
-/* BLE ADDR type ID bit */
-#define BLE_ADDR_TYPE_ID_BIT 0x02
-
 #define BTM_VSC_CHIP_CAPABILITY_L_VERSION 55
 #define BTM_VSC_CHIP_CAPABILITY_M_VERSION 95
 
@@ -170,10 +167,11 @@ constexpr uint8_t BTM_BLE_WL_INIT = 1;
 typedef uint8_t tBTM_BLE_RL_STATE;
 
 /* BLE connection state */
-#define BLE_CONN_IDLE 0
-#define BLE_CONNECTING 2
-#define BLE_CONN_CANCEL 3
-typedef uint8_t tBTM_BLE_CONN_ST;
+typedef enum : uint8_t {
+  BLE_CONN_IDLE = 0,
+  BLE_CONNECTING = 2,
+  BLE_CONN_CANCEL = 3,
+} tBTM_BLE_CONN_ST;
 
 typedef struct { void* p_param; } tBTM_BLE_CONN_REQ;
 

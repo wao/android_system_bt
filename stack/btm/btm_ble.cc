@@ -25,30 +25,25 @@
 
 #define LOG_TAG "bt_btm_ble"
 
-#include "bt_target.h"
+#include <cstdint>
 
-#include <base/bind.h>
-#include <string.h>
-
-#include "bt_types.h"
-#include "bt_utils.h"
-#include "btm_ble_api.h"
-#include "btm_int.h"
-#include "btu.h"
 #include "device/include/controller.h"
-#include "gap_api.h"
-#include "gatt_api.h"
-#include "hcimsgs.h"
-#include "log/log.h"
 #include "main/shim/btm_api.h"
 #include "main/shim/shim.h"
-#include "osi/include/log.h"
-#include "osi/include/osi.h"
 #include "stack/btm/btm_dev.h"
-#include "stack/btm/btm_sec.h"
+#include "stack/btm/btm_int_types.h"
+#include "stack/btm/security_device_record.h"
 #include "stack/crypto_toolbox/crypto_toolbox.h"
 #include "stack/include/acl_api.h"
+#include "stack/include/bt_types.h"
+#include "stack/include/btm_api.h"
+#include "stack/include/btu.h"
+#include "stack/include/gatt_api.h"
 #include "stack/include/l2cap_security_interface.h"
+#include "stack/include/smp_api.h"
+#include "types/raw_address.h"
+
+extern tBTM_CB btm_cb;
 
 extern void gatt_notify_phy_updated(uint8_t status, uint16_t handle,
                                     uint8_t tx_phy, uint8_t rx_phy);
@@ -1725,54 +1720,49 @@ uint8_t btm_ble_br_keys_req(tBTM_SEC_DEV_REC* p_dev_rec,
  ******************************************************************************/
 void btm_ble_connected(const RawAddress& bda, uint16_t handle, uint8_t enc_mode,
                        uint8_t role, tBLE_ADDR_TYPE addr_type,
-                       UNUSED_ATTR bool addr_matched) {
+                       bool addr_matched) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bda);
-  tBTM_BLE_CB* p_cb = &btm_cb.ble_ctr_cb;
-
-  BTM_TRACE_EVENT("btm_ble_connected");
-
-  /* Commenting out trace due to obf/compilation problems.
-  */
-  if (p_dev_rec) {
+  if (!p_dev_rec) {
+    VLOG(1) << __func__ << " Security Manager: handle:" << handle
+            << " enc_mode:" << loghex(enc_mode) << "  bda: " << bda
+            << " p_dev_rec:" << p_dev_rec;
+    /* There is no device record for new connection.  Allocate one */
+    p_dev_rec = btm_sec_alloc_dev(bda);
+    if (p_dev_rec == nullptr) {
+      LOG_WARN("%s Unable to create ble connection", __func__);
+      return;
+    }
+  } else /* Update the timestamp for this device */
+  {
     VLOG(1) << __func__ << " Security Manager: handle:" << handle
             << " enc_mode:" << loghex(enc_mode) << "  bda: " << bda
             << " RName: " << p_dev_rec->sec_bd_name
             << " p_dev_rec:" << p_dev_rec;
 
     BTM_TRACE_DEBUG("btm_ble_connected sec_flags=0x%x", p_dev_rec->sec_flags);
-  } else {
-    VLOG(1) << __func__ << " Security Manager: handle:" << handle
-            << " enc_mode:" << loghex(enc_mode) << "  bda: " << bda
-            << " p_dev_rec:" << p_dev_rec;
-  }
-
-  if (!p_dev_rec) {
-    /* There is no device record for new connection.  Allocate one */
-    p_dev_rec = btm_sec_alloc_dev(bda);
-    if (p_dev_rec == NULL) return;
-  } else /* Update the timestamp for this device */
-  {
     p_dev_rec->timestamp = btm_cb.dev_rec_count++;
   }
 
-  /* update device information */
-  p_dev_rec->device_type |= BT_DEVICE_TYPE_BLE;
-  p_dev_rec->ble_hci_handle = handle;
   p_dev_rec->ble.ble_addr_type = addr_type;
-  /* update pseudo address */
   p_dev_rec->ble.pseudo_addr = bda;
+  p_dev_rec->ble_hci_handle = handle;
+  p_dev_rec->device_type |= BT_DEVICE_TYPE_BLE;
+  p_dev_rec->role_master = (role == HCI_ROLE_MASTER) ? true : false;
 
-  p_dev_rec->role_master = false;
-  if (role == HCI_ROLE_MASTER) p_dev_rec->role_master = true;
-
-  if (!addr_matched) p_dev_rec->ble.active_addr_type = BTM_BLE_ADDR_PSEUDO;
-
-  if (p_dev_rec->ble.ble_addr_type == BLE_ADDR_RANDOM && !addr_matched)
+  if (!addr_matched) {
+    p_dev_rec->ble.active_addr_type = BTM_BLE_ADDR_PSEUDO;
+  }
+  if (!addr_matched && p_dev_rec->ble.ble_addr_type == BLE_ADDR_RANDOM) {
     p_dev_rec->ble.cur_rand_addr = bda;
+  }
+  btm_cb.ble_ctr_cb.inq_var.directed_conn = BTM_BLE_CONNECT_EVT;
+}
 
-  p_cb->inq_var.directed_conn = BTM_BLE_CONNECT_EVT;
-
-  return;
+void btm_ble_connected_from_address_with_type(
+    const tBLE_BD_ADDR& address_with_type, uint16_t handle, uint8_t enc_mode,
+    uint8_t role, bool addr_matched) {
+  btm_ble_connected(address_with_type.bda, handle, enc_mode, role,
+                    address_with_type.type, addr_matched);
 }
 
 /*****************************************************************************

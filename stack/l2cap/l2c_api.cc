@@ -450,11 +450,13 @@ uint16_t L2CA_ErtmConnectReq(uint16_t psm, const RawAddress& p_bd_addr,
  *                  and L2CA_DeregisterLECoc()
  *
  ******************************************************************************/
-uint16_t L2CA_RegisterLECoc(uint16_t psm, tL2CAP_APPL_INFO* p_cb_info) {
+uint16_t L2CA_RegisterLECoc(uint16_t psm, tL2CAP_APPL_INFO* p_cb_info,
+                            uint16_t sec_level) {
   if (bluetooth::shim::is_gd_shim_enabled()) {
     return bluetooth::shim::L2CA_RegisterLECoc(psm, p_cb_info);
   }
 
+  BTM_SetSecurityLevel(false, "", 0, sec_level, psm, 0, 0);
   L2CAP_TRACE_API("%s called for LE PSM: 0x%04x", __func__, psm);
 
   /* Verify that the required callback info has been filled in
@@ -568,10 +570,12 @@ void L2CA_DeregisterLECoc(uint16_t psm) {
  *
  ******************************************************************************/
 uint16_t L2CA_ConnectLECocReq(uint16_t psm, const RawAddress& p_bd_addr,
-                              tL2CAP_LE_CFG_INFO* p_cfg) {
+                              tL2CAP_LE_CFG_INFO* p_cfg, uint16_t sec_level) {
   if (bluetooth::shim::is_gd_shim_enabled()) {
     return bluetooth::shim::L2CA_ConnectLECocReq(psm, p_bd_addr, p_cfg);
   }
+
+  BTM_SetSecurityLevel(true, "", 0, sec_level, psm, 0, 0);
 
   VLOG(1) << __func__ << " BDA: " << p_bd_addr
           << StringPrintf(" PSM: 0x%04x", psm);
@@ -1023,55 +1027,6 @@ bool L2CA_GetRemoteCid(uint16_t lcid, uint16_t* rcid) {
   if (rcid) *rcid = control_block->remote_cid;
 
   return true;
-}
-
-/*******************************************************************************
- *
- * Function         L2CA_SetIdleTimeout
- *
- * Description      Higher layers call this function to set the idle timeout for
- *                  a connection, or for all future connections. The "idle
- *                  timeout" is the amount of time that a connection can remain
- *                  up with no L2CAP channels on it. A timeout of zero means
- *                  that the connection will be torn down immediately when the
- *                  last channel is removed. A timeout of 0xFFFF means no
- *                  timeout. Values are in seconds.
- *
- * Returns          true if command succeeded, false if failed
- *
- * NOTE             This timeout takes effect after at least 1 channel has been
- *                  established and removed. L2CAP maintains its own timer from
- *                  whan a connection is established till the first channel is
- *                  set up.
- ******************************************************************************/
-bool L2CA_SetIdleTimeout(uint16_t cid, uint16_t timeout, bool is_global) {
-  if (bluetooth::shim::is_gd_shim_enabled()) {
-    return bluetooth::shim::L2CA_SetIdleTimeout(cid, timeout, is_global);
-  }
-
-  tL2C_CCB* p_ccb;
-  tL2C_LCB* p_lcb;
-
-  if (is_global) {
-    l2cb.idle_timeout = timeout;
-  } else {
-    /* Find the channel control block. We don't know the link it is on. */
-    p_ccb = l2cu_find_ccb_by_cid(NULL, cid);
-    if (p_ccb == NULL) {
-      L2CAP_TRACE_WARNING("L2CAP - no CCB for L2CA_SetIdleTimeout, CID: %d",
-                          cid);
-      return (false);
-    }
-
-    p_lcb = p_ccb->p_lcb;
-
-    if ((p_lcb) && (p_lcb->in_use) && (p_lcb->link_state == LST_CONNECTED))
-      p_lcb->idle_timeout = timeout;
-    else
-      return (false);
-  }
-
-  return (true);
 }
 
 /*******************************************************************************
