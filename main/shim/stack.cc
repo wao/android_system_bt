@@ -40,6 +40,7 @@
 #include "gd/storage/storage_module.h"
 
 #include "main/shim/hci_layer.h"
+#include "main/shim/le_advertising_manager.h"
 #include "main/shim/stack.h"
 
 namespace bluetooth {
@@ -79,9 +80,14 @@ void Stack::StartEverything() {
   if (common::InitFlags::GdAclEnabled()) {
     modules.add<hci::AclManager>();
   }
+  if (common::InitFlags::GdSecurityEnabled()) {
+    modules.add<security::SecurityModule>();
+  }
+  if (common::InitFlags::GdAdvertisingEnabled()) {
+    modules.add<hci::LeAdvertisingManager>();
+  }
   if (common::InitFlags::GdCoreEnabled()) {
     modules.add<att::AttModule>();
-    modules.add<hci::LeAdvertisingManager>();
     modules.add<hci::LeScanningManager>();
     modules.add<l2cap::classic::L2capClassicModule>();
     modules.add<l2cap::le::L2capLeModule>();
@@ -92,7 +98,6 @@ void Stack::StartEverything() {
     modules.add<neighbor::NameDbModule>();
     modules.add<neighbor::PageModule>();
     modules.add<neighbor::ScanModule>();
-    modules.add<security::SecurityModule>();
     modules.add<storage::StorageModule>();
     modules.add<shim::L2cap>();
   }
@@ -105,9 +110,18 @@ void Stack::StartEverything() {
     btm_ = new Btm(stack_handler_,
                    stack_manager_.GetInstance<neighbor::InquiryModule>());
   }
+  if (common::InitFlags::GdAclEnabled()) {
+    if (!common::InitFlags::GdCoreEnabled()) {
+      acl_ = new legacy::Acl(stack_handler_);
+    }
+  }
   is_running_ = true;
   if (!common::InitFlags::GdCoreEnabled()) {
     bluetooth::shim::hci_on_reset_complete();
+  }
+
+  if (common::InitFlags::GdAdvertisingEnabled()) {
+    bluetooth::shim::init_advertising_manager();
   }
 }
 
@@ -131,6 +145,9 @@ void Stack::Stop() {
   }
   ASSERT_LOG(is_running_, "%s Gd stack not running", __func__);
   is_running_ = false;
+
+  delete acl_;
+  acl_ = nullptr;
 
   delete btm_;
   btm_ = nullptr;
@@ -158,6 +175,12 @@ StackManager* Stack::GetStackManager() {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   ASSERT(is_running_);
   return &stack_manager_;
+}
+
+legacy::Acl* Stack::GetAcl() {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  ASSERT(is_running_);
+  return acl_;
 }
 
 Btm* Stack::GetBtm() {

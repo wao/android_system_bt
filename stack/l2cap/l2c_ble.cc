@@ -42,6 +42,11 @@
 
 using base::StringPrintf;
 
+tL2CAP_LE_RESULT_CODE btm_ble_start_sec_check(const RawAddress& bd_addr,
+                                              uint16_t psm, bool is_originator,
+                                              tBTM_SEC_CALLBACK* p_callback,
+                                              void* p_ref_data);
+
 static void l2cble_start_conn_update(tL2C_LCB* p_lcb);
 
 /*******************************************************************************
@@ -587,7 +592,7 @@ void l2cble_process_sig_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
       if (p_ccb) {
         L2CAP_TRACE_WARNING("L2CAP - rcvd conn req for duplicated cid: 0x%04x",
                             rcid);
-        l2cu_reject_ble_connection(
+        l2cu_reject_ble_coc_connection(
             p_lcb, id, L2CAP_LE_RESULT_SOURCE_CID_ALREADY_ALLOCATED);
         break;
       }
@@ -596,14 +601,14 @@ void l2cble_process_sig_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
       if (p_rcb == NULL) {
         L2CAP_TRACE_WARNING("L2CAP - rcvd conn req for unknown PSM: 0x%04x",
                             con_info.psm);
-        l2cu_reject_ble_connection(p_lcb, id, L2CAP_LE_RESULT_NO_PSM);
+        l2cu_reject_ble_coc_connection(p_lcb, id, L2CAP_LE_RESULT_NO_PSM);
         break;
       } else {
         if (!p_rcb->api.pL2CA_ConnectInd_Cb) {
           L2CAP_TRACE_WARNING(
               "L2CAP - rcvd conn req for outgoing-only connection PSM: %d",
               con_info.psm);
-          l2cu_reject_ble_connection(p_lcb, id, L2CAP_CONN_NO_PSM);
+          l2cu_reject_ble_coc_connection(p_lcb, id, L2CAP_CONN_NO_PSM);
           break;
         }
       }
@@ -612,7 +617,7 @@ void l2cble_process_sig_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
       p_ccb = l2cu_allocate_ccb(p_lcb, 0);
       if (p_ccb == NULL) {
         L2CAP_TRACE_ERROR("L2CAP - unable to allocate CCB");
-        l2cu_reject_ble_connection(p_lcb, id, L2CAP_CONN_NO_RESOURCES);
+        l2cu_reject_ble_connection(p_ccb, id, L2CAP_CONN_NO_RESOURCES);
         break;
       }
 
@@ -620,7 +625,7 @@ void l2cble_process_sig_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
       if (mtu < L2CAP_LE_MIN_MTU || mps < L2CAP_LE_MIN_MPS ||
           mps > L2CAP_LE_MAX_MPS) {
         L2CAP_TRACE_ERROR("L2CAP don't like the params");
-        l2cu_reject_ble_connection(p_lcb, id, L2CAP_CONN_NO_RESOURCES);
+        l2cu_reject_ble_connection(p_ccb, id, L2CAP_CONN_NO_RESOURCES);
         break;
       }
 

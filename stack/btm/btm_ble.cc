@@ -45,6 +45,8 @@
 
 extern tBTM_CB btm_cb;
 
+extern bool btm_ble_init_pseudo_addr(tBTM_SEC_DEV_REC* p_dev_rec,
+                                     const RawAddress& new_pseudo_addr);
 extern void gatt_notify_phy_updated(uint8_t status, uint16_t handle,
                                     uint8_t tx_phy, uint8_t rx_phy);
 
@@ -1178,8 +1180,10 @@ void btm_sec_save_le_key(const RawAddress& bd_addr, tBTM_LE_KEY_TYPE key_type,
 
       case BTM_LE_KEY_PID:
         p_rec->ble.keys.irk = p_keys->pid_key.irk;
-        p_rec->ble.identity_addr = p_keys->pid_key.identity_addr;
-        p_rec->ble.identity_addr_type = p_keys->pid_key.identity_addr_type;
+        p_rec->ble.identity_address_with_type.bda =
+            p_keys->pid_key.identity_addr;
+        p_rec->ble.identity_address_with_type.type =
+            p_keys->pid_key.identity_addr_type;
         p_rec->ble.key_type |= BTM_LE_KEY_PID;
         BTM_TRACE_DEBUG(
             "%s: BTM_LE_KEY_PID key_type=0x%x save peer IRK, change bd_addr=%s "
@@ -1750,7 +1754,7 @@ void btm_ble_connected(const RawAddress& bda, uint16_t handle, uint8_t enc_mode,
   p_dev_rec->role_master = (role == HCI_ROLE_MASTER) ? true : false;
 
   if (!addr_matched) {
-    p_dev_rec->ble.active_addr_type = BTM_BLE_ADDR_PSEUDO;
+    p_dev_rec->ble.active_addr_type = tBTM_SEC_BLE::BTM_BLE_ADDR_PSEUDO;
   }
   if (!addr_matched && p_dev_rec->ble.ble_addr_type == BLE_ADDR_RANDOM) {
     p_dev_rec->ble.cur_rand_addr = bda;
@@ -2105,7 +2109,9 @@ void btm_ble_set_random_address(const RawAddress& random_bda) {
 
   if (adv_mode == BTM_BLE_ADV_ENABLE)
     btsnd_hcic_ble_set_adv_enable(BTM_BLE_ADV_DISABLE);
-  if (BTM_BLE_IS_SCAN_ACTIVE(p_ble_cb->scan_activity)) btm_ble_stop_scan();
+  if (p_ble_cb->is_ble_scan_active()) {
+    btm_ble_stop_scan();
+  }
   btm_ble_suspend_bg_conn();
 
   p_cb->private_addr = random_bda;
@@ -2113,7 +2119,9 @@ void btm_ble_set_random_address(const RawAddress& random_bda) {
 
   if (adv_mode == BTM_BLE_ADV_ENABLE)
     btsnd_hcic_ble_set_adv_enable(BTM_BLE_ADV_ENABLE);
-  if (BTM_BLE_IS_SCAN_ACTIVE(p_ble_cb->scan_activity)) btm_ble_start_scan();
+  if (p_ble_cb->is_ble_scan_active()) {
+    btm_ble_start_scan();
+  }
   btm_ble_resume_bg_conn();
 }
 

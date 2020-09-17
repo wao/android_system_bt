@@ -30,10 +30,13 @@
 #include "gd/os/log.h"
 #include "osi/include/osi.h"
 #include "stack/btm/btm_dev.h"
+#include "stack/btm/btm_sec.h"
 #include "stack/include/bt_types.h"
 #include "stack/l2cap/l2c_int.h"
 #include "types/bt_transport.h"
 #include "types/raw_address.h"
+
+void btm_sco_acl_removed(const RawAddress* bda);
 
 static void l2c_link_send_to_lower(tL2C_LCB* p_lcb, BT_HDR* p_buf,
                                    tL2C_TX_COMPLETE_CB_INFO* p_cbi);
@@ -800,7 +803,6 @@ void l2c_pin_code_request(const RawAddress& bd_addr) {
   }
 }
 
-#if (L2CAP_WAKE_PARKED_LINK == TRUE)
 /*******************************************************************************
  *
  * Function         l2c_link_check_power_mode
@@ -843,7 +845,6 @@ bool l2c_link_check_power_mode(tL2C_LCB* p_lcb) {
   }
   return false;
 }
-#endif /* L2CAP_WAKE_PARKED_LINK == TRUE) */
 
 /*******************************************************************************
  *

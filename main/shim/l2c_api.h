@@ -38,7 +38,7 @@ namespace shim {
  *                  BTM_SetSecurityLevel().
  *
  ******************************************************************************/
-uint16_t L2CA_Register(uint16_t psm, tL2CAP_APPL_INFO* p_cb_info,
+uint16_t L2CA_Register(uint16_t psm, const tL2CAP_APPL_INFO& p_cb_info,
                        bool enable_snoop, tL2CAP_ERTM_INFO* p_ertm_info,
                        uint16_t required_mtu);
 
@@ -148,7 +148,7 @@ uint16_t L2CA_ErtmConnectReq(uint16_t psm, const RawAddress& p_bd_addr,
  *                  and BTM_SetSecurityLevel().
  *
  ******************************************************************************/
-uint16_t L2CA_RegisterLECoc(uint16_t psm, tL2CAP_APPL_INFO* p_cb_info);
+uint16_t L2CA_RegisterLECoc(uint16_t psm, const tL2CAP_APPL_INFO& p_cb_info);
 
 /*******************************************************************************
  *
@@ -202,14 +202,6 @@ bool L2CA_ConnectLECocRsp(const RawAddress& p_bd_addr, uint8_t id,
  *
  ******************************************************************************/
 bool L2CA_GetPeerLECocConfig(uint16_t lcid, tL2CAP_LE_CFG_INFO* peer_cfg);
-
-// This function sets the callback routines for the L2CAP connection referred to
-// by |local_cid|. The callback routines can only be modified for outgoing
-// connections established by |L2CA_ConnectReq| or accepted incoming
-// connections. |callbacks| must not be NULL. This function returns true if the
-// callbacks could be updated, false if not (e.g. |local_cid| was not found).
-bool L2CA_SetConnectionCallbacks(uint16_t local_cid,
-                                 const tL2CAP_APPL_INFO* callbacks);
 
 /*******************************************************************************
  *

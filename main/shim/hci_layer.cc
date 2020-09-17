@@ -25,6 +25,7 @@
 
 #include "hci/hci_packets.h"
 #include "hci/include/packet_fragmenter.h"
+#include "hci/le_acl_connection_interface.h"
 #include "main/shim/hci_layer.h"
 #include "main/shim/shim.h"
 #include "osi/include/allocator.h"
@@ -183,6 +184,16 @@ static bool event_already_registered_in_hci_layer(
     default:
       return false;
   }
+}
+
+static bool event_already_registered_in_le_advertising_manager(
+    bluetooth::hci::EventCode event_code) {
+  for (auto event : bluetooth::hci::AclConnectionEvents) {
+    if (event == event_code) {
+      return bluetooth::shim::is_gd_advertising_enabled();
+    }
+  }
+  return false;
 }
 
 std::unique_ptr<bluetooth::packet::RawBuilder> MakeUniquePacket(
@@ -412,14 +423,23 @@ void bluetooth::shim::hci_on_reset_complete() {
     auto event_code = static_cast<bluetooth::hci::EventCode>(event_code_raw);
     if (event_already_registered_in_hci_layer(event_code)) {
       continue;
+    } else if (event_already_registered_in_le_advertising_manager(event_code)) {
+      continue;
     }
     auto handler = bluetooth::shim::GetGdShimHandler();
     bluetooth::shim::GetHciLayer()->RegisterEventHandler(
         event_code, handler->Bind(event_callback));
   }
+
   hci_queue_end = bluetooth::shim::GetHciLayer()->GetAclQueueEnd();
-  hci_queue_end->RegisterDequeue(bluetooth::shim::GetGdShimHandler(),
-                                 bluetooth::common::Bind(acl_data_callback));
+
+  // if gd advertising enabled, hci_queue_end will be register in
+  // AclManager::impl::Start
+  if (!bluetooth::shim::is_gd_advertising_enabled()) {
+    hci_queue_end->RegisterDequeue(bluetooth::shim::GetGdShimHandler(),
+                                   bluetooth::common::Bind(acl_data_callback));
+  }
+
   pending_data =
       new bluetooth::os::EnqueueBuffer<bluetooth::hci::AclPacketBuilder>(
           hci_queue_end);
@@ -432,13 +452,18 @@ void bluetooth::shim::hci_on_shutting_down() {
     pending_data = nullptr;
   }
   if (hci_queue_end != nullptr) {
-    hci_queue_end->UnregisterDequeue();
+    if (!bluetooth::shim::is_gd_advertising_enabled()) {
+      hci_queue_end->UnregisterDequeue();
+    }
     for (uint8_t event_code_raw = 0; event_code_raw < 0xFF; event_code_raw++) {
       if (!is_valid_event_code(event_code_raw)) {
         continue;
       }
       auto event_code = static_cast<bluetooth::hci::EventCode>(event_code_raw);
       if (event_already_registered_in_hci_layer(event_code)) {
+        continue;
+      } else if (event_already_registered_in_le_advertising_manager(
+                     event_code)) {
         continue;
       }
       bluetooth::shim::GetHciLayer()->UnregisterEventHandler(event_code);

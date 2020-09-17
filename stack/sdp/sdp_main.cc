@@ -99,7 +99,7 @@ void sdp_init(void) {
   sdp_cb.reg_info.pL2CA_TxComplete_Cb = NULL;
 
   /* Now, register with L2CAP */
-  if (!L2CA_Register2(SDP_PSM, &sdp_cb.reg_info, true /* enable_snoop */,
+  if (!L2CA_Register2(SDP_PSM, sdp_cb.reg_info, true /* enable_snoop */,
                       nullptr, sdp_cb.l2cap_my_cfg.mtu, BTM_SEC_NONE)) {
     SDP_TRACE_ERROR("SDP Registration failed");
   }
@@ -125,7 +125,6 @@ void sdp_free(void) {
  ******************************************************************************/
 static void sdp_connect_ind(const RawAddress& bd_addr, uint16_t l2cap_cid,
                             UNUSED_ATTR uint16_t psm, uint8_t l2cap_id) {
-#if (SDP_SERVER_ENABLED == TRUE)
   tCONN_CB* p_ccb;
 
   /* Allocate a new CCB. Return if none available. */
@@ -163,10 +162,6 @@ static void sdp_connect_ind(const RawAddress& bd_addr, uint16_t l2cap_cid,
 
   SDP_TRACE_EVENT("SDP - Rcvd L2CAP conn ind, sent config req, CID 0x%x",
                   p_ccb->connection_id);
-#else /* No server */
-  /* Reject the connection */
-  L2CA_ConnectRsp(bd_addr, l2cap_id, l2cap_cid, L2CAP_CONN_NO_PSM, 0);
-#endif
 }
 
 /*******************************************************************************

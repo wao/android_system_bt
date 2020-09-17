@@ -589,8 +589,10 @@ extern void l2cu_send_peer_ble_par_req(tL2C_LCB* p_lcb, uint16_t min_int,
                                        uint16_t timeout);
 extern void l2cu_send_peer_ble_par_rsp(tL2C_LCB* p_lcb, uint16_t reason,
                                        uint8_t rem_id);
-extern void l2cu_reject_ble_connection(tL2C_LCB* p_lcb, uint8_t rem_id,
+extern void l2cu_reject_ble_connection(tL2C_CCB* p_ccb, uint8_t rem_id,
                                        uint16_t result);
+extern void l2cu_reject_ble_coc_connection(tL2C_LCB* p_lcb, uint8_t rem_id,
+                                           uint16_t result);
 extern void l2cu_send_peer_ble_credit_based_conn_res(tL2C_CCB* p_ccb,
                                                      uint16_t result);
 extern void l2cu_send_peer_ble_credit_based_conn_req(tL2C_CCB* p_ccb);
@@ -649,12 +651,8 @@ extern void l2c_link_sec_comp2(const RawAddress& p_bda, tBT_TRANSPORT trasnport,
                                void* p_ref_data, uint8_t status);
 extern void l2c_link_adjust_chnl_allocation(void);
 
-#if (L2CAP_WAKE_PARKED_LINK == TRUE)
 extern bool l2c_link_check_power_mode(tL2C_LCB* p_lcb);
 #define L2C_LINK_CHECK_POWER_MODE(x) l2c_link_check_power_mode((x))
-#else  // L2CAP_WAKE_PARKED_LINK
-#define L2C_LINK_CHECK_POWER_MODE(x) (false)
-#endif  // L2CAP_WAKE_PARKED_LINK
 
 #if (L2CAP_CONFORMANCE_TESTING == TRUE)
 /* Used only for conformance testing */

@@ -17,6 +17,7 @@
 #pragma once
 
 #include "stack/btm/btm_sec.h"
+#include "stack/btm/neighbor_inquiry.h"
 #include "stack/include/acl_api_types.h"
 #include "stack/include/btm_api_types.h"
 #include "stack/include/btm_ble_api_types.h"
@@ -1488,7 +1489,7 @@ uint8_t BTM_SecClrService(uint8_t service_id);
  ******************************************************************************/
 bool BTM_SecAddDevice(const RawAddress& bd_addr, DEV_CLASS dev_class,
                       BD_NAME bd_name, uint8_t* features, LinkKey* link_key,
-                      uint8_t key_type, tBTM_IO_CAP io_cap, uint8_t pin_length);
+                      uint8_t key_type, uint8_t pin_length);
 
 /** Free resources associated with the device associated with |bd_addr| address.
  *
@@ -1986,9 +1987,9 @@ tBTM_STATUS BTM_BleGetEnergyInfo(tBTM_BLE_ENERGY_INFO_CBACK* p_ener_cback);
  */
 void SendRemoteNameRequest(const RawAddress& raw_address);
 
-tBTM_STATUS btm_sec_mx_access_request(const RawAddress& bd_addr, uint16_t psm,
-                                      bool is_originator, uint32_t mx_proto_id,
-                                      uint32_t mx_chan_id,
+tBTM_STATUS btm_sec_mx_access_request(const RawAddress& bd_addr,
+                                      bool is_originator,
+                                      uint16_t security_requirement,
                                       tBTM_SEC_CALLBACK* p_callback,
                                       void* p_ref_data);
 

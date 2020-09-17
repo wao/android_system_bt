@@ -20,6 +20,7 @@
 #define BTM_BLE_INT_TYPES_H
 
 #include "osi/include/alarm.h"
+#include "stack/btm/neighbor_inquiry.h"
 #include "stack/include/btm_ble_api_types.h"
 
 /* scanning enable status */
@@ -166,13 +167,6 @@ constexpr uint8_t BTM_BLE_WL_INIT = 1;
 #define BTM_BLE_RL_ADV 4
 typedef uint8_t tBTM_BLE_RL_STATE;
 
-/* BLE connection state */
-typedef enum : uint8_t {
-  BLE_CONN_IDLE = 0,
-  BLE_CONNECTING = 2,
-  BLE_CONN_CANCEL = 3,
-} tBTM_BLE_CONN_ST;
-
 typedef struct { void* p_param; } tBTM_BLE_CONN_REQ;
 
 /* LE state request */
@@ -227,8 +221,30 @@ typedef uint8_t tBTM_PRIVACY_MODE;
 
 /* Define BLE Device Management control structure
 */
+constexpr uint8_t kBTM_BLE_INQUIRY_ACTIVE = 0x10;
+constexpr uint8_t kBTM_BLE_OBSERVE_ACTIVE = 0x80;
+
 typedef struct {
-  uint8_t scan_activity; /* LE scan activity mask */
+ private:
+  uint8_t scan_activity_; /* LE scan activity mask */
+
+ public:
+  bool is_ble_inquiry_active() const {
+    return (scan_activity_ & kBTM_BLE_INQUIRY_ACTIVE);
+  }
+  bool is_ble_observe_active() const {
+    return (scan_activity_ & kBTM_BLE_OBSERVE_ACTIVE);
+  }
+
+  void set_ble_inquiry_active() { scan_activity_ |= kBTM_BLE_INQUIRY_ACTIVE; }
+  void set_ble_observe_active() { scan_activity_ |= kBTM_BLE_OBSERVE_ACTIVE; }
+
+  void reset_ble_inquiry() { scan_activity_ &= ~kBTM_BLE_INQUIRY_ACTIVE; }
+  void reset_ble_observe() { scan_activity_ &= ~kBTM_BLE_OBSERVE_ACTIVE; }
+
+  bool is_ble_scan_active() const {
+    return (is_ble_inquiry_active() || is_ble_observe_active());
+  }
 
   /*****************************************************
   **      BLE Inquiry
@@ -247,7 +263,24 @@ typedef struct {
   /* white list information */
   uint8_t wl_state;
 
-  tBTM_BLE_CONN_ST conn_state;
+ private:
+  enum : uint8_t { /* BLE connection state */
+                   BLE_CONN_IDLE = 0,
+                   BLE_CONNECTING = 2,
+                   BLE_CONN_CANCEL = 3,
+  } conn_state_{BLE_CONN_IDLE};
+
+ public:
+  bool is_connection_state_idle() const { return conn_state_ == BLE_CONN_IDLE; }
+  bool is_connection_state_connecting() const {
+    return conn_state_ == BLE_CONNECTING;
+  }
+  bool is_connection_state_cancelled() const {
+    return conn_state_ == BLE_CONN_CANCEL;
+  }
+  void set_connection_state_idle() { conn_state_ = BLE_CONN_IDLE; }
+  void set_connection_state_connecting() { conn_state_ = BLE_CONNECTING; }
+  void set_connection_state_cancelled() { conn_state_ = BLE_CONN_CANCEL; }
 
   /* random address management control block */
   tBTM_LE_RANDOM_CB addr_mgnt_cb;

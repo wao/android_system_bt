@@ -47,6 +47,9 @@
 #include "main/shim/controller.h"
 #include "main/shim/shim.h"
 
+extern void btm_inq_db_reset(void);
+extern void btm_pm_reset(void);
+
 /******************************************************************************/
 /*               L O C A L    D A T A    D E F I N I T I O N S                */
 /******************************************************************************/
@@ -176,7 +179,7 @@ void BTM_reset_complete() {
   btm_cb.btm_inq_vars.page_scan_period = HCI_DEF_PAGESCAN_INTERVAL;
   btm_cb.btm_inq_vars.page_scan_type = HCI_DEF_SCAN_TYPE;
 
-  btm_cb.ble_ctr_cb.conn_state = BLE_CONN_IDLE;
+  btm_cb.ble_ctr_cb.set_connection_state_idle();
   connection_manager::reset(true);
 
   btm_pm_reset();

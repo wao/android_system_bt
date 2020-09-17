@@ -122,7 +122,7 @@ void BTM_SetPinType(uint8_t pin_type, PIN_CODE pin_code, uint8_t pin_code_len);
  * Parameters:      is_originator - true if originating the connection
  *                  p_name      - Name of the service relevant only if
  *                                authorization will show this name to user.
- *                                Ignored if BTM_SEC_SERVICE_NAME_LEN is 0.
+ *                                Ignored if BT_MAX_SERVICE_NAME_LEN is 0.
  *                  service_id  - service ID for the service passed to
  *                                authorization callback
  *                  sec_level   - bit mask of the security features
@@ -397,17 +397,22 @@ bool BTM_PeerSupportsSecureConnections(const RawAddress& bd_addr);
  *
  ******************************************************************************/
 tBTM_STATUS btm_sec_l2cap_access_req(const RawAddress& bd_addr, uint16_t psm,
-                                     uint16_t handle, bool is_originator,
+                                     bool is_originator,
                                      tBTM_SEC_CALLBACK* p_callback,
                                      void* p_ref_data);
+
+// Allow enforcing security by specific requirement (from shim layer).
+tBTM_STATUS btm_sec_l2cap_access_req_by_requirement(
+    const RawAddress& bd_addr, uint16_t security_required, bool is_originator,
+    tBTM_SEC_CALLBACK* p_callback, void* p_ref_data);
 
 /*******************************************************************************
  *
  * Function         btm_sec_mx_access_request
  *
- * Description      This function is called by all Multiplexing Protocols during
- *                  establishing connection to or from peer device to grant
- *                  permission to establish application connection.
+ * Description      This function is called by all Multiplexing Protocols
+ *during establishing connection to or from peer device to grant permission
+ *to establish application connection.
  *
  * Parameters:      bd_addr       - Address of the peer device
  *                  psm           - L2CAP PSM
@@ -416,16 +421,16 @@ tBTM_STATUS btm_sec_l2cap_access_req(const RawAddress& bd_addr, uint16_t psm,
  *                  mx_proto_id   - protocol ID of the multiplexer
  *                  mx_chan_id    - multiplexer channel to reach application
  *                  p_callback    - Pointer to callback function called if
- *                                  this function returns PENDING after required
- *                                  procedures are completed
- *                  p_ref_data    - Pointer to any reference data needed by the
- *                                  the callback function.
+ *                                  this function returns PENDING after
+ *required procedures are completed p_ref_data    - Pointer to any reference
+ *data needed by the the callback function.
  *
  * Returns          BTM_CMD_STARTED
  *
  ******************************************************************************/
 tBTM_STATUS btm_sec_mx_access_request(const RawAddress& bd_addr,
-                                      bool is_originator, uint32_t mx_chan_id,
+                                      bool is_originator,
+                                      uint16_t security_requirement,
                                       tBTM_SEC_CALLBACK* p_callback,
                                       void* p_ref_data);
 

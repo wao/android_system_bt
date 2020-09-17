@@ -20,7 +20,6 @@
 #include "gd/l2cap/le/l2cap_le_module.h"
 #include "gd/os/log.h"
 #include "gd/os/queue.h"
-#include "gd/packet/raw_builder.h"
 #include "main/shim/btm.h"
 #include "main/shim/entry.h"
 #include "main/shim/helpers.h"
@@ -33,21 +32,19 @@ static bluetooth::shim::legacy::L2cap shim_l2cap;
  * Classic Service Registration APIs
  */
 uint16_t bluetooth::shim::L2CA_Register(uint16_t client_psm,
-                                        tL2CAP_APPL_INFO* callbacks,
+                                        const tL2CAP_APPL_INFO& callbacks,
                                         bool enable_snoop,
                                         tL2CAP_ERTM_INFO* p_ertm_info,
                                         uint16_t required_mtu) {
-  CHECK(callbacks != nullptr);
-
   if (L2C_INVALID_PSM(client_psm)) {
     LOG_ERROR("%s Invalid classic psm:%hd", __func__, client_psm);
     return 0;
   }
 
-  if ((callbacks->pL2CA_ConfigCfm_Cb == nullptr) ||
-      (callbacks->pL2CA_ConfigInd_Cb == nullptr) ||
-      (callbacks->pL2CA_DataInd_Cb == nullptr) ||
-      (callbacks->pL2CA_DisconnectInd_Cb == nullptr)) {
+  if ((callbacks.pL2CA_ConfigCfm_Cb == nullptr) ||
+      (callbacks.pL2CA_ConfigInd_Cb == nullptr) ||
+      (callbacks.pL2CA_DataInd_Cb == nullptr) ||
+      (callbacks.pL2CA_DisconnectInd_Cb == nullptr)) {
     LOG_ERROR("%s Invalid classic callbacks psm:%hd", __func__, client_psm);
     return 0;
   }
@@ -55,9 +52,10 @@ uint16_t bluetooth::shim::L2CA_Register(uint16_t client_psm,
   /**
    * Check if this is a registration for an outgoing-only connection.
    */
-  bool is_outgoing_connection_only = callbacks->pL2CA_ConnectInd_Cb == nullptr;
-  uint16_t psm = shim_l2cap.ConvertClientToRealPsm(client_psm,
-                                                   is_outgoing_connection_only);
+  const bool is_outgoing_connection_only =
+      callbacks.pL2CA_ConnectInd_Cb == nullptr;
+  const uint16_t psm = shim_l2cap.ConvertClientToRealPsm(
+      client_psm, is_outgoing_connection_only);
 
   if (shim_l2cap.Classic().IsPsmRegistered(psm)) {
     LOG_ERROR("%s Already registered classic client_psm:%hd psm:%hd", __func__,
@@ -145,9 +143,9 @@ bool bluetooth::shim::L2CA_DisconnectRsp(uint16_t cid) {
 /**
  * Le Connection Oriented Channel APIs
  */
-uint16_t bluetooth::shim::L2CA_RegisterLECoc(uint16_t psm,
-                                             tL2CAP_APPL_INFO* callbacks) {
-  LOG_INFO("UNIMPLEMENTED %s psm:%hd callbacks:%p", __func__, psm, callbacks);
+uint16_t bluetooth::shim::L2CA_RegisterLECoc(
+    uint16_t psm, const tL2CAP_APPL_INFO& callbacks) {
+  LOG_INFO("UNIMPLEMENTED %s psm:%hd", __func__, psm);
   return 0;
 }
 
@@ -177,15 +175,6 @@ bool bluetooth::shim::L2CA_ConnectLECocRsp(const RawAddress& p_bd_addr,
 bool bluetooth::shim::L2CA_GetPeerLECocConfig(uint16_t lcid,
                                               tL2CAP_LE_CFG_INFO* peer_cfg) {
   LOG_INFO("UNIMPLEMENTED %s lcid:%hd peer_cfg:%p", __func__, lcid, peer_cfg);
-  return false;
-}
-
-/**
- * Channel Data Writes
- */
-bool bluetooth::shim::L2CA_SetConnectionCallbacks(
-    uint16_t cid, const tL2CAP_APPL_INFO* callbacks) {
-  LOG_INFO("Unsupported API %s", __func__);
   return false;
 }
 
@@ -276,7 +265,7 @@ struct LeFixedChannelHelper {
 
     (freg_.pL2CA_FixedConn_Cb)(cid_, address, true, 0, BT_TRANSPORT_LE);
     bluetooth::shim::Btm::StoreAddressType(
-        address, static_cast<uint8_t>(device.GetAddressType()));
+        address, static_cast<tBLE_ADDR_TYPE>(device.GetAddressType()));
   }
 
   void on_incoming_data(bluetooth::hci::AddressWithType remote) {

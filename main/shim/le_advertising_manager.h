@@ -14,15 +14,19 @@
  * limitations under the License.
  */
 
-#include "service/common/bluetooth/a2dp_codec_config.h"
-#include "stack/include/a2dp_vendor_ldac.h"
+/**
+ * Gd shim layer to legacy le advertiser
+ */
+#pragma once
 
-bluetooth::A2dpCodecConfig* bta_av_get_a2dp_current_codec(void) {
-  return nullptr;
-}
+#include "ble_advertiser.h"
+#include "include/hardware/ble_advertiser.h"
 
-int A2DP_VendorGetTrackSampleRateLdac(const uint8_t* p_codec_info) { return 0; }
-int A2DP_VendorGetTrackBitsPerSampleLdac(const uint8_t* p_codec_info) {
-  return 0;
-}
-int A2DP_VendorGetChannelModeCodeLdac(const uint8_t* p_codec_info) { return 0; }
+namespace bluetooth {
+namespace shim {
+
+BleAdvertiserInterface* get_ble_advertiser_instance();
+void init_advertising_manager();
+
+}  // namespace shim
+}  // namespace bluetooth
