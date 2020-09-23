@@ -136,7 +136,8 @@ bool btif_get_device_type(const RawAddress& bda, int* p_device_type) {
 
   if (!btif_config_get_int(bd_addr_str, "DevType", p_device_type)) return false;
 
-  LOG_DEBUG("%s: Device [%s] type %d", __func__, bd_addr_str, *p_device_type);
+  LOG_DEBUG("%s: Device [%s] device type %d", __func__, bd_addr_str,
+            *p_device_type);
   return true;
 }
 
@@ -622,11 +623,10 @@ std::vector<RawAddress> btif_config_get_paired_devices() {
   result.reserve(names.size());
   for (const auto& name : names) {
     RawAddress addr = {};
-    if (!RawAddress::FromString(name, addr)) {
-      LOG(WARNING) << __func__ << ": " << name << " is not a valid address";
-      continue;
+    // Gather up known devices from configuration section names
+    if (RawAddress::FromString(name, addr)) {
+      result.emplace_back(addr);
     }
-    result.emplace_back(addr);
   }
   return result;
 }

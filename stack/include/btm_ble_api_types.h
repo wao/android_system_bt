@@ -26,27 +26,27 @@
 #define CHNL_MAP_LEN 5
 typedef uint8_t tBTM_BLE_CHNL_MAP[CHNL_MAP_LEN];
 
-/* 0x00-0x04 only used for set advertising parameter command */
-#define BTM_BLE_CONNECT_EVT 0x00
-/* Connectable directed advertising */
-#define BTM_BLE_CONNECT_DIR_EVT 0x01
-/* Scannable undirected advertising */
-#define BTM_BLE_DISCOVER_EVT 0x02
-/* Non connectable undirected advertising */
-#define BTM_BLE_NON_CONNECT_EVT 0x03
-/* Connectable low duty cycle directed advertising  */
-#define BTM_BLE_CONNECT_LO_DUTY_DIR_EVT 0x04
+enum : uint8_t {
+  /* 0x00-0x04 only used for set advertising parameter command */
+  BTM_BLE_CONNECT_EVT = 0x00,
+  /* Connectable directed advertising */
+  BTM_BLE_CONNECT_DIR_EVT = 0x01,
+  /* Scannable undirected advertising */
+  BTM_BLE_DISCOVER_EVT = 0x02,
+  /* Non connectable undirected advertising */
+  BTM_BLE_NON_CONNECT_EVT = 0x03,
+  /* Connectable low duty cycle directed advertising  */
+  BTM_BLE_CONNECT_LO_DUTY_DIR_EVT = 0x04,
+};
+
 /* 0x00 - 0x04 can be received on adv event type */
-#define BTM_BLE_ADV_IND_EVT  0x00
-#define BTM_BLE_ADV_DIRECT_IND_EVT  0x01
-#define BTM_BLE_ADV_SCAN_IND_EVT  0x02
-#define BTM_BLE_ADV_NONCONN_IND_EVT  0x03
-#define BTM_BLE_SCAN_RSP_EVT 0x04
-
-#define BTM_BLE_UNKNOWN_EVT 0xff
-
-typedef uint8_t tBTM_BLE_EVT;
-typedef uint8_t tBTM_BLE_CONN_MODE;
+typedef enum : uint8_t {
+  BTM_BLE_ADV_IND_EVT = 0x00,
+  BTM_BLE_ADV_DIRECT_IND_EVT = 0x01,
+  BTM_BLE_ADV_SCAN_IND_EVT = 0x02,
+  BTM_BLE_ADV_NONCONN_IND_EVT = 0x03,
+  BTM_BLE_SCAN_RSP_EVT = 0x04,
+} tBTM_BLE_EVT;
 
 typedef uint32_t tBTM_BLE_REF_VALUE;
 
@@ -155,13 +155,17 @@ typedef uint8_t tBTM_BLE_SFP;
 /* default connection interval min */
 #ifndef BTM_BLE_CONN_INT_MIN_DEF
 /* recommended min: 30ms  = 24 * 1.25 */
+#ifndef BTM_BLE_CONN_INT_MIN_DEF
 #define BTM_BLE_CONN_INT_MIN_DEF 24
+#endif
 #endif
 
 /* default connectino interval max */
 #ifndef BTM_BLE_CONN_INT_MAX_DEF
 /* recommended max: 50 ms = 56 * 1.25 */
+#ifndef BTM_BLE_CONN_INT_MAX_DEF
 #define BTM_BLE_CONN_INT_MAX_DEF 40
+#endif
 #endif
 
 /* default slave latency */

@@ -380,13 +380,9 @@ void btu_hcif_process_event(UNUSED_ATTR uint8_t controller_id, BT_HDR* p_msg) {
     case HCI_BLE_EVENT: {
       STREAM_TO_UINT8(ble_sub_code, p);
 
-      HCI_TRACE_EVENT("BLE HCI(id=%d) event = 0x%02x)", hci_evt_code,
-                      ble_sub_code);
-
       uint8_t ble_evt_len = hci_evt_len - 1;
       switch (ble_sub_code) {
         case HCI_BLE_ADV_PKT_RPT_EVT: /* result of inquiry */
-          HCI_TRACE_EVENT("HCI_BLE_ADV_PKT_RPT_EVT");
           btm_ble_process_adv_pkt(ble_evt_len, p);
           break;
         case HCI_BLE_CONN_COMPLETE_EVT:
@@ -427,6 +423,18 @@ void btu_hcif_process_event(UNUSED_ATTR uint8_t controller_id, BT_HDR* p_msg) {
 
         case HCI_BLE_REQ_PEER_SCA_CPL_EVT:
           btm_acl_process_sca_cmpl_pkt(ble_evt_len, p);
+          break;
+
+        case HCI_BLE_PERIODIC_ADV_SYNC_EST_EVT:
+          btm_ble_process_periodic_adv_sync_est_evt(ble_evt_len, p);
+          break;
+
+        case HCI_BLE_PERIODIC_ADV_REPORT_EVT:
+          btm_ble_process_periodic_adv_pkt(ble_evt_len, p);
+          break;
+
+        case HCI_BLE_PERIODIC_ADV_SYNC_LOST_EVT:
+          btm_ble_process_periodic_adv_sync_lost_evt(ble_evt_len, p);
           break;
 
         case HCI_BLE_CIS_EST_EVT:
