@@ -74,11 +74,16 @@ void Link::Disconnect() {
 }
 
 void Link::Encrypt() {
-  acl_connection_->SetConnectionEncryption(hci::Enable::ENABLED);
+  if (encryption_enabled_ == hci::EncryptionEnabled::OFF) {
+    acl_connection_->SetConnectionEncryption(hci::Enable::ENABLED);
+  }
 }
 
 void Link::Authenticate() {
-  acl_connection_->AuthenticationRequested();
+  if (!IsAuthenticated() && !has_requested_authentication_) {
+    has_requested_authentication_ = true;
+    acl_connection_->AuthenticationRequested();
+  }
 }
 
 bool Link::IsAuthenticated() const {
@@ -291,34 +296,17 @@ void Link::OnRemoteExtendedFeatureReceived(bool ertm_supported, bool fcs_support
   send_pending_configuration_requests();
 }
 
-void Link::AddChannelPendingingAuthentication(PendingAuthenticateDynamicChannelConnection pending_channel) {
-  pending_channel_list_.push_back(std::move(pending_channel));
-}
-
 void Link::OnConnectionPacketTypeChanged(uint16_t packet_type) {
   LOG_DEBUG("UNIMPLEMENTED %s packet_type:%x", __func__, packet_type);
 }
 
 void Link::OnAuthenticationComplete() {
-  if (!pending_channel_list_.empty()) {
-    acl_connection_->SetConnectionEncryption(hci::Enable::ENABLED);
-  }
+  link_manager_->OnAuthenticationComplete(GetDevice().GetAddress());
 }
 
 void Link::OnEncryptionChange(hci::EncryptionEnabled enabled) {
   encryption_enabled_ = enabled;
-  if (encryption_enabled_ == hci::EncryptionEnabled::OFF) {
-    LOG_DEBUG("Encryption has changed to disabled");
-    return;
-  }
-  LOG_DEBUG("Encryption has changed to enabled .. restarting channels:%zd", pending_channel_list_.size());
-
-  for (auto& channel : pending_channel_list_) {
-    local_cid_to_pending_dynamic_channel_connection_map_[channel.cid_] =
-        std::move(channel.pending_dynamic_channel_connection_);
-    signalling_manager_.SendConnectionRequest(channel.psm_, channel.cid_);
-  }
-  pending_channel_list_.clear();
+  link_manager_->OnEncryptionChange(GetDevice().GetAddress(), enabled);
 }
 
 void Link::OnChangeConnectionLinkKeyComplete() {
@@ -389,6 +377,14 @@ void Link::OnRoleChange(hci::Role new_role) {
 void Link::OnDisconnection(hci::ErrorCode reason) {
   OnAclDisconnected(reason);
   link_manager_->OnDisconnect(GetDevice().GetAddress(), reason);
+}
+void Link::OnReadRemoteVersionInformationComplete(
+    uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) {
+  LOG_DEBUG(
+      "UNIMPLEMENTED lmp_version:%hhu manufacturer_name:%hu sub_version:%hu",
+      lmp_version,
+      manufacturer_name,
+      sub_version);
 }
 
 }  // namespace internal

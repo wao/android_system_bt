@@ -64,7 +64,18 @@ class AclManager : public Module {
   // Generates OnLeConnectSuccess if connected, or OnLeConnectFail otherwise
   virtual void CreateLeConnection(AddressWithType address_with_type);
 
+  // Ask the controller for specific data parameters
+  virtual void SetLeSuggestedDefaultDataParameters(uint16_t octets, uint16_t time);
+
   virtual void SetPrivacyPolicyForInitiatorAddress(
+      LeAddressManager::AddressPolicy address_policy,
+      AddressWithType fixed_address,
+      crypto_toolbox::Octet16 rotation_irk,
+      std::chrono::milliseconds minimum_rotation_time,
+      std::chrono::milliseconds maximum_rotation_time);
+
+  // TODO(jpawlowski): remove once we have config file abstraction in cert tests
+  virtual void SetPrivacyPolicyForInitiatorAddressForTest(
       LeAddressManager::AddressPolicy address_policy,
       AddressWithType fixed_address,
       crypto_toolbox::Octet16 rotation_irk,
@@ -77,7 +88,12 @@ class AclManager : public Module {
 
   virtual void CancelLeConnect(AddressWithType address_with_type);
   virtual void AddDeviceToConnectList(AddressWithType address_with_type);
+  virtual void AddDeviceToResolvingList(
+      AddressWithType address_with_type,
+      const std::array<uint8_t, 16>& peer_irk,
+      const std::array<uint8_t, 16>& local_irk);
   virtual void RemoveDeviceFromConnectList(AddressWithType address_with_type);
+  virtual void RemoveDeviceFromResolvingList(AddressWithType address_with_type);
 
   virtual void MasterLinkKey(KeyFlag key_flag);
   virtual void SwitchRole(Address address, Role role);

@@ -31,13 +31,13 @@ class AclConnectionTracker : public ConnectionManagementCallbacks {
     ASSERT(client_callbacks_ == nullptr || queued_callbacks_.empty());
   }
   void RegisterCallbacks(ConnectionManagementCallbacks* callbacks, os::Handler* handler) {
+    client_handler_ = handler;
+    client_callbacks_ = callbacks;
     while (!queued_callbacks_.empty()) {
       auto iter = queued_callbacks_.begin();
       handler->Post(std::move(*iter));
       queued_callbacks_.erase(iter);
     }
-    client_handler_ = handler;
-    client_callbacks_ = callbacks;
   }
 
 #define SAVE_OR_CALL(f, ...)                                                                                        \
@@ -119,6 +119,10 @@ class AclConnectionTracker : public ConnectionManagementCallbacks {
   void OnDisconnection(ErrorCode reason) {
     SAVE_OR_CALL(OnDisconnection, reason);
   }
+  void OnReadRemoteVersionInformationComplete(uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) {
+    SAVE_OR_CALL(OnReadRemoteVersionInformationComplete, lmp_version, manufacturer_name, sub_version);
+  }
+
 #undef SAVE_OR_CALL
 
   void on_role_discovery_complete(CommandCompleteView view) {

@@ -30,8 +30,7 @@ from security.facade_pb2 import AuthenticationRequirementsMessage
 from security.facade_pb2 import SecurityPolicyMessage
 from security.facade_pb2 import IoCapabilities
 from security.facade_pb2 import IoCapabilityMessage
-from security.facade_pb2 import OobDataMessage
-from security.facade_pb2 import OobDataPresent
+from security.facade_pb2 import OobDataPresentMessage
 from security.facade_pb2 import UiCallbackMsg
 from security.facade_pb2 import UiCallbackType
 
@@ -68,6 +67,7 @@ class PySecurity(Closable):
         self._bond_event_stream = EventStream(self._device.security.FetchBondEvents(empty_proto.Empty()))
         self._enforce_security_policy_stream = EventStream(
             self._device.security.FetchEnforceSecurityPolicyEvents(empty_proto.Empty()))
+        self._disconnect_event_stream = EventStream(self._device.security.FetchDisconnectEvents(empty_proto.Empty()))
 
     def create_bond(self, address, type):
         """
@@ -104,8 +104,8 @@ class PySecurity(Closable):
         """
             Set the Out-of-band data present flag for SSP pairing
         """
-        logging.debug("DUT: setting OOB data present to '%s'" % data_present)
-        self._device.security.SetOobDataPresent(OobDataMessage(data_present=data_present))
+        logging.info("DUT: setting OOB data present to '%s'" % data_present)
+        self._device.security.SetOobDataPresent(OobDataPresentMessage(data_present=data_present))
 
     def send_ui_callback(self, address, callback_type, b, uid):
         """
@@ -168,7 +168,8 @@ class PySecurity(Closable):
             for Cert it isn't needed.
         """
         logging.debug("DUT: Waiting for Bond Event")
-        assertThat(self._bond_event_stream).emits(lambda event: event.message_type == expected_bond_event)
+        assertThat(self._bond_event_stream).emits(
+            lambda event: event.message_type == expected_bond_event or logging.info("DUT: %s" % event.message_type))
 
     def wait_for_enforce_security_event(self, expected_enforce_security_event):
         """
@@ -180,6 +181,13 @@ class PySecurity(Closable):
         logging.info("DUT: Waiting for enforce security event")
         assertThat(self._enforce_security_policy_stream).emits(
             lambda event: event.result == expected_enforce_security_event or logging.info(event.result))
+
+    def wait_for_disconnect_event(self):
+        """
+            The Address is expected to be returned
+        """
+        logging.info("DUT: Waiting for Disconnect Event")
+        assertThat(self._disconnect_event_stream).emits(lambda event: 1 == 1)
 
     def enforce_security_policy(self, address, type, policy):
         """
@@ -194,3 +202,4 @@ class PySecurity(Closable):
         safeClose(self._ui_event_stream)
         safeClose(self._bond_event_stream)
         safeClose(self._enforce_security_policy_stream)
+        safeClose(self._disconnect_event_stream)

@@ -139,6 +139,7 @@ cc_defaults {
         ":BluetoothAttSources",
         ":BluetoothCommonSources",
         ":BluetoothCryptoToolboxSources",
+        ":BluetoothDumpsysSources",
         ":BluetoothHalSources",
         ":BluetoothHciSources",
         ":BluetoothL2capSources",
@@ -151,7 +152,7 @@ cc_defaults {
     generated_headers: [
         "BluetoothGeneratedBundlerSchema_h_bfbs",
         "BluetoothGeneratedDumpsysDataSchema_h",
-        "BluetoothGeneratedDumpsysModuleSchema_h",
+        "BluetoothGeneratedDumpsysBundledSchema_h",
         "BluetoothGeneratedPackets_h",
     ],
     shared_libs: [
@@ -205,6 +206,7 @@ cc_binary {
     ],
     generated_headers: [
         "BluetoothFacadeGeneratedStub_h",
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
         "BluetoothGeneratedDumpsysDataSchema_h",
         "BluetoothGeneratedPackets_h",
         // Needed here to guarantee that generated zip file is created before
@@ -261,6 +263,7 @@ cc_test {
         host: {
             srcs: [
                 ":BluetoothHalTestSources_hci_rootcanal",
+                ":BluetoothOsTestSources_host",
             ],
         },
         android: {
@@ -282,6 +285,8 @@ cc_test {
         ":BluetoothAttTestSources",
         ":BluetoothCommonTestSources",
         ":BluetoothCryptoToolboxTestSources",
+        ":BluetoothDumpsysTestSources",
+        ":BluetoothHalTestSources",
         ":BluetoothHciTestSources",
         ":BluetoothL2capTestSources",
         ":BluetoothNeighborTestSources",
@@ -292,8 +297,10 @@ cc_test {
     ],
     generated_headers: [
         "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysBundledSchema_h",
+        "BluetoothGeneratedDumpsysBundledTestSchema_h",
         "BluetoothGeneratedDumpsysDataSchema_h",
-        "BluetoothGeneratedDumpsysModuleSchema_h",
+        "BluetoothGeneratedDumpsysTestData_h",
         "BluetoothGeneratedPackets_h",
     ],
     static_libs: [
@@ -363,6 +370,7 @@ cc_defaults {
         android: {
             shared_libs: [
                 "android.hardware.bluetooth@1.0",
+                "libcutils",
                 "libhidlbase",
                 "libutils",
             ],
@@ -447,12 +455,16 @@ genrule {
     ],
     cmd: "$(location flatc) -I system/bt/gd -b --schema -o $(genDir) $(in) ",
     srcs: [
+        "common/init_flags.fbs",
         "dumpsys_data.fbs",
+        "l2cap/classic/l2cap_classic_module.fbs",
         "shim/dumpsys.fbs",
     ],
     out: [
-        "dumpsys_data.bfbs",
+        "init_flags.bfbs",
         "dumpsys.bfbs",
+        "dumpsys_data.bfbs",
+        "l2cap_classic_module.bfbs",
     ],
 }
 
@@ -463,26 +475,16 @@ genrule {
     ],
     cmd: "$(location flatc) -I system/bt/gd -o $(genDir) --cpp $(in) ",
     srcs: [
+        "common/init_flags.fbs",
         "dumpsys_data.fbs",
+        "l2cap/classic/l2cap_classic_module.fbs",
         "shim/dumpsys.fbs",
     ],
     out: [
         "dumpsys_data_generated.h",
         "dumpsys_generated.h",
-    ],
-}
-
-genrule {
-    name: "BluetoothGeneratedDumpsysModuleSchema_h",
-    tools: [
-            "bluetooth_flatbuffer_bundler",
-    ],
-    cmd: "$(location bluetooth_flatbuffer_bundler) -w -m bluetooth.DumpsysData -f dumpsys_module_schema_data -n bluetooth::dumpsys -g $(genDir) $(locations :BluetoothGeneratedDumpsysBinarySchema_bfbs)",
-    srcs: [
-        ":BluetoothGeneratedDumpsysBinarySchema_bfbs",
-    ],
-    out: [
-         "dumpsys_module_schema_data.h",
+        "init_flags_generated.h",
+        "l2cap_classic_module_generated.h",
     ],
 }
 
@@ -491,7 +493,7 @@ genrule {
     tools: [
         "bluetooth_packetgen",
     ],
-    cmd: "$(location bluetooth_packetgen) --include=system/bt/gd --out=$(genDir) --num_shards=5 $(in)",
+    cmd: "$(location bluetooth_packetgen) --include=system/bt/gd --out=$(genDir) --num_shards=10 $(in)",
     srcs: [
         "hci/hci_packets.pdl",
         "l2cap/l2cap_packets.pdl",
@@ -504,18 +506,33 @@ genrule {
         "hci/hci_packets_python3_shard_2.cc",
         "hci/hci_packets_python3_shard_3.cc",
         "hci/hci_packets_python3_shard_4.cc",
+        "hci/hci_packets_python3_shard_5.cc",
+        "hci/hci_packets_python3_shard_6.cc",
+        "hci/hci_packets_python3_shard_7.cc",
+        "hci/hci_packets_python3_shard_8.cc",
+        "hci/hci_packets_python3_shard_9.cc",
         "l2cap/l2cap_packets_python3.cc",
         "l2cap/l2cap_packets_python3_shard_0.cc",
         "l2cap/l2cap_packets_python3_shard_1.cc",
         "l2cap/l2cap_packets_python3_shard_2.cc",
         "l2cap/l2cap_packets_python3_shard_3.cc",
         "l2cap/l2cap_packets_python3_shard_4.cc",
+        "l2cap/l2cap_packets_python3_shard_5.cc",
+        "l2cap/l2cap_packets_python3_shard_6.cc",
+        "l2cap/l2cap_packets_python3_shard_7.cc",
+        "l2cap/l2cap_packets_python3_shard_8.cc",
+        "l2cap/l2cap_packets_python3_shard_9.cc",
         "security/smp_packets_python3.cc",
         "security/smp_packets_python3_shard_0.cc",
         "security/smp_packets_python3_shard_1.cc",
         "security/smp_packets_python3_shard_2.cc",
         "security/smp_packets_python3_shard_3.cc",
         "security/smp_packets_python3_shard_4.cc",
+        "security/smp_packets_python3_shard_5.cc",
+        "security/smp_packets_python3_shard_6.cc",
+        "security/smp_packets_python3_shard_7.cc",
+        "security/smp_packets_python3_shard_8.cc",
+        "security/smp_packets_python3_shard_9.cc",
     ],
 }
 
@@ -722,11 +739,13 @@ cc_library_host_shared {
         "bluetooth_py3_native_extension_defaults",
     ],
     srcs: [
+        "common/strings.cc",
         "packet/python3_module.cc",
         "l2cap/fcs.cc",
         ":BluetoothPacketSources",
         "hci/address.cc",
         "hci/class_of_device.cc",
+
     ],
     generated_headers: [
         "BluetoothGeneratedPackets_h",

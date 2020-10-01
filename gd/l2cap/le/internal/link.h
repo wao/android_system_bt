@@ -50,7 +50,7 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
 
   ~Link() override = default;
 
-  inline hci::AddressWithType GetDevice() override {
+  inline hci::AddressWithType GetDevice() const override {
     return acl_connection_->GetRemoteAddress();
   }
 
@@ -78,12 +78,16 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
   void OnConnectionUpdate(uint16_t connection_interval, uint16_t connection_latency,
                           uint16_t supervision_timeout) override;
 
+  void OnDataLengthChange(uint16_t tx_octets, uint16_t tx_time, uint16_t rx_octets, uint16_t rx_time) override;
+
   virtual void Disconnect();
 
   // Handles connection parameter update request from remote
   virtual void UpdateConnectionParameterFromRemote(SignalId signal_id, uint16_t conn_interval_min,
                                                    uint16_t conn_interval_max, uint16_t conn_latency,
                                                    uint16_t supervision_timeout);
+  virtual bool CheckConnectionParameters(
+      uint16_t conn_interval_min, uint16_t conn_interval_max, uint16_t conn_latency, uint16_t supervision_timeout);
 
   virtual void SendConnectionParameterUpdate(uint16_t conn_interval_min, uint16_t conn_interval_max,
                                              uint16_t conn_latency, uint16_t supervision_timeout,

@@ -59,6 +59,13 @@ class LeAddressManager {
       crypto_toolbox::Octet16 rotation_irk,
       std::chrono::milliseconds minimum_rotation_time,
       std::chrono::milliseconds maximum_rotation_time);
+  // TODO(jpawlowski): remove once we have config file abstraction in cert tests
+  void SetPrivacyPolicyForInitiatorAddressForTest(
+      AddressPolicy address_policy,
+      AddressWithType fixed_address,
+      crypto_toolbox::Octet16 rotation_irk,
+      std::chrono::milliseconds minimum_rotation_time,
+      std::chrono::milliseconds maximum_rotation_time);
   void AckPause(LeAddressManagerCallback* callback);
   void AckResume(LeAddressManagerCallback* callback);
   virtual AddressPolicy Register(LeAddressManagerCallback* callback);
@@ -89,7 +96,6 @@ class LeAddressManager {
   void unregister_client(LeAddressManagerCallback* callback);
   void prepare_to_rotate();
   void rotate_random_address();
-  void on_le_set_random_address_complete(CommandCompleteView view);
   hci::Address generate_rpa();
   hci::Address generate_nrpa();
   std::chrono::milliseconds get_next_private_address_interval_ms();
