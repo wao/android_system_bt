@@ -22,6 +22,7 @@
 #include "l2cap/le/l2cap_le_module.h"
 #include "os/handler.h"
 #include "security/facade.grpc.pb.h"
+#include "security/pairing/oob_data.h"
 #include "security/security_manager_listener.h"
 #include "security/security_module.h"
 #include "security/ui.h"
@@ -93,8 +94,34 @@ class SecurityModuleFacadeService : public SecurityModuleFacade::Service, public
                             ::google::protobuf::Empty* response) override {
     hci::Address peer;
     ASSERT(hci::Address::FromString(request->address().address(), peer));
-    hci::AddressType peer_type = hci::AddressType::PUBLIC_DEVICE_ADDRESS;
+    hci::AddressType peer_type = static_cast<hci::AddressType>(request->type());
     security_module_->GetSecurityManager()->CreateBond(hci::AddressWithType(peer, peer_type));
+    return ::grpc::Status::OK;
+  }
+
+  ::grpc::Status CreateBondOutOfBand(
+      ::grpc::ServerContext* context,
+      const ::bluetooth::security::OobDataBondMessage* request,
+      ::google::protobuf::Empty* response) override {
+    hci::Address peer;
+    ASSERT(hci::Address::FromString(request->address().address().address(), peer));
+    hci::AddressType peer_type = static_cast<hci::AddressType>(request->address().type());
+    pairing::SimplePairingHash c;
+    pairing::SimplePairingRandomizer r;
+    std::copy(
+        std::begin(request->p192_data().confirmation_value()),
+        std::end(request->p192_data().confirmation_value()),
+        c.data());
+    std::copy(std::begin(request->p192_data().random_value()), std::end(request->p192_data().random_value()), r.data());
+    pairing::OobData p192_data(c, r);
+    std::copy(
+        std::begin(request->p256_data().confirmation_value()),
+        std::end(request->p256_data().confirmation_value()),
+        c.data());
+    std::copy(std::begin(request->p256_data().random_value()), std::end(request->p256_data().random_value()), r.data());
+    pairing::OobData p256_data(c, r);
+    security_module_->GetSecurityManager()->CreateBondOutOfBand(
+        hci::AddressWithType(peer, peer_type), p192_data, p256_data);
     return ::grpc::Status::OK;
   }
 
@@ -191,15 +218,6 @@ class SecurityModuleFacadeService : public SecurityModuleFacade::Service, public
     return ::grpc::Status::OK;
   }
 
-  ::grpc::Status SetOobDataPresent(
-      ::grpc::ServerContext* context,
-      const OobDataPresentMessage* request,
-      ::google::protobuf::Empty* response) override {
-    security_module_->GetFacadeConfigurationApi()->SetOobDataPresent(
-        static_cast<hci::OobDataPresent>(request->data_present()));
-    return ::grpc::Status::OK;
-  }
-
   ::grpc::Status SetLeAuthRequirements(
       ::grpc::ServerContext* context,
       const LeAuthRequirementsMessage* request,
@@ -213,6 +231,15 @@ class SecurityModuleFacadeService : public SecurityModuleFacade::Service, public
     if (request->reserved_bits()) auth_req |= (((request->reserved_bits()) << 6) & AUTH_REQ_RFU_MASK);
 
     security_module_->GetFacadeConfigurationApi()->SetLeAuthRequirements(auth_req);
+    return ::grpc::Status::OK;
+  }
+
+  ::grpc::Status SetLeMaximumEncryptionKeySize(
+      ::grpc::ServerContext* context,
+      const LeMaximumEncryptionKeySizeMessage* request,
+      ::google::protobuf::Empty* response) override {
+    security_module_->GetFacadeConfigurationApi()->SetLeMaximumEncryptionKeySize(
+        request->maximum_encryption_key_size());
     return ::grpc::Status::OK;
   }
 
@@ -272,21 +299,21 @@ class SecurityModuleFacadeService : public SecurityModuleFacade::Service, public
     return ::grpc::Status::OK;
   }
 
-  ::grpc::Status GetOutOfBandData(
+  ::grpc::Status GetLeOutOfBandData(
       ::grpc::ServerContext* context,
       const ::google::protobuf::Empty* request,
       ::bluetooth::security::OobDataMessage* response) override {
     std::array<uint8_t, 16> le_sc_c;
     std::array<uint8_t, 16> le_sc_r;
-    security_module_->GetFacadeConfigurationApi()->GetOutOfBandData(&le_sc_c, &le_sc_r);
+    security_module_->GetFacadeConfigurationApi()->GetLeOutOfBandData(&le_sc_c, &le_sc_r);
 
     std::string le_sc_c_str(17, '\0');
     std::copy(le_sc_c.begin(), le_sc_c.end(), le_sc_c_str.data());
-    response->set_le_sc_confirmation_value(le_sc_c_str);
+    response->set_confirmation_value(le_sc_c_str);
 
     std::string le_sc_r_str(17, '\0');
     std::copy(le_sc_r.begin(), le_sc_r.end(), le_sc_r_str.data());
-    response->set_le_sc_random_value(le_sc_r_str);
+    response->set_random_value(le_sc_r_str);
 
     return ::grpc::Status::OK;
   }
@@ -303,11 +330,11 @@ class SecurityModuleFacadeService : public SecurityModuleFacade::Service, public
     // We can't simply iterate till end of string, because we have an empty byte added at the end. We know confirm and
     // random are fixed size, 16 bytes
     std::array<uint8_t, 16> le_sc_c;
-    auto req_le_sc_c = request->le_sc_confirmation_value();
+    auto req_le_sc_c = request->confirmation_value();
     std::copy(req_le_sc_c.begin(), req_le_sc_c.begin() + 16, le_sc_c.data());
 
     std::array<uint8_t, 16> le_sc_r;
-    auto req_le_sc_r = request->le_sc_random_value();
+    auto req_le_sc_r = request->random_value();
     std::copy(req_le_sc_r.begin(), req_le_sc_r.begin() + 16, le_sc_r.data());
 
     security_module_->GetFacadeConfigurationApi()->SetOutOfBandData(peer_with_type, le_sc_c, le_sc_r);
@@ -339,8 +366,10 @@ class SecurityModuleFacadeService : public SecurityModuleFacade::Service, public
     ui_events_.OnIncomingEvent(display_yes_no);
   }
 
-  virtual void DisplayConfirmValue(const bluetooth::hci::AddressWithType& peer, std::string name,
-                                   uint32_t numeric_value) {
+  virtual void DisplayConfirmValue(ConfirmationData data) {
+    const bluetooth::hci::AddressWithType& peer = data.GetAddressWithType();
+    std::string name = data.GetName();
+    uint32_t numeric_value = data.GetNumericValue();
     LOG_INFO("%s value = 0x%x", peer.ToString().c_str(), numeric_value);
     UiMsg display_with_value;
     *display_with_value.mutable_peer() = ToFacadeAddressWithType(peer);
@@ -350,7 +379,9 @@ class SecurityModuleFacadeService : public SecurityModuleFacade::Service, public
     ui_events_.OnIncomingEvent(display_with_value);
   }
 
-  void DisplayYesNoDialog(const bluetooth::hci::AddressWithType& peer, std::string name) override {
+  void DisplayYesNoDialog(ConfirmationData data) override {
+    const bluetooth::hci::AddressWithType& peer = data.GetAddressWithType();
+    std::string name = data.GetName();
     LOG_INFO("%s", peer.ToString().c_str());
     UiMsg display_yes_no;
     *display_yes_no.mutable_peer() = ToFacadeAddressWithType(peer);
@@ -359,7 +390,10 @@ class SecurityModuleFacadeService : public SecurityModuleFacade::Service, public
     ui_events_.OnIncomingEvent(display_yes_no);
   }
 
-  void DisplayPasskey(const bluetooth::hci::AddressWithType& peer, std::string name, uint32_t passkey) override {
+  void DisplayPasskey(ConfirmationData data) override {
+    const bluetooth::hci::AddressWithType& peer = data.GetAddressWithType();
+    std::string name = data.GetName();
+    uint32_t passkey = data.GetNumericValue();
     LOG_INFO("%s value = 0x%x", peer.ToString().c_str(), passkey);
     UiMsg display_passkey;
     *display_passkey.mutable_peer() = ToFacadeAddressWithType(peer);
@@ -369,7 +403,9 @@ class SecurityModuleFacadeService : public SecurityModuleFacade::Service, public
     ui_events_.OnIncomingEvent(display_passkey);
   }
 
-  void DisplayEnterPasskeyDialog(const bluetooth::hci::AddressWithType& peer, std::string name) override {
+  void DisplayEnterPasskeyDialog(ConfirmationData data) override {
+    const bluetooth::hci::AddressWithType& peer = data.GetAddressWithType();
+    std::string name = data.GetName();
     LOG_INFO("%s", peer.ToString().c_str());
     UiMsg display_passkey_input;
     *display_passkey_input.mutable_peer() = ToFacadeAddressWithType(peer);
@@ -405,11 +441,12 @@ class SecurityModuleFacadeService : public SecurityModuleFacade::Service, public
     bond_events_.OnIncomingEvent(unbonded);
   }
 
-  void OnDeviceBondFailed(hci::AddressWithType peer) override {
+  void OnDeviceBondFailed(hci::AddressWithType peer, PairingFailure status) override {
     LOG_INFO("%s", peer.ToString().c_str());
     BondMsg bond_failed;
     *bond_failed.mutable_peer() = ToFacadeAddressWithType(peer);
     bond_failed.set_message_type(BondMsgType::DEVICE_BOND_FAILED);
+    bond_failed.set_reason(static_cast<uint8_t>(status.reason));
     bond_events_.OnIncomingEvent(bond_failed);
   }
 

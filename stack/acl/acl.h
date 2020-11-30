@@ -43,12 +43,12 @@ enum btm_acl_swkey_state_t {
 };
 
 /* Structure returned with Role Switch information (in tBTM_CMPL_CB callback
- * function) in response to BTM_SwitchRole call.
+ * function) in response to BTM_SwitchRoleToCentral call.
  */
 typedef struct {
   RawAddress remote_bd_addr; /* Remote BD addr involved with the switch */
   uint8_t hci_status;        /* HCI status returned with the event */
-  uint8_t role;              /* HCI_ROLE_MASTER or HCI_ROLE_SLAVE */
+  uint8_t role;              /* HCI_ROLE_CENTRAL or HCI_ROLE_PERIPHERAL */
 } tBTM_ROLE_SWITCH_CMPL;
 
 typedef struct {
@@ -60,13 +60,16 @@ typedef struct {
   bool in_use;
   bool link_up_issued;
   tBT_TRANSPORT transport;
-  uint16_t clock_offset;
+  bool is_transport_br_edr() const { return transport == BT_TRANSPORT_BR_EDR; }
+  bool is_transport_ble() const { return transport == BT_TRANSPORT_LE; }
+  bool is_transport_valid() const {
+    return is_transport_ble() || is_transport_br_edr();
+  }
+
   uint16_t flush_timeout_in_ticks;
   uint16_t hci_handle;
   uint16_t link_policy;
   uint16_t link_super_tout;
-  uint16_t lmp_subversion;
-  uint16_t manufacturer;
   uint16_t pkt_types_mask;
   tBLE_ADDR_TYPE active_remote_addr_type;
   tBLE_ADDR_TYPE conn_addr_type;
@@ -95,10 +98,21 @@ typedef struct {
   }
 
  public:
+  bool is_encrypted = false;
   uint8_t link_role;
-  uint8_t lmp_version;
-  uint8_t num_read_pages;
   uint8_t switch_role_failed_attempts;
+
+  struct {
+    uint8_t lmp_version{0};
+    uint16_t lmp_subversion{0};
+    uint16_t manufacturer{0};
+    bool valid{false};
+  } remote_version_info;
+
+#define BTM_SEC_RS_NOT_PENDING 0 /* Role Switch not in progress */
+#define BTM_SEC_RS_PENDING 1     /* Role Switch in progress */
+#define BTM_SEC_DISC_PENDING 2   /* Disconnect is pending */
+  uint8_t rs_disc_pending = BTM_SEC_RS_NOT_PENDING;
 
  private:
   uint8_t switch_role_state_;
@@ -168,6 +182,7 @@ typedef struct {
   friend bool BTM_ReadPowerMode(const RawAddress& remote_bda,
                                 tBTM_PM_MODE* p_mode);
   friend bool acl_is_role_switch_allowed();
+  friend bool btm_pm_is_le_link(const RawAddress& remote_bda);
   friend const RawAddress acl_address_from_handle(uint16_t hci_handle);
   friend int btm_pm_find_acl_ind(const RawAddress& remote_bda);
   friend tACL_CONN* btm_bda_to_acl(const RawAddress& bda,
@@ -185,15 +200,13 @@ typedef struct {
   friend uint16_t BTM_GetNumAclLinks(void);
   friend uint16_t acl_get_link_supervision_timeout();
   friend uint16_t acl_get_supported_packet_types();
-  friend uint16_t btm_get_acl_disc_reason_code(void);
-  friend uint8_t acl_get_disconnect_reason();
   friend uint8_t btm_handle_to_acl_index(uint16_t hci_handle);
   friend void BTM_SetDefaultLinkSuperTout(uint16_t timeout);
   friend void BTM_acl_after_controller_started();
   friend void BTM_default_block_role_switch();
   friend void BTM_default_unblock_role_switch();
   friend void acl_initialize_power_mode(const tACL_CONN& p_acl);
-  friend void acl_set_disconnect_reason(uint8_t acl_disc_reason);
+  friend void acl_set_disconnect_reason(tHCI_STATUS acl_disc_reason);
   friend void btm_acl_created(const RawAddress& bda, uint16_t hci_handle,
                               uint8_t link_role, tBT_TRANSPORT transport);
   friend void btm_acl_device_down(void);
@@ -201,10 +214,8 @@ typedef struct {
                                      uint8_t encr_enable);
   friend void btm_acl_init(void);
   friend void btm_acl_process_sca_cmpl_pkt(uint8_t evt_len, uint8_t* p);
-  friend void btm_acl_role_changed(uint8_t hci_status,
+  friend void btm_acl_role_changed(tHCI_STATUS hci_status,
                                    const RawAddress& bd_addr, uint8_t new_role);
-  friend void btm_acl_update_conn_addr(uint16_t conn_handle,
-                                       const RawAddress& address);
   friend void btm_pm_proc_cmd_status(uint8_t status);
   friend void btm_pm_proc_mode_change(uint8_t hci_status, uint16_t hci_handle,
                                       uint8_t mode, uint16_t interval);
@@ -216,12 +227,15 @@ typedef struct {
   friend void btm_read_automatic_flush_timeout_complete(uint8_t* p);
   friend void btm_read_failed_contact_counter_complete(uint8_t* p);
   friend void btm_read_link_quality_complete(uint8_t* p);
-  friend void btm_read_remote_ext_features_complete(uint8_t* p,
-                                                    uint8_t evt_len);
+  friend void btm_read_remote_ext_features_complete(uint16_t handle,
+                                                    uint8_t page_num,
+                                                    uint8_t max_page,
+                                                    uint8_t* features);
   friend void btm_read_remote_ext_features_failed(uint8_t status,
                                                   uint16_t handle);
-  friend void btm_read_remote_features_complete(uint8_t* p);
-  friend void btm_read_remote_version_complete(uint8_t* p);
+  friend void btm_read_remote_features_complete(uint16_t handle,
+                                                uint8_t* features);
+  friend void btm_read_remote_version_complete_raw(uint8_t* p);
   friend void btm_read_rssi_complete(uint8_t* p);
   friend void btm_read_tx_power_complete(uint8_t* p, bool is_ble);
 
@@ -234,6 +248,10 @@ typedef struct {
   uint16_t btm_acl_pkt_types_supported;
   uint16_t btm_def_link_policy;
   uint16_t btm_def_link_super_tout;
-  uint8_t acl_disc_reason;
+  tHCI_STATUS acl_disc_reason;
   uint8_t pm_pend_link;
+
+ public:
+  tHCI_STATUS get_disconnect_reason() const { return acl_disc_reason; }
+  void set_disconnect_reason(tHCI_STATUS reason) { acl_disc_reason = reason; }
 } tACL_CB;

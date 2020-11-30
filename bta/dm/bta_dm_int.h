@@ -127,8 +127,6 @@ typedef struct {
   bool link_key_known;
   bool dc_known;
   BD_NAME bd_name;
-  uint8_t
-      features[HCI_FEATURE_BYTES_PER_PAGE * (HCI_EXT_FEATURES_PAGE_MAX + 1)];
   uint8_t pin_length;
 } tBTA_DM_API_ADD_DEVICE;
 
@@ -256,7 +254,7 @@ typedef struct {
   alarm_t* disable_timer;
   uint32_t wbt_sdp_handle; /* WIDCOMM Extensions SDP record handle */
   uint8_t wbt_scn;         /* WIDCOMM Extensions SCN */
-  uint8_t num_master_only;
+  uint8_t num_central_only;
   uint8_t pm_id;
   tBTA_PM_TIMER pm_timer[BTA_DM_NUM_PM_TIMER];
   uint8_t cur_av_count;   /* current AV connecions */
@@ -279,7 +277,7 @@ typedef struct {
   /* store UUID list for EIR */
   uint32_t eir_uuid[BTM_EIR_SERVICE_ARRAY_SIZE];
 #if (BTA_EIR_SERVER_NUM_CUSTOM_UUID > 0)
-  bluetooth::Uuid custom_uuid[BTA_EIR_SERVER_NUM_CUSTOM_UUID];
+  tBTA_CUSTOM_UUID bta_custom_uuid[BTA_EIR_SERVER_NUM_CUSTOM_UUID];
 #endif
 
 #endif
@@ -342,7 +340,7 @@ typedef struct {
   uint16_t page_timeout; /* timeout for page in slots */
   uint16_t link_timeout; /* link supervision timeout in slots */
   bool avoid_scatter; /* true to avoid scatternet when av is streaming (be the
-                         master) */
+                         central) */
 
 } tBTA_DM_CFG;
 
@@ -434,7 +432,7 @@ extern void bta_dm_add_ampkey(tBTA_DM_MSG* p_data);
 
 extern void bta_dm_add_blekey(const RawAddress& bd_addr,
                               tBTA_LE_KEY_VALUE blekey,
-                              tBTA_LE_KEY_TYPE key_type);
+                              tBTM_LE_KEY_TYPE key_type);
 extern void bta_dm_add_ble_device(const RawAddress& bd_addr,
                                   tBLE_ADDR_TYPE addr_type,
                                   tBT_DEVICE_TYPE dev_type);
@@ -488,4 +486,5 @@ uint8_t bta_dm_search_get_state();
 void bta_dm_search_set_state(uint8_t state);
 
 void bta_dm_eir_update_uuid(uint16_t uuid16, bool adding);
+void bta_dm_eir_update_cust_uuid(const tBTA_CUSTOM_UUID &curr, bool adding);
 #endif /* BTA_DM_INT_H */

@@ -35,7 +35,7 @@ struct Controller::impl {
   void Start(hci::HciLayer* hci) {
     hci_ = hci;
     Handler* handler = module_.GetHandler();
-    if (bluetooth::common::InitFlags::GdCoreEnabled()) {
+    if (common::InitFlags::GdAclEnabled() || common::InitFlags::GdL2capEnabled()) {
       hci_->RegisterEventHandler(
           EventCode::NUMBER_OF_COMPLETED_PACKETS, handler->BindOn(this, &Controller::impl::NumberOfCompletedPackets));
     }
@@ -151,6 +151,9 @@ struct Controller::impl {
       uint16_t handle = completed_packets.connection_handle_;
       uint16_t credits = completed_packets.host_num_of_completed_packets_;
       acl_credits_callback_.Invoke(handle, credits);
+      if (!acl_monitor_credits_callback_.IsEmpty()) {
+        acl_monitor_credits_callback_.Invoke(handle, credits);
+      }
     }
   }
 
@@ -162,6 +165,26 @@ struct Controller::impl {
   void unregister_completed_acl_packets_callback() {
     ASSERT(!acl_credits_callback_.IsEmpty());
     acl_credits_callback_ = {};
+  }
+
+  void register_completed_monitor_acl_packets_callback(CompletedAclPacketsCallback callback) {
+    ASSERT(acl_monitor_credits_callback_.IsEmpty());
+    acl_monitor_credits_callback_ = callback;
+  }
+
+  void unregister_completed_monitor_acl_packets_callback() {
+    ASSERT(!acl_monitor_credits_callback_.IsEmpty());
+    acl_monitor_credits_callback_ = {};
+  }
+
+  void register_monitor_completed_acl_packets_callback(CompletedAclPacketsCallback callback) {
+    ASSERT(acl_monitor_credits_callback_.IsEmpty());
+    acl_monitor_credits_callback_ = callback;
+  }
+
+  void unregister_monitor_completed_acl_packets_callback() {
+    ASSERT(!acl_monitor_credits_callback_.IsEmpty());
+    acl_monitor_credits_callback_ = {};
   }
 
   void read_local_name_complete_handler(CommandCompleteView view) {
@@ -511,7 +534,7 @@ struct Controller::impl {
       OP_CODE_MAPPING(AUTHENTICATION_REQUESTED)
       OP_CODE_MAPPING(SET_CONNECTION_ENCRYPTION)
       OP_CODE_MAPPING(CHANGE_CONNECTION_LINK_KEY)
-      OP_CODE_MAPPING(MASTER_LINK_KEY)
+      OP_CODE_MAPPING(CENTRAL_LINK_KEY)
       OP_CODE_MAPPING(REMOTE_NAME_REQUEST)
       OP_CODE_MAPPING(REMOTE_NAME_REQUEST_CANCEL)
       OP_CODE_MAPPING(READ_REMOTE_SUPPORTED_FEATURES)
@@ -619,6 +642,7 @@ struct Controller::impl {
       OP_CODE_MAPPING(REMOTE_OOB_DATA_REQUEST_NEGATIVE_REPLY)
       OP_CODE_MAPPING(SEND_KEYPRESS_NOTIFICATION)
       OP_CODE_MAPPING(IO_CAPABILITY_REQUEST_NEGATIVE_REPLY)
+      OP_CODE_MAPPING(REMOTE_OOB_EXTENDED_DATA_REQUEST_REPLY)
       OP_CODE_MAPPING(READ_ENCRYPTION_KEY_SIZE)
       OP_CODE_MAPPING(READ_DATA_BLOCK_SIZE)
       OP_CODE_MAPPING(READ_LE_HOST_SUPPORT)
@@ -779,6 +803,7 @@ struct Controller::impl {
   HciLayer* hci_;
 
   CompletedAclPacketsCallback acl_credits_callback_{};
+  CompletedAclPacketsCallback acl_monitor_credits_callback_{};
   LocalVersionInformation local_version_information_;
   std::array<uint8_t, 64> local_supported_commands_;
   uint8_t maximum_page_number_;
@@ -813,6 +838,14 @@ void Controller::RegisterCompletedAclPacketsCallback(CompletedAclPacketsCallback
 
 void Controller::UnregisterCompletedAclPacketsCallback() {
   CallOn(impl_.get(), &impl::unregister_completed_acl_packets_callback);
+}
+
+void Controller::RegisterCompletedMonitorAclPacketsCallback(CompletedAclPacketsCallback cb) {
+  CallOn(impl_.get(), &impl::register_completed_monitor_acl_packets_callback, cb);
+}
+
+void Controller::UnregisterCompletedMonitorAclPacketsCallback() {
+  CallOn(impl_.get(), &impl::unregister_completed_monitor_acl_packets_callback);
 }
 
 std::string Controller::GetLocalName() const {
@@ -876,8 +909,8 @@ LOCAL_LE_FEATURE_ACCESSOR(SupportsBleExtendedAdvertising, 12)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBlePeriodicAdvertising, 13)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBlePeriodicAdvertisingSyncTransferSender, 24)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBlePeriodicAdvertisingSyncTransferRecipient, 25)
-LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectedIsochronousStreamMaster, 28)
-LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectedIsochronousStreamSlave, 29)
+LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectedIsochronousStreamCentral, 28)
+LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectedIsochronousStreamPeripheral, 29)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleIsochronousBroadcaster, 30)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleSynchronizedReceiver, 31)
 

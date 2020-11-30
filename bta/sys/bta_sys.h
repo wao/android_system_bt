@@ -88,6 +88,25 @@ typedef void(tBTA_SYS_DISABLE)(void);
 
 typedef uint8_t tBTA_SYS_ID;
 
+inline std::string BtaIdSysText(tBTA_SYS_ID sys_id) {
+  switch (sys_id) {
+    case BTA_ID_DM_SEARCH:
+      return std::string("Scanner");
+    case BTA_ID_PAN:
+      return std::string("PAN Personal area network");
+    case BTA_ID_AV:
+      return std::string("Advanced audio/video");
+    case BTA_ID_HD:
+      return std::string("HID Human interface device");
+    case BTA_ID_GATTC:
+      return std::string("GATT client");
+    case BTA_ID_GATTS:
+      return std::string("GATT server");
+    default:
+      return std::string("Unknown");
+  }
+}
+
 #define BTA_SYS_CONN_OPEN 0x00
 #define BTA_SYS_CONN_CLOSE 0x01
 #define BTA_SYS_APP_OPEN 0x02
@@ -109,9 +128,15 @@ typedef void(tBTA_SYS_CONN_CBACK)(tBTA_SYS_CONN_STATUS status, uint8_t id,
 typedef void(tBTA_SYS_SSR_CFG_CBACK)(uint8_t id, uint8_t app_id,
                                      uint16_t latency, uint16_t tout);
 
+typedef struct {
+  bluetooth::Uuid custom_uuid;
+  uint32_t handle;
+} tBTA_CUSTOM_UUID;
+
 #if (BTA_EIR_CANNED_UUID_LIST != TRUE)
 /* eir callback for adding/removeing UUID */
 typedef void(tBTA_SYS_EIR_CBACK)(uint16_t uuid16, bool adding);
+typedef void(tBTA_SYS_CUST_EIR_CBACK)(const tBTA_CUSTOM_UUID &curr, bool adding);
 #endif
 
 /* registration structure */
@@ -140,7 +165,6 @@ void bta_set_forward_hw_failures(bool value);
 void BTA_sys_signal_hw_error();
 
 extern void bta_sys_init(void);
-extern void bta_sys_event(BT_HDR* p_msg);
 extern void bta_sys_register(uint8_t id, const tBTA_SYS_REG* p_reg);
 extern void bta_sys_deregister(uint8_t id);
 extern bool bta_sys_is_register(uint8_t id);
@@ -193,10 +217,16 @@ extern void bta_sys_notify_collision(const RawAddress& peer_addr);
 extern void bta_sys_eir_register(tBTA_SYS_EIR_CBACK* p_cback);
 extern void bta_sys_add_uuid(uint16_t uuid16);
 extern void bta_sys_remove_uuid(uint16_t uuid16);
+extern void bta_sys_cust_eir_register(tBTA_SYS_CUST_EIR_CBACK* p_cback);
+extern void bta_sys_add_cust_uuid(const tBTA_CUSTOM_UUID& curr);
+extern void bta_sys_remove_cust_uuid(const tBTA_CUSTOM_UUID& curr);
 #else
 #define bta_sys_eir_register(ut)
 #define bta_sys_add_uuid(ut)
 #define bta_sys_remove_uuid(ut)
+#define bta_sys_cust_eir_register(ut)
+#define bta_sys_add_cust_uuid(ut)
+#define bta_sys_remove_cust_uuid(ut)
 #endif
 
 #endif /* BTA_SYS_H */

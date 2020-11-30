@@ -76,6 +76,10 @@ bool bluetooth::shim::is_gd_controller_enabled() {
   return bluetooth::common::InitFlags::GdControllerEnabled();
 }
 
+bool bluetooth::shim::is_gd_l2cap_enabled() {
+  return bluetooth::common::InitFlags::GdL2capEnabled();
+}
+
 bool bluetooth::shim::is_gd_shim_enabled() {
   return bluetooth::common::InitFlags::GdCoreEnabled();
 }

@@ -171,13 +171,31 @@ struct HciLayer::impl {
   }
 
   void register_event(EventCode event, ContextualCallback<void(EventPacketView)> handler) {
+    ASSERT_LOG(
+        event != EventCode::LE_META_EVENT,
+        "Can not register handler for %02hhx (%s)",
+        EventCode::LE_META_EVENT,
+        EventCodeText(EventCode::LE_META_EVENT).c_str());
     ASSERT_LOG(event_handlers_.count(event) == 0, "Can not register a second handler for %02hhx (%s)", event,
                EventCodeText(event).c_str());
     event_handlers_[event] = handler;
   }
 
   void unregister_event(EventCode event) {
-    event_handlers_.erase(event_handlers_.find(event));
+    event_handlers_.erase(event);
+  }
+
+  void register_le_meta_event(ContextualCallback<void(EventPacketView)> handler) {
+    ASSERT_LOG(
+        event_handlers_.count(EventCode::LE_META_EVENT) == 0,
+        "Can not register a second handler for %02hhx (%s)",
+        EventCode::LE_META_EVENT,
+        EventCodeText(EventCode::LE_META_EVENT).c_str());
+    event_handlers_[EventCode::LE_META_EVENT] = handler;
+  }
+
+  void unregister_le_meta_event() {
+    unregister_event(EventCode::LE_META_EVENT);
   }
 
   void register_le_event(SubeventCode event, ContextualCallback<void(LeMetaEventView)> handler) {
@@ -193,10 +211,11 @@ struct HciLayer::impl {
   void on_hci_event(EventPacketView event) {
     ASSERT(event.IsValid());
     EventCode event_code = event.GetEventCode();
-    if (event_handlers_.find(event_code) == event_handlers_.end()) {
-      LOG_DEBUG("Dropping unregistered event of type 0x%02hhx (%s)", event_code, EventCodeText(event_code).c_str());
-      return;
-    }
+    ASSERT_LOG(
+        event_handlers_.find(event_code) != event_handlers_.end(),
+        "Unhandled event of type 0x%02hhx (%s)",
+        event_code,
+        EventCodeText(event_code).c_str());
     event_handlers_[event_code].Invoke(event);
   }
 
@@ -204,8 +223,11 @@ struct HciLayer::impl {
     LeMetaEventView meta_event_view = LeMetaEventView::Create(event);
     ASSERT(meta_event_view.IsValid());
     SubeventCode subevent_code = meta_event_view.GetSubeventCode();
-    ASSERT_LOG(subevent_handlers_.find(subevent_code) != subevent_handlers_.end(),
-               "Unhandled le event of type 0x%02hhx (%s)", subevent_code, SubeventCodeText(subevent_code).c_str());
+    ASSERT_LOG(
+        subevent_handlers_.find(subevent_code) != subevent_handlers_.end(),
+        "Unhandled le subevent of type 0x%02hhx (%s)",
+        subevent_code,
+        SubeventCodeText(subevent_code).c_str());
     subevent_handlers_[subevent_code].Invoke(meta_event_view);
   }
 
@@ -276,6 +298,10 @@ void HciLayer::RegisterEventHandler(EventCode event, ContextualCallback<void(Eve
   CallOn(impl_, &impl::register_event, event, handler);
 }
 
+void HciLayer::RegisterLeMetaEventHandler(ContextualCallback<void(EventPacketView)> handler) {
+  CallOn(impl_, &impl::register_le_meta_event, handler);
+}
+
 void HciLayer::UnregisterEventHandler(EventCode event) {
   CallOn(impl_, &impl::unregister_event, event);
 }
@@ -306,23 +332,48 @@ void HciLayer::Disconnect(uint16_t handle, ErrorCode reason) {
   }
 }
 
+void HciLayer::on_read_remote_version_complete(EventPacketView event_view) {
+  auto view = ReadRemoteVersionInformationCompleteView::Create(event_view);
+  ASSERT_LOG(view.IsValid(), "Read remote version information packet invalid");
+  if (view.GetStatus() != ErrorCode::SUCCESS) {
+    auto status = view.GetStatus();
+    std::string error_code = ErrorCodeText(status);
+    LOG_ERROR("Received with error code %s", error_code.c_str());
+    return;
+  }
+  uint16_t handle = view.GetConnectionHandle();
+  ReadRemoteVersion(handle, view.GetVersion(), view.GetManufacturerName(), view.GetSubVersion());
+}
+
+void HciLayer::ReadRemoteVersion(uint16_t handle, uint8_t version, uint16_t manufacturer_name, uint16_t sub_version) {
+  for (auto callback : read_remote_version_handlers_) {
+    callback.Invoke(handle, version, manufacturer_name, sub_version);
+  }
+}
+
 AclConnectionInterface* HciLayer::GetAclConnectionInterface(
     ContextualCallback<void(EventPacketView)> event_handler,
-    ContextualCallback<void(uint16_t, ErrorCode)> on_disconnect) {
+    ContextualCallback<void(uint16_t, ErrorCode)> on_disconnect,
+    ContextualCallback<void(uint16_t, uint8_t version, uint16_t manufacturer_name, uint16_t sub_version)>
+        on_read_remote_version) {
   for (const auto event : AclConnectionEvents) {
     RegisterEventHandler(event, event_handler);
   }
   disconnect_handlers_.push_back(on_disconnect);
+  read_remote_version_handlers_.push_back(on_read_remote_version);
   return &acl_connection_manager_interface_;
 }
 
 LeAclConnectionInterface* HciLayer::GetLeAclConnectionInterface(
     ContextualCallback<void(LeMetaEventView)> event_handler,
-    ContextualCallback<void(uint16_t, ErrorCode)> on_disconnect) {
+    ContextualCallback<void(uint16_t, ErrorCode)> on_disconnect,
+    ContextualCallback<void(uint16_t, uint8_t version, uint16_t manufacturer_name, uint16_t sub_version)>
+        on_read_remote_version) {
   for (const auto event : LeConnectionManagementEvents) {
     RegisterLeEventHandler(event, event_handler);
   }
   disconnect_handlers_.push_back(on_disconnect);
+  read_remote_version_handlers_.push_back(on_read_remote_version);
   return &le_acl_connection_manager_interface_;
 }
 
@@ -369,10 +420,13 @@ void HciLayer::Start() {
   impl_->acl_queue_.GetDownEnd()->RegisterDequeue(handler, BindOn(impl_, &impl::on_outbound_acl_ready));
   RegisterEventHandler(EventCode::COMMAND_COMPLETE, handler->BindOn(impl_, &impl::on_command_complete));
   RegisterEventHandler(EventCode::COMMAND_STATUS, handler->BindOn(impl_, &impl::on_command_status));
-  if (bluetooth::common::InitFlags::GdCoreEnabled()) {
-    RegisterEventHandler(EventCode::LE_META_EVENT, handler->BindOn(impl_, &impl::on_le_meta_event));
+  RegisterLeMetaEventHandler(handler->BindOn(impl_, &impl::on_le_meta_event));
+  if (bluetooth::common::InitFlags::GdAclEnabled() || bluetooth::common::InitFlags::GdL2capEnabled()) {
     RegisterEventHandler(
         EventCode::DISCONNECTION_COMPLETE, handler->BindOn(this, &HciLayer::on_disconnection_complete));
+    RegisterEventHandler(
+        EventCode::READ_REMOTE_VERSION_INFORMATION_COMPLETE,
+        handler->BindOn(this, &HciLayer::on_read_remote_version_complete));
   }
   auto drop_packet = handler->BindOn(impl_, &impl::drop);
   RegisterEventHandler(EventCode::PAGE_SCAN_REPETITION_MODE_CHANGE, drop_packet);

@@ -1,5 +1,6 @@
 /*
- * Copyright 2020 The Android Open Source Project
+ * Copyright 2020 HIMSA II K/S - www.himsa.com.
+ * Represented by EHIMA - www.ehima.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,21 +15,17 @@
  * limitations under the License.
  */
 
-#pragma once
+#include "mock_gatt_layer.h"
 
-#include "hci/hci_packets.h"
+static bluetooth::gatt::MockGattInterface* gatt_interface = nullptr;
 
-namespace bluetooth {
-namespace hci {
-namespace acl_manager {
+void bluetooth::gatt::SetMockGattInterface(
+    MockGattInterface* mock_gatt_interface) {
+  gatt_interface = mock_gatt_interface;
+}
 
-class DisconnectorForLe {
- public:
-  DisconnectorForLe() = default;
-  virtual ~DisconnectorForLe() = default;
-  virtual void handle_disconnect(uint16_t handle, DisconnectReason reason) = 0;
-};
-
-}  // namespace acl_manager
-}  // namespace hci
-}  // namespace bluetooth
+bool gatt_profile_get_eatt_support(
+    const RawAddress& peer_bda,
+    base::OnceCallback<void(const RawAddress&, bool)> cb) {
+  return gatt_interface->GetEattSupport(peer_bda, std::move(cb));
+}

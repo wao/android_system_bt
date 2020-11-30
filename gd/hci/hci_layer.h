@@ -69,11 +69,13 @@ class HciLayer : public Module, public CommandInterface<CommandPacketBuilder> {
 
   virtual AclConnectionInterface* GetAclConnectionInterface(
       common::ContextualCallback<void(EventPacketView)> event_handler,
-      common::ContextualCallback<void(uint16_t, hci::ErrorCode)> on_disconnect);
+      common::ContextualCallback<void(uint16_t, hci::ErrorCode)> on_disconnect,
+      common::ContextualCallback<void(uint16_t, uint8_t, uint16_t, uint16_t)> on_read_remote_version_complete);
 
   virtual LeAclConnectionInterface* GetLeAclConnectionInterface(
       common::ContextualCallback<void(LeMetaEventView)> event_handler,
-      common::ContextualCallback<void(uint16_t, hci::ErrorCode)> on_disconnect);
+      common::ContextualCallback<void(uint16_t, hci::ErrorCode)> on_disconnect,
+      common::ContextualCallback<void(uint16_t, uint8_t, uint16_t, uint16_t)> on_read_remote_version_complete);
 
   virtual LeAdvertisingInterface* GetLeAdvertisingInterface(
       common::ContextualCallback<void(LeMetaEventView)> event_handler);
@@ -89,7 +91,7 @@ class HciLayer : public Module, public CommandInterface<CommandPacketBuilder> {
   static const ModuleFactory Factory;
 
  protected:
-  // Lint.ThenChange(fuzz/fuzz_hci_layer.h)
+  // LINT.ThenChange(fuzz/fuzz_hci_layer.h)
   void ListDependencies(ModuleList* list) override;
 
   void Start() override;
@@ -97,6 +99,8 @@ class HciLayer : public Module, public CommandInterface<CommandPacketBuilder> {
   void Stop() override;
 
   virtual void Disconnect(uint16_t handle, ErrorCode reason);
+  virtual void ReadRemoteVersion(uint16_t handle, uint8_t version, uint16_t manufacturer_name, uint16_t sub_version);
+  virtual void RegisterLeMetaEventHandler(common::ContextualCallback<void(EventPacketView)> event_handler);
 
  private:
   struct impl;
@@ -123,11 +127,13 @@ class HciLayer : public Module, public CommandInterface<CommandPacketBuilder> {
   };
 
   std::list<common::ContextualCallback<void(uint16_t, ErrorCode)>> disconnect_handlers_;
+  std::list<common::ContextualCallback<void(uint16_t, uint8_t, uint16_t, uint16_t)>> read_remote_version_handlers_;
   void on_disconnection_complete(EventPacketView event_view);
+  void on_read_remote_version_complete(EventPacketView event_view);
 
   // Interfaces
-  CommandInterfaceImpl<ConnectionManagementCommandBuilder> acl_connection_manager_interface_{*this};
-  CommandInterfaceImpl<LeConnectionManagementCommandBuilder> le_acl_connection_manager_interface_{*this};
+  CommandInterfaceImpl<AclCommandBuilder> acl_connection_manager_interface_{*this};
+  CommandInterfaceImpl<AclCommandBuilder> le_acl_connection_manager_interface_{*this};
   CommandInterfaceImpl<SecurityCommandBuilder> security_interface{*this};
   CommandInterfaceImpl<LeSecurityCommandBuilder> le_security_interface{*this};
   CommandInterfaceImpl<LeAdvertisingCommandBuilder> le_advertising_interface{*this};

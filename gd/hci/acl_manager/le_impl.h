@@ -19,7 +19,6 @@
 #include "common/bind.h"
 #include "crypto_toolbox/crypto_toolbox.h"
 #include "hci/acl_manager/assembler.h"
-#include "hci/acl_manager/disconnector_for_le.h"
 #include "hci/acl_manager/round_robin_scheduler.h"
 #include "hci/le_address_manager.h"
 #include "os/alarm.h"
@@ -44,15 +43,15 @@ struct le_acl_connection {
 };
 
 struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
-  le_impl(HciLayer* hci_layer, Controller* controller, os::Handler* handler, RoundRobinScheduler* round_robin_scheduler,
-          DisconnectorForLe* disconnector)
-      : hci_layer_(hci_layer), controller_(controller), round_robin_scheduler_(round_robin_scheduler),
-        disconnector_(disconnector) {
+  le_impl(HciLayer* hci_layer, Controller* controller, os::Handler* handler, RoundRobinScheduler* round_robin_scheduler)
+      : hci_layer_(hci_layer), controller_(controller), round_robin_scheduler_(round_robin_scheduler) {
     hci_layer_ = hci_layer;
     controller_ = controller;
     handler_ = handler;
     le_acl_connection_interface_ = hci_layer_->GetLeAclConnectionInterface(
-        handler_->BindOn(this, &le_impl::on_le_event), handler_->BindOn(this, &le_impl::on_le_disconnect));
+        handler_->BindOn(this, &le_impl::on_le_event),
+        handler_->BindOn(this, &le_impl::on_le_disconnect),
+        handler_->BindOn(this, &le_impl::on_le_read_remote_version_information));
     le_address_manager_ = new LeAddressManager(
         common::Bind(&le_impl::enqueue_command, common::Unretained(this)),
         handler_,
@@ -89,6 +88,9 @@ struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
         break;
       case SubeventCode::DATA_LENGTH_CHANGE:
         on_data_length_change(event_packet);
+        break;
+      case SubeventCode::REMOTE_CONNECTION_PARAMETER_REQUEST:
+        on_remote_connection_parameter_request(event_packet);
         break;
       default:
         LOG_ALWAYS_FATAL("Unhandled event code %s", SubeventCodeText(code).c_str());
@@ -154,12 +156,9 @@ struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
     le_acl_connections_.emplace(std::piecewise_construct, std::forward_as_tuple(handle),
                                 std::forward_as_tuple(remote_address, queue->GetDownEnd(), handler_));
     auto& connection_proxy = check_and_get_le_connection(handle);
-    auto do_disconnect =
-        common::BindOnce(&DisconnectorForLe::handle_disconnect, common::Unretained(disconnector_), handle);
     round_robin_scheduler_->Register(RoundRobinScheduler::ConnectionType::LE, handle, queue);
-    std::unique_ptr<LeAclConnection> connection(new LeAclConnection(std::move(queue), le_acl_connection_interface_,
-                                                                    std::move(do_disconnect), handle, local_address,
-                                                                    remote_address, role));
+    std::unique_ptr<LeAclConnection> connection(new LeAclConnection(
+        std::move(queue), le_acl_connection_interface_, handle, local_address, remote_address, role));
     connection_proxy.le_connection_management_callbacks_ = connection->GetEventCallbacks();
     le_client_handler_->Post(common::BindOnce(&LeConnectionCallbacks::OnLeConnectSuccess,
                                               common::Unretained(le_client_callbacks_), remote_address,
@@ -196,7 +195,7 @@ struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
 
     auto role = connection_complete.GetRole();
     AddressWithType local_address;
-    if (role == hci::Role::MASTER) {
+    if (role == hci::Role::CENTRAL) {
       local_address = le_address_manager_->GetCurrentAddress();
     } else {
       // when accepting connection, we must obtain the address from the advertiser.
@@ -218,11 +217,8 @@ struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
                                 std::forward_as_tuple(remote_address, queue->GetDownEnd(), handler_));
     auto& connection_proxy = check_and_get_le_connection(handle);
     round_robin_scheduler_->Register(RoundRobinScheduler::ConnectionType::LE, handle, queue);
-    auto do_disconnect =
-        common::BindOnce(&DisconnectorForLe::handle_disconnect, common::Unretained(disconnector_), handle);
-    std::unique_ptr<LeAclConnection> connection(new LeAclConnection(std::move(queue), le_acl_connection_interface_,
-                                                                    std::move(do_disconnect), handle, local_address,
-                                                                    remote_address, role));
+    std::unique_ptr<LeAclConnection> connection(new LeAclConnection(
+        std::move(queue), le_acl_connection_interface_, handle, local_address, remote_address, role));
     connection_proxy.le_connection_management_callbacks_ = connection->GetEventCallbacks();
     le_client_handler_->Post(common::BindOnce(&LeConnectionCallbacks::OnLeConnectSuccess,
                                               common::Unretained(le_client_callbacks_), remote_address,
@@ -250,6 +246,15 @@ struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
         complete_view.GetConnInterval(), complete_view.GetConnLatency(), complete_view.GetSupervisionTimeout());
   }
 
+  void on_le_read_remote_version_information(
+      uint16_t handle, uint8_t version, uint16_t manufacturer_name, uint16_t sub_version) {
+    auto connection = le_acl_connections_.find(handle);
+    if (connection != le_acl_connections_.end()) {
+      connection->second.le_connection_management_callbacks_->OnReadRemoteVersionInformationComplete(
+          version, manufacturer_name, sub_version);
+    }
+  }
+
   void enqueue_command(std::unique_ptr<CommandPacketBuilder> command_packet) {
     hci_layer_->EnqueueCommand(
         std::move(command_packet),
@@ -273,6 +278,27 @@ struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
         data_length_view.GetMaxTxTime(),
         data_length_view.GetMaxRxOctets(),
         data_length_view.GetMaxRxTime());
+  }
+
+  void on_remote_connection_parameter_request(LeMetaEventView view) {
+    auto request_view = LeRemoteConnectionParameterRequestView::Create(view);
+    if (!request_view.IsValid()) {
+      LOG_ERROR("Invalid packet");
+      return;
+    }
+
+    // TODO: this is blindly accepting any parameters, just so we don't hang connection
+    // have proper parameter negotiation
+    le_acl_connection_interface_->EnqueueCommand(
+        LeRemoteConnectionParameterRequestReplyBuilder::Create(
+            request_view.GetConnectionHandle(),
+            request_view.GetIntervalMin(),
+            request_view.GetIntervalMax(),
+            request_view.GetLatency(),
+            request_view.GetTimeout(),
+            0,
+            0),
+        handler_->BindOnce([](CommandCompleteView status) {}));
   }
 
   void add_device_to_connect_list(AddressWithType address_with_type) {
@@ -354,6 +380,10 @@ struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
     ASSERT(check_connection_parameters(conn_interval_min, conn_interval_max, conn_latency, supervision_timeout));
 
     connecting_le_.insert(address_with_type);
+
+    if (initiator_filter_policy == InitiatorFilterPolicy::USE_CONNECT_LIST) {
+      address_with_type = AddressWithType();
+    }
 
     if (controller_->IsSupported(OpCode::LE_EXTENDED_CREATE_CONNECTION)) {
       LeCreateConnPhyScanParameters tmp;
@@ -561,7 +591,6 @@ struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
   std::map<uint16_t, le_acl_connection> le_acl_connections_;
   std::set<AddressWithType> connecting_le_;
   std::set<AddressWithType> canceled_connections_;
-  DisconnectorForLe* disconnector_;
   bool address_manager_registered = false;
   bool ready_to_unregister = false;
   bool pause_connection = false;

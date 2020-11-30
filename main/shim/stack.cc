@@ -39,8 +39,12 @@
 #include "gd/shim/l2cap.h"
 #include "gd/storage/storage_module.h"
 
+#include "main/shim/acl_legacy_interface.h"
 #include "main/shim/hci_layer.h"
+#include "main/shim/helpers.h"
+#include "main/shim/l2c_api.h"
 #include "main/shim/le_advertising_manager.h"
+#include "main/shim/shim.h"
 #include "main/shim/stack.h"
 
 namespace bluetooth {
@@ -80,6 +84,11 @@ void Stack::StartEverything() {
   if (common::InitFlags::GdAclEnabled()) {
     modules.add<hci::AclManager>();
   }
+  if (common::InitFlags::GdL2capEnabled()) {
+    modules.add<l2cap::classic::L2capClassicModule>();
+    modules.add<l2cap::le::L2capLeModule>();
+    modules.add<shim::L2cap>();
+  }
   if (common::InitFlags::GdSecurityEnabled()) {
     modules.add<security::SecurityModule>();
   }
@@ -89,8 +98,6 @@ void Stack::StartEverything() {
   if (common::InitFlags::GdCoreEnabled()) {
     modules.add<att::AttModule>();
     modules.add<hci::LeScanningManager>();
-    modules.add<l2cap::classic::L2capClassicModule>();
-    modules.add<l2cap::le::L2capLeModule>();
     modules.add<neighbor::ConnectabilityModule>();
     modules.add<neighbor::DiscoverabilityModule>();
     modules.add<neighbor::InquiryModule>();
@@ -99,9 +106,9 @@ void Stack::StartEverything() {
     modules.add<neighbor::PageModule>();
     modules.add<neighbor::ScanModule>();
     modules.add<storage::StorageModule>();
-    modules.add<shim::L2cap>();
   }
   Start(&modules);
+  is_running_ = true;
   // Make sure the leaf modules are started
   ASSERT(stack_manager_.GetInstance<storage::StorageModule>() != nullptr);
   ASSERT(stack_manager_.GetInstance<shim::Dumpsys>() != nullptr);
@@ -112,10 +119,9 @@ void Stack::StartEverything() {
   }
   if (common::InitFlags::GdAclEnabled()) {
     if (!common::InitFlags::GdCoreEnabled()) {
-      acl_ = new legacy::Acl(stack_handler_);
+      acl_ = new legacy::Acl(stack_handler_, legacy::GetAclInterface());
     }
   }
-  is_running_ = true;
   if (!common::InitFlags::GdCoreEnabled()) {
     bluetooth::shim::hci_on_reset_complete();
   }
@@ -123,11 +129,15 @@ void Stack::StartEverything() {
   if (common::InitFlags::GdAdvertisingEnabled()) {
     bluetooth::shim::init_advertising_manager();
   }
+  if (common::InitFlags::GdL2capEnabled() &&
+      !common::InitFlags::GdCoreEnabled()) {
+    L2CA_UseLegacySecurityModule();
+  }
 }
 
 void Stack::Start(ModuleList* modules) {
   ASSERT_LOG(!is_running_, "%s Gd stack already running", __func__);
-  LOG_DEBUG("%s Starting Gd stack", __func__);
+  LOG_INFO("%s Starting Gd stack", __func__);
 
   stack_thread_ =
       new os::Thread("gd_stack_thread", os::Thread::Priority::NORMAL);
@@ -143,11 +153,11 @@ void Stack::Stop() {
   if (!common::InitFlags::GdCoreEnabled()) {
     bluetooth::shim::hci_on_shutting_down();
   }
-  ASSERT_LOG(is_running_, "%s Gd stack not running", __func__);
-  is_running_ = false;
-
   delete acl_;
   acl_ = nullptr;
+
+  ASSERT_LOG(is_running_, "%s Gd stack not running", __func__);
+  is_running_ = false;
 
   delete btm_;
   btm_ = nullptr;
@@ -180,6 +190,7 @@ StackManager* Stack::GetStackManager() {
 legacy::Acl* Stack::GetAcl() {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   ASSERT(is_running_);
+  ASSERT_LOG(acl_ != nullptr, "Acl shim layer has not been created");
   return acl_;
 }
 

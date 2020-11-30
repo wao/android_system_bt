@@ -28,9 +28,10 @@ constexpr SubeventCode LeConnectionManagementEvents[] = {
     SubeventCode::CONNECTION_UPDATE_COMPLETE,
     SubeventCode::PHY_UPDATE_COMPLETE,
     SubeventCode::DATA_LENGTH_CHANGE,
+    SubeventCode::REMOTE_CONNECTION_PARAMETER_REQUEST,
 };
 
-typedef CommandInterface<LeConnectionManagementCommandBuilder> LeAclConnectionInterface;
+typedef CommandInterface<AclCommandBuilder> LeAclConnectionInterface;
 
 }  // namespace hci
 }  // namespace bluetooth

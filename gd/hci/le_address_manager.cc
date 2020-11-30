@@ -1,4 +1,21 @@
+/*
+ * Copyright 2020 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include "hci/le_address_manager.h"
+#include "common/init_flags.h"
 #include "os/log.h"
 #include "os/rand.h"
 
@@ -61,15 +78,12 @@ void LeAddressManager::SetPrivacyPolicyForInitiatorAddress(
     } break;
     case AddressPolicy::USE_NON_RESOLVABLE_ADDRESS:
     case AddressPolicy::USE_RESOLVABLE_ADDRESS:
+      le_address_ = fixed_address;
       rotation_irk_ = rotation_irk;
       minimum_rotation_time_ = minimum_rotation_time;
       maximum_rotation_time_ = maximum_rotation_time;
       address_rotation_alarm_ = std::make_unique<os::Alarm>(handler_);
-      if (!registered_clients_.empty()) {
-        // clients registered and paused before the policy set, rotate random address and resume
-        // clients after set random address complete
-        handler_->BindOnceOn(this, &LeAddressManager::rotate_random_address).Invoke();
-      }
+      set_random_address();
       break;
     case AddressPolicy::POLICY_NOT_SET:
       LOG_ALWAYS_FATAL("invalid parameters");
@@ -127,13 +141,19 @@ LeAddressManager::AddressPolicy LeAddressManager::Register(LeAddressManagerCallb
 void LeAddressManager::register_client(LeAddressManagerCallback* callback) {
   registered_clients_.insert(std::pair<LeAddressManagerCallback*, ClientState>(callback, ClientState::RESUMED));
   if (address_policy_ == AddressPolicy::POLICY_NOT_SET) {
-    LOG_DEBUG("address policy isn't set yet, pause clients and return");
+    LOG_INFO("address policy isn't set yet, pause clients and return");
     pause_registered_clients();
     return;
   } else if (
       address_policy_ == AddressPolicy::USE_RESOLVABLE_ADDRESS ||
       address_policy_ == AddressPolicy::USE_NON_RESOLVABLE_ADDRESS) {
-    prepare_to_rotate();
+    if (bluetooth::common::InitFlags::GdAclEnabled()) {
+      if (registered_clients_.size() == 1) {
+        schedule_rotate_random_address();
+      }
+    } else {
+      prepare_to_rotate();
+    }
   }
 }
 
@@ -218,16 +238,18 @@ void LeAddressManager::prepare_to_rotate() {
   pause_registered_clients();
 }
 
-void LeAddressManager::rotate_random_address() {
+void LeAddressManager::schedule_rotate_random_address() {
+  address_rotation_alarm_->Schedule(
+      common::BindOnce(&LeAddressManager::prepare_to_rotate, common::Unretained(this)),
+      get_next_private_address_interval_ms());
+}
+
+void LeAddressManager::set_random_address() {
   if (address_policy_ != AddressPolicy::USE_RESOLVABLE_ADDRESS &&
       address_policy_ != AddressPolicy::USE_NON_RESOLVABLE_ADDRESS) {
     LOG_ALWAYS_FATAL("Invalid address policy!");
     return;
   }
-
-  address_rotation_alarm_->Schedule(
-      common::BindOnce(&LeAddressManager::prepare_to_rotate, common::Unretained(this)),
-      get_next_private_address_interval_ms());
 
   hci::Address address;
   if (address_policy_ == AddressPolicy::USE_RESOLVABLE_ADDRESS) {
@@ -238,6 +260,17 @@ void LeAddressManager::rotate_random_address() {
   auto packet = hci::LeSetRandomAddressBuilder::Create(address);
   enqueue_command_.Run(std::move(packet));
   le_address_ = AddressWithType(address, AddressType::RANDOM_DEVICE_ADDRESS);
+}
+
+void LeAddressManager::rotate_random_address() {
+  if (address_policy_ != AddressPolicy::USE_RESOLVABLE_ADDRESS &&
+      address_policy_ != AddressPolicy::USE_NON_RESOLVABLE_ADDRESS) {
+    LOG_ALWAYS_FATAL("Invalid address policy!");
+    return;
+  }
+
+  schedule_rotate_random_address();
+  set_random_address();
 }
 
 /* This function generates Resolvable Private Address (RPA) from Identity
@@ -311,7 +344,7 @@ void LeAddressManager::handle_next_command() {
   for (auto client : registered_clients_) {
     if (client.second != ClientState::PAUSED) {
       // make sure all client paused, if not, this function will be trigger again by ack_pause
-      LOG_DEBUG("waiting for ack_pause, return");
+      LOG_INFO("waiting for ack_pause, return");
       return;
     }
   }
@@ -384,12 +417,12 @@ void LeAddressManager::OnCommandComplete(bluetooth::hci::CommandCompleteView vie
     return;
   }
   std::string op_code = OpCodeText(view.GetCommandOpCode());
-  LOG_DEBUG("Received command complete with op_code %s", op_code.c_str());
+  LOG_INFO("Received command complete with op_code %s", op_code.c_str());
 
   // The command was sent before any client registered, we can make sure all the clients paused when command complete.
   if (view.GetCommandOpCode() == OpCode::LE_SET_RANDOM_ADDRESS &&
       address_policy_ == AddressPolicy::USE_STATIC_ADDRESS) {
-    LOG_DEBUG("Received LE_SET_RANDOM_ADDRESS complete and Address policy is USE_STATIC_ADDRESS, return");
+    LOG_INFO("Received LE_SET_RANDOM_ADDRESS complete and Address policy is USE_STATIC_ADDRESS, return");
     return;
   }
 

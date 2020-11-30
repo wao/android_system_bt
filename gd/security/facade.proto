@@ -9,15 +9,16 @@ import "hci/facade/le_initiator_address_facade.proto";
 
 service SecurityModuleFacade {
   rpc CreateBond(facade.BluetoothAddressWithType) returns (google.protobuf.Empty) {}
+  rpc CreateBondOutOfBand(OobDataBondMessage) returns (google.protobuf.Empty) {}
   rpc CreateBondLe(facade.BluetoothAddressWithType) returns (google.protobuf.Empty) {}
   rpc CancelBond(facade.BluetoothAddressWithType) returns (google.protobuf.Empty) {}
   rpc RemoveBond(facade.BluetoothAddressWithType) returns (google.protobuf.Empty) {}
   rpc SetIoCapability(IoCapabilityMessage) returns (google.protobuf.Empty) {}
   rpc SetAuthenticationRequirements(AuthenticationRequirementsMessage) returns (google.protobuf.Empty) {}
-  rpc SetOobDataPresent(OobDataPresentMessage) returns (google.protobuf.Empty) {}
   rpc SetLeIoCapability(LeIoCapabilityMessage) returns (google.protobuf.Empty) {}
   rpc SetLeAuthRequirements(LeAuthRequirementsMessage) returns (google.protobuf.Empty) {}
-  rpc GetOutOfBandData(google.protobuf.Empty) returns (OobDataMessage) {}
+  rpc SetLeMaximumEncryptionKeySize(LeMaximumEncryptionKeySizeMessage) returns (google.protobuf.Empty) {}
+  rpc GetLeOutOfBandData(google.protobuf.Empty) returns (OobDataMessage) {}
   rpc SetOutOfBandData(OobDataMessage) returns (google.protobuf.Empty) {}
   rpc SetLeOobDataPresent(LeOobDataPresentMessage) returns (google.protobuf.Empty) {}
   rpc SetLeInitiatorAddressPolicy(hci.PrivacyPolicy) returns (google.protobuf.Empty) {}
@@ -32,8 +33,14 @@ service SecurityModuleFacade {
 
 message OobDataMessage {
   facade.BluetoothAddressWithType address = 1;
-  bytes le_sc_confirmation_value = 2;
-  bytes le_sc_random_value = 3;
+  bytes confirmation_value = 2;
+  bytes random_value = 3;
+}
+
+message OobDataBondMessage {
+  facade.BluetoothAddressWithType address = 1;
+  OobDataMessage p192_data = 2;
+  OobDataMessage p256_data = 3;
 }
 
 enum UiMsgType {
@@ -75,6 +82,7 @@ enum BondMsgType {
 message BondMsg {
   BondMsgType message_type = 1;
   facade.BluetoothAddressWithType peer = 2;
+  uint32 reason = 3;
 }
 
 enum HelperMsgType { DEVICE_DISCONNECTED = 0; }
@@ -126,6 +134,10 @@ message LeAuthRequirementsMessage {
   bool keypress = 4;
   bool ct2 = 5;
   uint32 reserved_bits = 6;
+}
+
+message LeMaximumEncryptionKeySizeMessage {
+  uint32 maximum_encryption_key_size = 1;
 }
 
 message LeOobDataPresentMessage {

@@ -50,6 +50,7 @@ class LinkLayerController {
   void StartSimplePairing(const Address& address);
   void AuthenticateRemoteStage1(const Address& address, PairingType pairing_type);
   void AuthenticateRemoteStage2(const Address& address);
+  void SaveKeyAndAuthenticate(uint8_t key_type, const Address& peer);
   ErrorCode LinkKeyRequestReply(const Address& address,
                                 const std::array<uint8_t, 16>& key);
   ErrorCode LinkKeyRequestNegativeReply(const Address& address);
@@ -58,24 +59,34 @@ class LinkLayerController {
                                      uint8_t authentication_requirements);
   ErrorCode IoCapabilityRequestNegativeReply(const Address& peer,
                                              ErrorCode reason);
+  ErrorCode PinCodeRequestReply(const Address& peer, std::vector<uint8_t> pin);
+  ErrorCode PinCodeRequestNegativeReply(const Address& peer);
   ErrorCode UserConfirmationRequestReply(const Address& peer);
   ErrorCode UserConfirmationRequestNegativeReply(const Address& peer);
   ErrorCode UserPasskeyRequestReply(const Address& peer,
                                     uint32_t numeric_value);
   ErrorCode UserPasskeyRequestNegativeReply(const Address& peer);
   ErrorCode RemoteOobDataRequestReply(const Address& peer,
-                                      const std::vector<uint8_t>& c,
-                                      const std::vector<uint8_t>& r);
+                                      const std::array<uint8_t, 16>& c,
+                                      const std::array<uint8_t, 16>& r);
   ErrorCode RemoteOobDataRequestNegativeReply(const Address& peer);
+  ErrorCode RemoteOobExtendedDataRequestReply(
+      const Address& peer, const std::array<uint8_t, 16>& c_192,
+      const std::array<uint8_t, 16>& r_192,
+      const std::array<uint8_t, 16>& c_256,
+      const std::array<uint8_t, 16>& r_256);
+  ErrorCode SendKeypressNotification(
+      const Address& peer,
+      bluetooth::hci::KeypressNotificationType notification_type);
   void HandleSetConnectionEncryption(const Address& address, uint16_t handle, uint8_t encryption_enable);
   ErrorCode SetConnectionEncryption(uint16_t handle, uint8_t encryption_enable);
   void HandleAuthenticationRequest(const Address& address, uint16_t handle);
   ErrorCode AuthenticationRequested(uint16_t handle);
 
   ErrorCode AcceptConnectionRequest(const Address& addr, bool try_role_switch);
-  void MakeSlaveConnection(const Address& addr, bool try_role_switch);
+  void MakePeripheralConnection(const Address& addr, bool try_role_switch);
   ErrorCode RejectConnectionRequest(const Address& addr, uint8_t reason);
-  void RejectSlaveConnection(const Address& addr, uint8_t reason);
+  void RejectPeripheralConnection(const Address& addr, uint8_t reason);
   ErrorCode CreateConnection(const Address& addr, uint16_t packet_type,
                              uint8_t page_scan_mode, uint16_t clock_offset,
                              uint8_t allow_role_switch);
@@ -293,7 +304,7 @@ class LinkLayerController {
 
   ErrorCode ChangeConnectionPacketType(uint16_t handle, uint16_t types);
   ErrorCode ChangeConnectionLinkKey(uint16_t handle);
-  ErrorCode MasterLinkKey(uint8_t key_flag);
+  ErrorCode CentralLinkKey(uint8_t key_flag);
   ErrorCode HoldMode(uint16_t handle, uint16_t hold_mode_max_interval,
                      uint16_t hold_mode_min_interval);
   ErrorCode SniffMode(uint16_t handle, uint16_t sniff_max_interval,
@@ -312,6 +323,9 @@ class LinkLayerController {
   ErrorCode WriteLinkSupervisionTimeout(uint16_t handle, uint16_t timeout);
   ErrorCode WriteDefaultLinkPolicySettings(uint16_t settings);
   uint16_t ReadDefaultLinkPolicySettings();
+
+  void ReadLocalOobData();
+  void ReadLocalOobExtendedData();
 
   void HandleIso(bluetooth::hci::IsoPacketView iso);
 
@@ -339,6 +353,8 @@ class LinkLayerController {
       model::packets::LinkLayerPacketView packet);
   void IncomingIsoConnectionResponsePacket(
       model::packets::LinkLayerPacketView packet);
+  void IncomingKeypressNotificationPacket(
+      model::packets::LinkLayerPacketView packet);
   void IncomingLeAdvertisementPacket(
       model::packets::LinkLayerPacketView packet);
   void IncomingLeConnectPacket(model::packets::LinkLayerPacketView packet);
@@ -352,6 +368,8 @@ class LinkLayerController {
   void IncomingPagePacket(model::packets::LinkLayerPacketView packet);
   void IncomingPageRejectPacket(model::packets::LinkLayerPacketView packet);
   void IncomingPageResponsePacket(model::packets::LinkLayerPacketView packet);
+  void IncomingPasskeyPacket(model::packets::LinkLayerPacketView packet);
+  void IncomingPasskeyFailedPacket(model::packets::LinkLayerPacketView packet);
   void IncomingReadRemoteLmpFeatures(
       model::packets::LinkLayerPacketView packet);
   void IncomingReadRemoteLmpFeaturesResponse(
@@ -404,6 +422,9 @@ class LinkLayerController {
   std::function<void(std::shared_ptr<model::packets::LinkLayerPacketBuilder>,
                      Phy::Type phy_type)>
       send_to_remote_;
+
+  uint32_t oob_id_ = 1;
+  uint32_t key_id_ = 1;
 
   // LE state
   std::vector<uint8_t> le_event_mask_;

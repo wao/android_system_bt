@@ -91,7 +91,7 @@ static uint16_t btm_sco_voice_settings_to_legacy(enh_esco_params_t* p_parms);
  * Returns          void
  *
  ******************************************************************************/
-void btm_sco_flush_sco_data(UNUSED_ATTR uint16_t sco_inx) {}
+static void btm_sco_flush_sco_data(UNUSED_ATTR uint16_t sco_inx) {}
 
 /*******************************************************************************
  *
@@ -158,31 +158,6 @@ static void btm_esco_conn_rsp(uint16_t sco_inx, uint8_t hci_status,
       *p_setup = btm_cb.sco_cb.def_esco_parms;
     }
 
-    uint16_t temp_packet_types =
-        (p_setup->packet_types & BTM_SCO_SUPPORTED_PKTS_MASK &
-         btm_cb.btm_sco_pkt_types_supported);
-
-    /* Make sure at least one eSCO packet type is sent, else might confuse peer
-     */
-    /* Taking this out to confirm with BQB tests
-    ** Real application would like to include this though, as many devices
-    ** do not retry with SCO only if an eSCO connection fails.
-    if (!(temp_packet_types & BTM_ESCO_LINK_ONLY_MASK))
-    {
-        temp_packet_types |= BTM_SCO_PKT_TYPES_MASK_EV3;
-    }
-    */
-    /* If SCO request, remove eSCO packet types (conformance) */
-    if (p_sco->esco.data.link_type == BTM_LINK_TYPE_SCO) {
-      temp_packet_types &= BTM_SCO_LINK_ONLY_MASK;
-      temp_packet_types |= BTM_SCO_EXCEPTION_PKTS_MASK;
-    } else {
-      /* OR in any exception packet types */
-      temp_packet_types |=
-          ((p_setup->packet_types & BTM_SCO_EXCEPTION_PKTS_MASK) |
-           (btm_cb.btm_sco_pkt_types_supported & BTM_SCO_EXCEPTION_PKTS_MASK));
-    }
-
     /* Use Enhanced Synchronous commands if supported */
     if (controller_get_interface()
             ->supports_enhanced_setup_synchronous_connection()) {
@@ -221,32 +196,6 @@ static void btm_esco_conn_rsp(uint16_t sco_inx, uint8_t hci_status,
  ******************************************************************************/
 void btm_route_sco_data(BT_HDR* p_msg) {
   osi_free(p_msg);
-}
-
-/*******************************************************************************
- *
- * Function         BTM_WriteScoData
- *
- * Description      This function write SCO data to a specified instance. The
- *                  data to be written p_buf needs to carry an offset of
- *                  HCI_SCO_PREAMBLE_SIZE bytes, and the data length can not
- *                  exceed BTM_SCO_DATA_SIZE_MAX bytes, whose default value is
- *                  set to 60 and is configurable. Data longer than the maximum
- *                  bytes will be truncated.
- *
- * Returns          BTM_SUCCESS: data write is successful
- *                  BTM_ILLEGAL_VALUE: SCO data contains illegal offset value.
- *                  BTM_SCO_BAD_LENGTH: SCO data length exceeds the max SCO
- *                                      packet size.
- *                  BTM_NO_RESOURCES: no resources.
- *                  BTM_UNKNOWN_ADDR: unknown SCO connection handle, or SCO is
- *                                    not routed via HCI.
- *
- *
- ******************************************************************************/
-tBTM_STATUS BTM_WriteScoData(UNUSED_ATTR uint16_t sco_inx,
-                             UNUSED_ATTR BT_HDR* p_buf) {
-  return (BTM_NO_RESOURCES);
 }
 
 /*******************************************************************************
@@ -356,71 +305,6 @@ static tBTM_STATUS btm_send_connect_request(uint16_t acl_handle,
   }
 
   return (BTM_CMD_STARTED);
-}
-
-/*******************************************************************************
- *
- * Function         btm_set_sco_ind_cback
- *
- * Description      This function is called to register for TCS SCO connect
- *                  indications.
- *
- * Returns          void
- *
- ******************************************************************************/
-void btm_set_sco_ind_cback(tBTM_SCO_IND_CBACK* sco_ind_cb) {
-  btm_cb.sco_cb.app_sco_ind_cb = sco_ind_cb;
-}
-
-/*******************************************************************************
- *
- * Function         btm_accept_sco_link
- *
- * Description      This function is called to respond to TCS SCO connect
- *                  indications
- *
- * Returns          void
- *
- ******************************************************************************/
-void btm_accept_sco_link(uint16_t sco_inx, enh_esco_params_t* p_setup,
-                         tBTM_SCO_CB* p_conn_cb, tBTM_SCO_CB* p_disc_cb) {
-  tSCO_CONN* p_sco;
-
-  if (BTM_MAX_SCO_LINKS == 0) {
-    btm_reject_sco_link(sco_inx);
-    return;
-  }
-
-  if (sco_inx >= BTM_MAX_SCO_LINKS) {
-    BTM_TRACE_ERROR("btm_accept_sco_link: Invalid sco_inx(%d)", sco_inx);
-    return;
-  }
-
-  /* Link role is ignored in for this message */
-  p_sco = &btm_cb.sco_cb.sco_db[sco_inx];
-  p_sco->p_conn_cb = p_conn_cb;
-  p_sco->p_disc_cb = p_disc_cb;
-  p_sco->esco.data.link_type =
-      BTM_LINK_TYPE_ESCO; /* Accept with all supported types */
-
-  BTM_TRACE_DEBUG("TCS accept SCO: Packet Types 0x%04x", p_setup->packet_types);
-
-  btm_esco_conn_rsp(sco_inx, HCI_SUCCESS, p_sco->esco.data.bd_addr, p_setup);
-}
-
-/*******************************************************************************
- *
- * Function         btm_reject_sco_link
- *
- * Description      This function is called to respond to SCO connect
- *                  indications
- *
- * Returns          void
- *
- ******************************************************************************/
-void btm_reject_sco_link(uint16_t sco_inx) {
-  btm_esco_conn_rsp(sco_inx, HCI_ERR_HOST_REJECT_RESOURCES,
-                    btm_cb.sco_cb.sco_db[sco_inx].esco.data.bd_addr, NULL);
 }
 
 /*******************************************************************************

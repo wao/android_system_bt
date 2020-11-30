@@ -29,6 +29,7 @@
 #include "main/shim/entry.h"
 #include "main/shim/helpers.h"
 #include "main/shim/shim.h"
+#include "stack/btm/btm_dev.h"
 #include "stack/btm/btm_int_types.h"
 #include "types/bt_transport.h"
 #include "types/raw_address.h"
@@ -363,7 +364,7 @@ bool Btm::StartInquiry(
     LegacyInquiryCompleteCallback legacy_inquiry_complete_callback) {
   switch (mode) {
     case kInquiryModeOff:
-      LOG_DEBUG("%s Stopping inquiry mode", __func__);
+      LOG_INFO("%s Stopping inquiry mode", __func__);
       if (limited_inquiry_active_ || general_inquiry_active_) {
         GetInquiry()->StopInquiry();
         limited_inquiry_active_ = false;
@@ -375,7 +376,7 @@ bool Btm::StartInquiry(
     case kLimitedInquiryMode:
     case kGeneralInquiryMode: {
       if (mode == kLimitedInquiryMode) {
-        LOG_DEBUG(
+        LOG_INFO(
 
             "%s Starting limited inquiry mode duration:%hhd max responses:%hhd",
             __func__, duration, max_responses);
@@ -383,7 +384,7 @@ bool Btm::StartInquiry(
         GetInquiry()->StartLimitedInquiry(duration, max_responses);
         active_inquiry_mode_ = kLimitedInquiryMode;
       } else {
-        LOG_DEBUG(
+        LOG_INFO(
 
             "%s Starting general inquiry mode duration:%hhd max responses:%hhd",
             __func__, duration, max_responses);
@@ -401,7 +402,7 @@ bool Btm::StartInquiry(
 }
 
 void Btm::CancelInquiry() {
-  LOG_DEBUG("%s", __func__);
+  LOG_INFO("%s", __func__);
   if (limited_inquiry_active_ || general_inquiry_active_) {
     GetInquiry()->StopInquiry();
     limited_inquiry_active_ = false;
@@ -434,12 +435,12 @@ bool Btm::StartPeriodicInquiry(uint8_t mode, uint8_t duration,
     case kLimitedInquiryMode:
     case kGeneralInquiryMode: {
       if (mode == kLimitedInquiryMode) {
-        LOG_DEBUG("%s Starting limited periodic inquiry mode", __func__);
+        LOG_INFO("%s Starting limited periodic inquiry mode", __func__);
         limited_periodic_inquiry_active_ = true;
         GetInquiry()->StartLimitedPeriodicInquiry(duration, max_responses,
                                                   max_delay, min_delay);
       } else {
-        LOG_DEBUG("%s Starting general periodic inquiry mode", __func__);
+        LOG_INFO("%s Starting general periodic inquiry mode", __func__);
         general_periodic_inquiry_active_ = true;
         GetInquiry()->StartGeneralPeriodicInquiry(duration, max_responses,
                                                   max_delay, min_delay);
@@ -587,8 +588,8 @@ BtmStatus Btm::ReadClassicRemoteDeviceName(const RawAddress& raw_address,
     return BTM_BUSY;
   }
 
-  LOG_DEBUG("%s Start read name from address:%s", __func__,
-            raw_address.ToString().c_str());
+  LOG_INFO("%s Start read name from address:%s", __func__,
+           raw_address.ToString().c_str());
   GetName()->ReadRemoteNameRequest(
       ToGdAddress(raw_address), hci::PageScanRepetitionMode::R1,
       0 /* clock_offset */, hci::ClockOffsetValid::INVALID,
@@ -608,8 +609,8 @@ BtmStatus Btm::ReadClassicRemoteDeviceName(const RawAddress& raw_address,
             };
             std::copy(remote_name.begin(), remote_name.end(),
                       name.remote_bd_name);
-            LOG_DEBUG("%s Finish read name from address:%s name:%s", __func__,
-                      address.ToString().c_str(), name.remote_bd_name);
+            LOG_INFO("%s Finish read name from address:%s name:%s", __func__,
+                     address.ToString().c_str(), name.remote_bd_name);
             callback(&name);
             classic_read_remote_name->Stop();
           },
@@ -666,16 +667,17 @@ void Btm::StartAdvertising() {
     return;
   }
 
-  hci::AdvertisingConfig config = {};
-  advertiser_id_ = GetAdvertising()->CreateAdvertiser(
-      config, common::Bind([](hci::Address, hci::AddressType) { /*OnScan*/ }),
+  hci::ExtendedAdvertisingConfig config = {};
+  advertiser_id_ = GetAdvertising()->ExtendedCreateAdvertiser(
+      0x00, config,
+      common::Bind([](hci::Address, hci::AddressType) { /*OnScan*/ }),
       common::Bind([](hci::ErrorCode, uint8_t, uint8_t) { /*OnTerminated*/ }),
       GetGdShimHandler());
   if (advertiser_id_ == hci::LeAdvertisingManager::kInvalidId) {
     LOG_WARN("%s Unable to start advertising", __func__);
     return;
   }
-  LOG_DEBUG("%s Started advertising", __func__);
+  LOG_INFO("%s Started advertising", __func__);
 }
 
 void Btm::StopAdvertising() {
@@ -685,7 +687,7 @@ void Btm::StopAdvertising() {
   }
   GetAdvertising()->RemoveAdvertiser(advertiser_id_);
   advertiser_id_ = hci::LeAdvertisingManager::kInvalidId;
-  LOG_DEBUG("%s Stopped advertising", __func__);
+  LOG_INFO("%s Stopped advertising", __func__);
 }
 
 void Btm::StartConnectability() { StartAdvertising(); }
@@ -734,7 +736,7 @@ tBTM_STATUS Btm::CreateBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
     } else if (device_type & BT_DEVICE_TYPE_BREDR) {
       transport = BT_TRANSPORT_BR_EDR;
     }
-    LOG_DEBUG("%s guessing transport as %02x ", __func__, transport);
+    LOG_INFO("%s guessing transport as %02x ", __func__, transport);
   }
 
   auto security_manager = GetSecurityModule()->GetSecurityManager();
@@ -775,6 +777,14 @@ uint16_t Btm::GetAclHandle(const RawAddress& remote_bda,
 }
 
 tBLE_ADDR_TYPE Btm::GetAddressType(const RawAddress& bd_addr) {
+  tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
+  if (p_dev_rec != NULL && p_dev_rec->device_type & BT_DEVICE_TYPE_BLE) {
+    if (!p_dev_rec->ble.identity_address_with_type.bda.IsEmpty()) {
+      return p_dev_rec->ble.identity_address_with_type.type;
+    } else {
+      return p_dev_rec->ble.ble_addr_type;
+    }
+  }
   if (le_address_type_cache_.count(bd_addr) == 0) {
     LOG(ERROR) << "Unknown bd_addr. Use public address";
     return BLE_ADDR_PUBLIC;

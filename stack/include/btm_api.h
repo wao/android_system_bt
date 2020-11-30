@@ -401,12 +401,11 @@ tBTM_STATUS BTM_CancelRemoteDeviceName(void);
  *
  * Description      This function is called to read a remote device's version
  *
- * Returns          BTM_SUCCESS if successful, otherwise an error
+ * Returns          true if data valid, false otherwise
  *
  ******************************************************************************/
-tBTM_STATUS BTM_ReadRemoteVersion(const RawAddress& addr, uint8_t* lmp_version,
-                                  uint16_t* manufacturer,
-                                  uint16_t* lmp_sub_version);
+bool BTM_ReadRemoteVersion(const RawAddress& addr, uint8_t* lmp_version,
+                           uint16_t* manufacturer, uint16_t* lmp_sub_version);
 
 /*******************************************************************************
  *
@@ -741,6 +740,17 @@ tBTM_STATUS BTM_SetSsrParams(const RawAddress& remote_bda, uint16_t max_lat,
  ******************************************************************************/
 uint16_t BTM_GetHCIConnHandle(const RawAddress& remote_bda,
                               tBT_TRANSPORT transport);
+
+/*******************************************************************************
+ *
+ * Function         BTM_IsPhy2mSupported
+ *
+ * Description      This function is called to check PHY 2M support
+ *                  from peer device
+ * Returns          True when PHY 2M supported false otherwise
+ *
+ ******************************************************************************/
+bool BTM_IsPhy2mSupported(const RawAddress& remote_bda, tBT_TRANSPORT transport);
 
 /*******************************************************************************
  *

@@ -32,8 +32,6 @@
 #include "l2cdefs.h"
 #include "osi/include/osi.h"
 
-#include "btm_api.h"
-
 #include "sdp_api.h"
 #include "sdpint.h"
 #include "stack/btm/btm_sec.h"
@@ -49,11 +47,13 @@ tSDP_CB sdp_cb;
 static void sdp_connect_ind(const RawAddress& bd_addr, uint16_t l2cap_cid,
                             UNUSED_ATTR uint16_t psm, uint8_t l2cap_id);
 static void sdp_config_ind(uint16_t l2cap_cid, tL2CAP_CFG_INFO* p_cfg);
-static void sdp_config_cfm(uint16_t l2cap_cid, tL2CAP_CFG_INFO* p_cfg);
+static void sdp_config_cfm(uint16_t l2cap_cid, uint16_t result,
+                           tL2CAP_CFG_INFO* p_cfg);
 static void sdp_disconnect_ind(uint16_t l2cap_cid, bool ack_needed);
 static void sdp_data_ind(uint16_t l2cap_cid, BT_HDR* p_msg);
 
 static void sdp_connect_cfm(uint16_t l2cap_cid, uint16_t result);
+static void sdp_on_l2cap_error(uint16_t l2cap_cid, uint16_t result);
 
 /*******************************************************************************
  *
@@ -72,11 +72,9 @@ void sdp_init(void) {
     sdp_cb.ccb[i].sdp_conn_timer = alarm_new("sdp.sdp_conn_timer");
   }
 
-  /* Initialize the L2CAP configuration. We only care about MTU and flush */
+  /* Initialize the L2CAP configuration. We only care about MTU */
   sdp_cb.l2cap_my_cfg.mtu_present = true;
   sdp_cb.l2cap_my_cfg.mtu = SDP_MTU_SIZE;
-  sdp_cb.l2cap_my_cfg.flush_to_present = true;
-  sdp_cb.l2cap_my_cfg.flush_to = SDP_FLUSH_TO;
 
   sdp_cb.max_attr_list_size = SDP_MTU_SIZE - 16;
   sdp_cb.max_recs_per_search = SDP_MAX_DISC_SERVER_RECS;
@@ -89,10 +87,11 @@ void sdp_init(void) {
   sdp_cb.reg_info.pL2CA_ConfigCfm_Cb = sdp_config_cfm;
   sdp_cb.reg_info.pL2CA_DisconnectInd_Cb = sdp_disconnect_ind;
   sdp_cb.reg_info.pL2CA_DataInd_Cb = sdp_data_ind;
+  sdp_cb.reg_info.pL2CA_Error_Cb = sdp_on_l2cap_error;
 
   /* Now, register with L2CAP */
   if (!L2CA_Register2(SDP_PSM, sdp_cb.reg_info, true /* enable_snoop */,
-                      nullptr, sdp_cb.l2cap_my_cfg.mtu, BTM_SEC_NONE)) {
+                      nullptr, SDP_MTU_SIZE, 0, BTM_SEC_NONE)) {
     SDP_TRACE_ERROR("SDP Registration failed");
   }
 }
@@ -126,14 +125,12 @@ static void sdp_connect_ind(const RawAddress& bd_addr, uint16_t l2cap_cid,
   /* Save the BD Address and Channel ID. */
   p_ccb->device_address = bd_addr;
   p_ccb->connection_id = l2cap_cid;
+}
 
-  /* Send response to the L2CAP layer. */
-  L2CA_ConnectRsp(bd_addr, l2cap_id, l2cap_cid, L2CAP_CONN_OK, L2CAP_CONN_OK);
-  tL2CAP_CFG_INFO cfg = sdp_cb.l2cap_my_cfg;
-  L2CA_ConfigReq(l2cap_cid, &cfg);
-
-  SDP_TRACE_EVENT("SDP - Rcvd L2CAP conn ind, sent config req, CID 0x%x",
-                  p_ccb->connection_id);
+static void sdp_on_l2cap_error(uint16_t l2cap_cid, uint16_t result) {
+  tCONN_CB* p_ccb = sdpu_find_ccb_by_cid(l2cap_cid);
+  if (p_ccb == nullptr) return;
+  sdp_disconnect(p_ccb, SDP_CFG_FAILED);
 }
 
 /*******************************************************************************
@@ -149,7 +146,6 @@ static void sdp_connect_ind(const RawAddress& bd_addr, uint16_t l2cap_cid,
  ******************************************************************************/
 static void sdp_connect_cfm(uint16_t l2cap_cid, uint16_t result) {
   tCONN_CB* p_ccb;
-  tL2CAP_CFG_INFO cfg;
 
   /* Find CCB based on CID */
   p_ccb = sdpu_find_ccb_by_cid(l2cap_cid);
@@ -162,35 +158,8 @@ static void sdp_connect_cfm(uint16_t l2cap_cid, uint16_t result) {
   /* Transition to the next state and startup the timer.      */
   if ((result == L2CAP_CONN_OK) && (p_ccb->con_state == SDP_STATE_CONN_SETUP)) {
     p_ccb->con_state = SDP_STATE_CFG_SETUP;
-
-    cfg = sdp_cb.l2cap_my_cfg;
-    L2CA_ConfigReq(l2cap_cid, &cfg);
-
-    SDP_TRACE_EVENT("SDP - got conn cnf, sent cfg req, CID: 0x%x",
-                    p_ccb->connection_id);
   } else {
-    SDP_TRACE_WARNING("SDP - Rcvd conn cnf with error: 0x%x  CID 0x%x", result,
-                      p_ccb->connection_id);
-
-    /* Tell the user if there is a callback */
-    if (p_ccb->p_cb || p_ccb->p_cb2) {
-      uint16_t err = -1;
-      if ((result == HCI_ERR_HOST_REJECT_SECURITY) ||
-          (result == HCI_ERR_AUTH_FAILURE) ||
-          (result == HCI_ERR_PAIRING_NOT_ALLOWED) ||
-          (result == HCI_ERR_PAIRING_WITH_UNIT_KEY_NOT_SUPPORTED) ||
-          (result == HCI_ERR_KEY_MISSING))
-        err = SDP_SECURITY_ERR;
-      else if (result == HCI_ERR_HOST_REJECT_DEVICE)
-        err = SDP_CONN_REJECTED;
-      else
-        err = SDP_CONN_FAILED;
-      if (p_ccb->p_cb)
-        (*p_ccb->p_cb)(err);
-      else if (p_ccb->p_cb2)
-        (*p_ccb->p_cb2)(err, p_ccb->user_data);
-    }
-    sdpu_release_ccb(p_ccb);
+    LOG(ERROR) << __func__ << ": invoked with non OK status";
   }
 }
 
@@ -226,41 +195,7 @@ static void sdp_config_ind(uint16_t l2cap_cid, tL2CAP_CFG_INFO* p_cfg) {
       p_ccb->rem_mtu_size = p_cfg->mtu;
   }
 
-  /* For now, always accept configuration from the other side */
-  p_cfg->flush_to_present = false;
-  p_cfg->mtu_present = false;
-  p_cfg->result = L2CAP_CFG_OK;
-
-  /* Check peer config request against our rfcomm configuration */
-  if (p_cfg->fcr_present && p_cfg->fcr.mode != L2CAP_FCR_BASIC_MODE) {
-    /* Reject if locally we want basic and they don't */
-    p_cfg->fcr.mode = L2CAP_FCR_BASIC_MODE;
-    p_cfg->result = L2CAP_CFG_UNACCEPTABLE_PARAMS;
-    SDP_TRACE_DEBUG(
-        "sdp_config_ind(CONFIG) -> Please try again with BASIC mode");
-    /* Remain in configure state and give the peer our desired configuration
-     */
-    L2CA_ConfigRsp(l2cap_cid, p_cfg);
-    return;
-  }
-
-  L2CA_ConfigRsp(l2cap_cid, p_cfg);
-
   SDP_TRACE_EVENT("SDP - Rcvd cfg ind, sent cfg cfm, CID: 0x%x", l2cap_cid);
-
-  p_ccb->con_flags |= SDP_FLAGS_HIS_CFG_DONE;
-
-  if (p_ccb->con_flags & SDP_FLAGS_MY_CFG_DONE) {
-    p_ccb->con_state = SDP_STATE_CONNECTED;
-
-    if (p_ccb->con_flags & SDP_FLAGS_IS_ORIG) {
-      sdp_disc_connected(p_ccb);
-    } else {
-      /* Start inactivity timer */
-      alarm_set_on_mloop(p_ccb->sdp_conn_timer, SDP_INACT_TIMEOUT_MS,
-                         sdp_conn_timer_timeout, p_ccb);
-    }
-  }
 }
 
 /*******************************************************************************
@@ -273,11 +208,13 @@ static void sdp_config_ind(uint16_t l2cap_cid, tL2CAP_CFG_INFO* p_cfg) {
  * Returns          void
  *
  ******************************************************************************/
-static void sdp_config_cfm(uint16_t l2cap_cid, tL2CAP_CFG_INFO* p_cfg) {
+static void sdp_config_cfm(uint16_t l2cap_cid, uint16_t initiator,
+                           tL2CAP_CFG_INFO* p_cfg) {
+  sdp_config_ind(l2cap_cid, p_cfg);
+
   tCONN_CB* p_ccb;
 
-  SDP_TRACE_EVENT("SDP - Rcvd cfg cfm, CID: 0x%x  Result: %d", l2cap_cid,
-                  p_cfg->result);
+  SDP_TRACE_EVENT("SDP - Rcvd cfg cfm, CID: 0x%x", l2cap_cid);
 
   /* Find CCB based on CID */
   p_ccb = sdpu_find_ccb_by_cid(l2cap_cid);
@@ -287,32 +224,14 @@ static void sdp_config_cfm(uint16_t l2cap_cid, tL2CAP_CFG_INFO* p_cfg) {
   }
 
   /* For now, always accept configuration from the other side */
-  if (p_cfg->result == L2CAP_CFG_OK) {
-    p_ccb->con_flags |= SDP_FLAGS_MY_CFG_DONE;
+  p_ccb->con_state = SDP_STATE_CONNECTED;
 
-    if (p_ccb->con_flags & SDP_FLAGS_HIS_CFG_DONE) {
-      p_ccb->con_state = SDP_STATE_CONNECTED;
-
-      if (p_ccb->con_flags & SDP_FLAGS_IS_ORIG) {
-        sdp_disc_connected(p_ccb);
-      } else {
-        /* Start inactivity timer */
-        alarm_set_on_mloop(p_ccb->sdp_conn_timer, SDP_INACT_TIMEOUT_MS,
-                           sdp_conn_timer_timeout, p_ccb);
-      }
-    }
+  if (p_ccb->con_flags & SDP_FLAGS_IS_ORIG) {
+    sdp_disc_connected(p_ccb);
   } else {
-    /* If peer has rejected FCR and suggested basic then try basic */
-    if (p_cfg->fcr_present) {
-      tL2CAP_CFG_INFO cfg = sdp_cb.l2cap_my_cfg;
-      cfg.fcr_present = false;
-      L2CA_ConfigReq(l2cap_cid, &cfg);
-
-      /* Remain in configure state */
-      return;
-    }
-
-    sdp_disconnect(p_ccb, SDP_CFG_FAILED);
+    /* Start inactivity timer */
+    alarm_set_on_mloop(p_ccb->sdp_conn_timer, SDP_INACT_TIMEOUT_MS,
+                       sdp_conn_timer_timeout, p_ccb);
   }
 }
 

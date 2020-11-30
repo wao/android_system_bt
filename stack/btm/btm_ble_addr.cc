@@ -37,10 +37,12 @@
 #include "stack/crypto_toolbox/crypto_toolbox.h"
 #include "stack/include/acl_api.h"
 
+void btm_ble_set_random_address(const RawAddress& random_bda);
+
 /* This function generates Resolvable Private Address (RPA) from Identity
  * Resolving Key |irk| and |random|*/
-RawAddress generate_rpa_from_irk_and_rand(const Octet16& irk,
-                                          BT_OCTET8 random) {
+static RawAddress generate_rpa_from_irk_and_rand(const Octet16& irk,
+                                                 BT_OCTET8 random) {
   random[2] &= (~BLE_RESOLVE_ADDR_MASK);
   random[2] |= BLE_RESOLVE_ADDR_MSB;
 
@@ -57,6 +59,13 @@ RawAddress generate_rpa_from_irk_and_rand(const Octet16& irk,
   address.address[4] = p[1];
   address.address[3] = p[2];
   return address;
+}
+
+static void btm_ble_refresh_raddr_timer_timeout(UNUSED_ATTR void* data) {
+  if (btm_cb.ble_ctr_cb.addr_mgnt_cb.own_addr_type == BLE_ADDR_RANDOM) {
+    /* refresh the random addr */
+    btm_gen_resolvable_private_addr(base::Bind(&btm_gen_resolve_paddr_low));
+  }
 }
 
 /** This function is called when random address for local controller was
@@ -170,25 +179,20 @@ bool btm_ble_addr_resolvable(const RawAddress& rpa,
  * starting from calculating IRK. If the record index exceeds the maximum record
  * number, matching failed and send a callback. */
 static bool btm_ble_match_random_bda(void* data, void* context) {
-  BTM_TRACE_EVENT("%s next iteration", __func__);
-  RawAddress* random_bda = (RawAddress*)context;
-
   tBTM_SEC_DEV_REC* p_dev_rec = static_cast<tBTM_SEC_DEV_REC*>(data);
-
-  BTM_TRACE_DEBUG("sec_flags = %02x device_type = %d", p_dev_rec->sec_flags,
-                  p_dev_rec->device_type);
+  RawAddress* random_bda = static_cast<RawAddress*>(context);
 
   if (!(p_dev_rec->device_type & BT_DEVICE_TYPE_BLE) ||
       !(p_dev_rec->ble.key_type & BTM_LE_KEY_PID))
+    // Match fails preconditions
     return true;
 
   if (rpa_matches_irk(*random_bda, p_dev_rec->ble.keys.irk)) {
-    BTM_TRACE_EVENT("match is found");
-    // if it was match, finish iteration, otherwise continue
+    // Matched
     return false;
   }
 
-  // not a match, continue iteration
+  // This item not a match, continue iteration
   return true;
 }
 
@@ -197,25 +201,18 @@ static bool btm_ble_match_random_bda(void* data, void* context) {
  * matched to.
  */
 tBTM_SEC_DEV_REC* btm_ble_resolve_random_addr(const RawAddress& random_bda) {
-  /* start to resolve random address */
-  /* check for next security record */
-
   list_node_t* n = list_foreach(btm_cb.sec_dev_rec, btm_ble_match_random_bda,
                                 (void*)&random_bda);
-  tBTM_SEC_DEV_REC* p_dev_rec = nullptr;
-  if (n != nullptr) p_dev_rec = static_cast<tBTM_SEC_DEV_REC*>(list_node(n));
-
-  BTM_TRACE_EVENT("%s:  %sresolved", __func__,
-                  (p_dev_rec == nullptr ? "not " : ""));
-  return p_dev_rec;
+  return (n == nullptr) ? (nullptr)
+                        : (static_cast<tBTM_SEC_DEV_REC*>(list_node(n)));
 }
 
 /*******************************************************************************
  *  address mapping between pseudo address and real connection address
  ******************************************************************************/
 /** Find the security record whose LE identity address is matching */
-tBTM_SEC_DEV_REC* btm_find_dev_by_identity_addr(const RawAddress& bd_addr,
-                                                uint8_t addr_type) {
+static tBTM_SEC_DEV_REC* btm_find_dev_by_identity_addr(
+    const RawAddress& bd_addr, uint8_t addr_type) {
   list_node_t* end = list_end(btm_cb.sec_dev_rec);
   for (list_node_t* node = list_begin(btm_cb.sec_dev_rec); node != end;
        node = list_next(node)) {
@@ -328,11 +325,15 @@ void btm_ble_refresh_peer_resolvable_private_addr(
   }
 
   /* connection refresh remote address */
-  if (!acl_refresh_remote_address(p_sec_rec, p_sec_rec->bd_addr, rra_type,
-                                  rpa)) {
+  const auto& identity_address = p_sec_rec->ble.identity_address_with_type.bda;
+  auto identity_address_type = p_sec_rec->ble.identity_address_with_type.type;
+
+  if (!acl_refresh_remote_address(identity_address, identity_address_type,
+                                  p_sec_rec->bd_addr, rra_type, rpa)) {
     // Try looking up the pseudo random address
-    if (!acl_refresh_remote_address(p_sec_rec, p_sec_rec->ble.pseudo_addr,
-                                    rra_type, rpa)) {
+    if (!acl_refresh_remote_address(identity_address, identity_address_type,
+                                    p_sec_rec->ble.pseudo_addr, rra_type,
+                                    rpa)) {
       LOG_ERROR("%s Unknown device to refresh remote device", __func__);
     }
   }

@@ -64,8 +64,7 @@ const tL2CAP_APPL_INFO bluetooth::shim::legacy::PsmManager::Callbacks(
 }
 
 bluetooth::shim::legacy::L2cap::L2cap()
-    : classic_dynamic_psm_(kInitialClassicDynamicPsm),
-      le_dynamic_psm_(kInitialLeDynamicPsm),
+    : le_dynamic_psm_(kInitialLeDynamicPsm),
       classic_virtual_psm_(kInitialClassicVirtualPsm) {
   bluetooth::shim::RegisterDumpsysFunction(static_cast<void*>(this),
                                            [this](int fd) { Dump(fd); });
@@ -140,28 +139,10 @@ uint16_t bluetooth::shim::legacy::L2cap::GetNextDynamicLePsm() {
   return le_dynamic_psm_;
 }
 
-uint16_t bluetooth::shim::legacy::L2cap::GetNextDynamicClassicPsm() {
-  while (Classic().IsPsmRegistered(classic_dynamic_psm_)) {
-    classic_dynamic_psm_ += 2;
-    if (classic_dynamic_psm_ > kFinalClassicDynamicPsm) {
-      classic_dynamic_psm_ = kInitialClassicDynamicPsm;
-    } else if (classic_dynamic_psm_ & 0x0100) {
-      /* the upper byte must be even */
-      classic_dynamic_psm_ += 0x0100;
-    }
-
-    /* if psm is in range of reserved BRCM Aware features */
-    if ((BRCM_RESERVED_PSM_START <= classic_dynamic_psm_) &&
-        (classic_dynamic_psm_ <= BRCM_RESERVED_PSM_END)) {
-      classic_dynamic_psm_ = BRCM_RESERVED_PSM_END + 2;
-    }
-  }
-  return classic_dynamic_psm_;
-}
-
 uint16_t bluetooth::shim::legacy::L2cap::RegisterService(
     uint16_t psm, const tL2CAP_APPL_INFO& callbacks, bool enable_snoop,
-    tL2CAP_ERTM_INFO* p_ertm_info, uint16_t required_mtu) {
+    tL2CAP_ERTM_INFO* p_ertm_info, uint16_t my_mtu,
+    uint16_t required_remote_mtu) {
   if (Classic().IsPsmRegistered(psm)) {
     LOG_WARN("Service is already registered psm:%hd", psm);
     return 0;
@@ -170,7 +151,7 @@ uint16_t bluetooth::shim::legacy::L2cap::RegisterService(
     LOG_INFO("Disable snooping on psm basis unsupported psm:%d", psm);
   }
 
-  LOG_DEBUG("Registering service on psm:%hd", psm);
+  LOG_INFO("Registering service on psm:%hd", psm);
   RegisterServicePromise register_promise;
   auto service_registered = register_promise.get_future();
   bool use_ertm = false;
@@ -179,7 +160,7 @@ uint16_t bluetooth::shim::legacy::L2cap::RegisterService(
     use_ertm = true;
   }
   bluetooth::shim::GetL2cap()->RegisterClassicService(
-      psm, use_ertm, required_mtu,
+      psm, use_ertm, my_mtu, required_remote_mtu,
       std::bind(
           &bluetooth::shim::legacy::L2cap::OnRemoteInitiatedConnectionCreated,
           this, std::placeholders::_1, std::placeholders::_2,
@@ -190,7 +171,7 @@ uint16_t bluetooth::shim::legacy::L2cap::RegisterService(
   if (registered_psm != psm) {
     LOG_WARN("Unable to register psm:%hd", psm);
   } else {
-    LOG_DEBUG("Successfully registered psm:%hd", psm);
+    LOG_INFO("Successfully registered psm:%hd", psm);
     Classic().RegisterPsm(registered_psm, callbacks);
   }
   return registered_psm;
@@ -208,7 +189,7 @@ void bluetooth::shim::legacy::L2cap::UnregisterService(uint16_t psm) {
     }
   }
 
-  LOG_DEBUG("Unregistering service on psm:%hd", psm);
+  LOG_INFO("Unregistering service on psm:%hd", psm);
   UnregisterServicePromise unregister_promise;
   auto service_unregistered = unregister_promise.get_future();
   bluetooth::shim::GetL2cap()->UnregisterClassicService(
@@ -226,8 +207,8 @@ uint16_t bluetooth::shim::legacy::L2cap::CreateConnection(
 
   CreateConnectionPromise create_promise;
   auto created = create_promise.get_future();
-  LOG_DEBUG("Initiating local connection to psm:%hd address:%s", psm,
-            raw_address.ToString().c_str());
+  LOG_INFO("Initiating local connection to psm:%hd address:%s", psm,
+           raw_address.ToString().c_str());
 
   bluetooth::shim::GetL2cap()->CreateClassicConnection(
       psm, raw_address.ToString(),
@@ -242,7 +223,7 @@ uint16_t bluetooth::shim::legacy::L2cap::CreateConnection(
     LOG_WARN("Failed to initiate connection interface to psm:%hd address:%s",
              psm, raw_address.ToString().c_str());
   } else {
-    LOG_DEBUG(
+    LOG_INFO(
         "Successfully initiated connection to psm:%hd address:%s"
         " connection_interface_descriptor:%hd",
         psm, raw_address.ToString().c_str(), cid);
@@ -267,14 +248,19 @@ void bluetooth::shim::legacy::L2cap::OnLocalInitiatedConnectionCreated(
         FROM_HERE,
         base::Bind(classic_.Callbacks(psm).pL2CA_ConnectCfm_Cb, cid,
                    connected ? (kConnectionSuccess) : (kConnectionFail)));
+    tL2CAP_CFG_INFO cfg_info{};
+    do_in_main_thread(
+        FROM_HERE,
+        base::Bind(classic_.Callbacks(CidToPsm(cid)).pL2CA_ConfigCfm_Cb, cid,
+                   L2CAP_INITIATOR_LOCAL, base::Unretained(&cfg_info)));
 
   } else {
-    LOG_DEBUG("Connection Closed before presentation to upper layer");
+    LOG_INFO("Connection Closed before presentation to upper layer");
     if (connected) {
       SetDownstreamCallbacks(cid);
       bluetooth::shim::GetL2cap()->CloseClassicConnection(cid);
     } else {
-      LOG_DEBUG("Connection failed after initiator closed");
+      LOG_INFO("Connection failed after initiator closed");
     }
   }
 }
@@ -285,7 +271,7 @@ void bluetooth::shim::legacy::L2cap::OnRemoteInitiatedConnectionCreated(
   RawAddress raw_address;
   RawAddress::FromString(string_address, raw_address);
 
-  LOG_DEBUG(
+  LOG_INFO(
       "Sending connection indicator to upper stack from device:%s "
       "psm:%hd cid:%hd",
       string_address.c_str(), psm, cid);
@@ -298,6 +284,11 @@ void bluetooth::shim::legacy::L2cap::OnRemoteInitiatedConnectionCreated(
       FROM_HERE,
       base::Bind(classic_.Callbacks(CidToPsm(cid)).pL2CA_ConnectInd_Cb,
                  raw_address, cid, psm, kUnusedId));
+  tL2CAP_CFG_INFO cfg_info{};
+  do_in_main_thread(
+      FROM_HERE,
+      base::Bind(classic_.Callbacks(CidToPsm(cid)).pL2CA_ConfigCfm_Cb, cid,
+                 L2CAP_INITIATOR_REMOTE, base::Unretained(&cfg_info)));
 }
 
 bool bluetooth::shim::legacy::L2cap::Write(uint16_t cid, BT_HDR* bt_hdr) {
@@ -307,7 +298,7 @@ bool bluetooth::shim::legacy::L2cap::Write(uint16_t cid, BT_HDR* bt_hdr) {
   if (!ConnectionExists(cid) || len == 0) {
     return false;
   }
-  LOG_DEBUG("Writing data cid:%hd len:%zd", cid, len);
+  LOG_INFO("Writing data cid:%hd len:%zd", cid, len);
   bluetooth::shim::GetL2cap()->Write(cid, data, len);
   return true;
 }
@@ -315,7 +306,7 @@ bool bluetooth::shim::legacy::L2cap::Write(uint16_t cid, BT_HDR* bt_hdr) {
 void bluetooth::shim::legacy::L2cap::SetDownstreamCallbacks(uint16_t cid) {
   bluetooth::shim::GetL2cap()->SetReadDataReadyCallback(
       cid, [this](uint16_t cid, std::vector<const uint8_t> data) {
-        LOG_DEBUG("OnDataReady cid:%hd len:%zd", cid, data.size());
+        LOG_INFO("OnDataReady cid:%hd len:%zd", cid, data.size());
         BT_HDR* bt_hdr =
             static_cast<BT_HDR*>(osi_calloc(data.size() + kBtHdrSize));
         std::copy(data.begin(), data.end(), bt_hdr->data);
@@ -328,7 +319,7 @@ void bluetooth::shim::legacy::L2cap::SetDownstreamCallbacks(uint16_t cid) {
 
   bluetooth::shim::GetL2cap()->SetConnectionClosedCallback(
       cid, [this](uint16_t cid, int error_code) {
-        LOG_DEBUG("OnChannel closed callback cid:%hd", cid);
+        LOG_INFO("OnChannel closed callback cid:%hd", cid);
         if (!ConnectionExists(cid)) {
           LOG_WARN("%s Unexpected channel closure cid:%hd", __func__, cid);
           return;
@@ -347,74 +338,15 @@ void bluetooth::shim::legacy::L2cap::SetDownstreamCallbacks(uint16_t cid) {
       });
 }
 
-bool bluetooth::shim::legacy::L2cap::ConnectResponse(
-    const RawAddress& raw_address, uint8_t signal_id, uint16_t cid,
-    uint16_t result, uint16_t status, tL2CAP_ERTM_INFO* ertm_info) {
-  CHECK(ConnectionExists(cid));
-  LOG_DEBUG(
-      "%s Silently dropping client connect response as channel is "
-      "already connected",
-      __func__);
-  return true;
-}
-
-bool bluetooth::shim::legacy::L2cap::ConfigRequest(
-    uint16_t cid, const tL2CAP_CFG_INFO* config_info) {
-  LOG_INFO("Received config request from upper layer cid:%hd", cid);
-  CHECK(ConnectionExists(cid));
-
-  bluetooth::shim::GetL2cap()->SendLoopbackResponse([this, cid]() {
-    CHECK(ConnectionExists(cid));
-    tL2CAP_CFG_INFO cfg_info{
-        .result = L2CAP_CFG_OK,
-        .mtu_present = false,
-        .qos_present = false,
-        .flush_to_present = false,
-        .fcr_present = false,
-        .fcs_present = false,
-        .ext_flow_spec_present = false,
-        .flags = 0,
-    };
-    LOG(INFO) << __func__ << "Rcvd config request";
-    do_in_main_thread(
-        FROM_HERE,
-        base::Bind(classic_.Callbacks(CidToPsm(cid)).pL2CA_ConfigInd_Cb, cid,
-                   base::Unretained(&cfg_info)));
-    do_in_main_thread(
-        FROM_HERE,
-        base::Bind(classic_.Callbacks(CidToPsm(cid)).pL2CA_ConfigCfm_Cb, cid,
-                   base::Unretained(&cfg_info)));
-  });
-  return true;
-}
-
-bool bluetooth::shim::legacy::L2cap::ConfigResponse(
-    uint16_t cid, const tL2CAP_CFG_INFO* config_info) {
-  CHECK(ConnectionExists(cid));
-  LOG_DEBUG(
-
-      "%s Silently dropping client config response as channel is already open",
-      __func__);
-  return true;
-}
-
 bool bluetooth::shim::legacy::L2cap::DisconnectRequest(uint16_t cid) {
   CHECK(ConnectionExists(cid));
   if (cid_closing_set_.find(cid) != cid_closing_set_.end()) {
     LOG_WARN("%s Channel already in closing state cid:%hu", __func__, cid);
     return false;
   }
-  LOG_DEBUG("%s initiated locally cid:%hu", __func__, cid);
+  LOG_INFO("%s initiated locally cid:%hu", __func__, cid);
   cid_closing_set_.insert(cid);
   bluetooth::shim::GetL2cap()->CloseClassicConnection(cid);
-  return true;
-}
-
-bool bluetooth::shim::legacy::L2cap::DisconnectResponse(uint16_t cid) {
-  LOG_DEBUG(
-      "%s Silently dropping client disconnect response as channel is "
-      "already disconnected",
-      __func__);
   return true;
 }
 

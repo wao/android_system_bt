@@ -19,7 +19,10 @@
 #define BTM_INT_TYPES_H
 
 #include <cstdint>
+#include <memory>
+#include <string>
 
+#include "gd/common/circular_buffer.h"
 #include "osi/include/list.h"
 #include "stack/acl/acl.h"
 #include "stack/btm/btm_ble_int_types.h"
@@ -38,6 +41,27 @@
    BTM_SEC_LE_LINK_KEY_KNOWN | BTM_SEC_LE_LINK_KEY_AUTHED)
 
 #define BTM_MAX_SCN_ 31  // PORT_MAX_RFC_PORTS system/bt/stack/include/rfcdefs.h
+
+constexpr size_t kMaxLogSize = 255;
+class TimestampedStringCircularBuffer
+    : public bluetooth::common::TimestampedCircularBuffer<std::string> {
+ public:
+  explicit TimestampedStringCircularBuffer(size_t size)
+      : bluetooth::common::TimestampedCircularBuffer<std::string>(size) {}
+
+  void Push(std::string s) {
+    bluetooth::common::TimestampedCircularBuffer<std::string>::Push(
+        s.substr(0, kMaxLogSize));
+  }
+
+  template <typename... Args>
+  void Push(Args... args) {
+    char buf[kMaxLogSize];
+    std::snprintf(buf, sizeof(buf), args...);
+    bluetooth::common::TimestampedCircularBuffer<std::string>::Push(
+        std::string(buf));
+  }
+};
 
 /*
  * Define device configuration structure
@@ -202,10 +226,24 @@ typedef struct {
   *****************************************************/
   tBTM_BLE_CB ble_ctr_cb;
 
+ private:
+  friend void btm_ble_ltk_request_reply(const RawAddress& bda, bool use_stk,
+                                        const Octet16& stk);
+  friend tBTM_STATUS btm_ble_start_encrypt(const RawAddress& bda, bool use_stk,
+                                           Octet16* p_stk);
+  friend void btm_ble_ltk_request_reply(const RawAddress& bda, bool use_stk,
+                                        const Octet16& stk);
   uint16_t enc_handle;
+
+  friend void btm_ble_ltk_request(uint16_t handle, uint8_t rand[8],
+                                  uint16_t ediv);
   BT_OCTET8 enc_rand; /* received rand value from LTK request*/
+
   uint16_t ediv;      /* received ediv value from LTK request */
+
   uint8_t key_size;
+
+ public:
   tBTM_BLE_VSC_CB cmn_ble_vsc_cb;
 
   /* Packet types supported by the local device */
@@ -235,7 +273,6 @@ typedef struct {
   uint32_t dev_rec_count; /* Counter used for device record timestamp */
   uint8_t security_mode;
   bool pairing_disabled;
-  bool connect_only_paired;
   bool security_mode_changed; /* mode changed during bonding */
   bool pin_type_changed;      /* pin type changed during bonding */
   bool sec_req_pending;       /*   true if a request is pending */
@@ -270,11 +307,17 @@ typedef struct {
   fixed_queue_t* sec_pending_q; /* pending sequrity requests in
                                    tBTM_SEC_QUEUE_ENTRY format */
 
-  char state_temp_buffer[BTM_STATE_BUFFER_SIZE];
   // BQR Receiver
   tBTM_BT_QUALITY_REPORT_RECEIVER* p_bqr_report_receiver;
 
   tACL_CB acl_cb_;
+
+  std::shared_ptr<TimestampedStringCircularBuffer> history_{nullptr};
+
+ private:
+  friend uint8_t BTM_AllocateSCN(void);
+  friend bool BTM_TryAllocateSCN(uint8_t scn);
+  friend bool BTM_FreeSCN(uint8_t scn);
   uint8_t btm_scn[BTM_MAX_SCN_];
 } tBTM_CB;
 

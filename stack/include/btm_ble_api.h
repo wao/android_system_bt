@@ -47,14 +47,11 @@
  *                  for a LE device stored in the NVRAM.
  *
  * Parameters:      bd_addr          - BD address of the peer
- *                  bd_name          - Name of the peer device. NULL if unknown.
  *                  dev_type         - Remote device's device type.
  *                  addr_type        - LE device address type.
  *
- * Returns          true if added OK, else false
- *
  ******************************************************************************/
-extern bool BTM_SecAddBleDevice(const RawAddress& bd_addr, BD_NAME bd_name,
+extern void BTM_SecAddBleDevice(const RawAddress& bd_addr,
                                 tBT_DEVICE_TYPE dev_type,
                                 tBLE_ADDR_TYPE addr_type);
 
@@ -70,10 +67,8 @@ extern bool BTM_SecAddBleDevice(const RawAddress& bd_addr, BD_NAME bd_name,
  *                  p_le_key         - LE key values.
  *                  key_type         - LE SMP key type.
 *
- * Returns          true if added OK, else false
- *
  ******************************************************************************/
-extern bool BTM_SecAddBleKey(const RawAddress& bd_addr,
+extern void BTM_SecAddBleKey(const RawAddress& bd_addr,
                              tBTM_LE_KEY_VALUE* p_le_key,
                              tBTM_LE_KEY_TYPE key_type);
 
@@ -336,7 +331,7 @@ extern void BTM_BleLoadLocalKeys(uint8_t key_type, tBTM_BLE_LOCAL_KEYS* p_key);
  * Parameters:      bd_addr          - BD address of the peripheral
  *                  min_conn_int     - minimum preferred connection interval
  *                  max_conn_int     - maximum preferred connection interval
- *                  slave_latency    - preferred slave latency
+ *                  peripheral_latency    - preferred peripheral latency
  *                  supervision_tout - preferred supervision timeout
  *
  * Returns          void
@@ -345,7 +340,7 @@ extern void BTM_BleLoadLocalKeys(uint8_t key_type, tBTM_BLE_LOCAL_KEYS* p_key);
 extern void BTM_BleSetPrefConnParams(const RawAddress& bd_addr,
                                      uint16_t min_conn_int,
                                      uint16_t max_conn_int,
-                                     uint16_t slave_latency,
+                                     uint16_t peripheral_latency,
                                      uint16_t supervision_tout);
 
 /******************************************************************************
@@ -597,5 +592,18 @@ extern void BTM_BleSetPhy(const RawAddress& bd_addr, uint8_t tx_phys,
                           uint8_t rx_phys, uint16_t phy_options);
 
 extern void btm_ble_multi_adv_cleanup(void);
+
+/*******************************************************************************
+ *
+ * Function         btm_ble_get_acl_remote_addr
+ *
+ * Description      This function reads the active remote address used for the
+ *                  connection.
+ *
+ * Returns          success return true, otherwise false.
+ *
+ ******************************************************************************/
+bool btm_ble_get_acl_remote_addr(uint16_t hci_handle, RawAddress& conn_addr,
+                                 tBLE_ADDR_TYPE* p_addr_type);
 
 #endif

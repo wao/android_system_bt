@@ -202,11 +202,23 @@ void a2dp_vendor_ldac_decoder_cleanup(void) {
 }
 
 bool a2dp_vendor_ldac_decoder_decode_packet(BT_HDR* p_buf) {
-  pthread_mutex_lock(&(a2dp_ldac_decoder_cb.mutex));
+  if (p_buf == nullptr) {
+    LOG(ERROR) << __func__ << "Dropping packet with nullptr";
+    return false;
+  }
+
   unsigned char* pBuffer =
       reinterpret_cast<unsigned char*>(p_buf->data + p_buf->offset);
   //  unsigned int bufferSize = p_buf->len;
   unsigned int bytesValid = p_buf->len;
+
+  if (bytesValid == 0) {
+    LOG(WARNING) << __func__ << "Dropping packet with zero length";
+    return false;
+  }
+
+  pthread_mutex_lock(&(a2dp_ldac_decoder_cb.mutex));
+
   LDACBT_SMPL_FMT_T fmt;
   int bs_bytes, frame_number;
 
@@ -214,7 +226,7 @@ bool a2dp_vendor_ldac_decoder_decode_packet(BT_HDR* p_buf) {
   frame_number = (int)pBuffer[0];
   bs_bytes = (int)bytesValid;
   bytesValid -= 1;
-  LOG_DEBUG("%s:INPUT size : %d, frame : %d", __func__, bs_bytes, frame_number);
+  LOG_INFO("%s:INPUT size : %d, frame : %d", __func__, bs_bytes, frame_number);
 
   if (a2dp_ldac_decoder_cb.has_ldac_handle)
     ldac_BCO_decode_packet_func(a2dp_ldac_decoder_cb.ldac_handle_bco, pBuffer,
@@ -226,7 +238,7 @@ bool a2dp_vendor_ldac_decoder_decode_packet(BT_HDR* p_buf) {
 
 void a2dp_vendor_ldac_decoder_start(void) {
   pthread_mutex_lock(&(a2dp_ldac_decoder_cb.mutex));
-  LOG_DEBUG("%s", __func__);
+  LOG_INFO("%s", __func__);
   if (a2dp_ldac_decoder_cb.has_ldac_handle)
     ldac_BCO_start_func(a2dp_ldac_decoder_cb.ldac_handle_bco);
   pthread_mutex_unlock(&(a2dp_ldac_decoder_cb.mutex));
@@ -234,7 +246,7 @@ void a2dp_vendor_ldac_decoder_start(void) {
 
 void a2dp_vendor_ldac_decoder_suspend(void) {
   pthread_mutex_lock(&(a2dp_ldac_decoder_cb.mutex));
-  LOG_DEBUG("%s", __func__);
+  LOG_INFO("%s", __func__);
   if (a2dp_ldac_decoder_cb.has_ldac_handle)
     ldac_BCO_suspend_func(a2dp_ldac_decoder_cb.ldac_handle_bco);
   pthread_mutex_unlock(&(a2dp_ldac_decoder_cb.mutex));
@@ -255,8 +267,8 @@ void a2dp_vendor_ldac_decoder_configure(const uint8_t* p_codec_info) {
   bits_per_sample = A2DP_VendorGetTrackBitsPerSampleLdac(p_codec_info);
   channel_mode = A2DP_VendorGetChannelModeCodeLdac(p_codec_info);
 
-  LOG_DEBUG("%s , sample_rate=%d, bits_per_sample=%d, channel_mode=%d",
-            __func__, sample_rate, bits_per_sample, channel_mode);
+  LOG_INFO("%s , sample_rate=%d, bits_per_sample=%d, channel_mode=%d", __func__,
+           sample_rate, bits_per_sample, channel_mode);
 
   if (a2dp_ldac_decoder_cb.has_ldac_handle)
     ldac_BCO_configure_func(a2dp_ldac_decoder_cb.ldac_handle_bco, sample_rate,

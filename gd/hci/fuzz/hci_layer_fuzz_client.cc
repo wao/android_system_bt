@@ -34,10 +34,14 @@ void HciLayerFuzzClient::Start() {
   // Can't do security right now, due to the Encryption Change conflict between ACL manager & security
   // security_interface_ = hci_->GetSecurityInterface(common::Bind([](EventPacketView){}), GetHandler());
   le_security_interface_ = hci_->GetLeSecurityInterface(GetHandler()->Bind([](LeMetaEventView) {}));
-  acl_connection_interface_ = hci_->GetAclConnectionInterface(GetHandler()->Bind([](EventPacketView) {}),
-                                                              GetHandler()->Bind([](uint16_t, hci::ErrorCode) {}));
-  le_acl_connection_interface_ = hci_->GetLeAclConnectionInterface(GetHandler()->Bind([](LeMetaEventView) {}),
-                                                                   GetHandler()->Bind([](uint16_t, hci::ErrorCode) {}));
+  acl_connection_interface_ = hci_->GetAclConnectionInterface(
+      GetHandler()->Bind([](EventPacketView) {}),
+      GetHandler()->Bind([](uint16_t, hci::ErrorCode) {}),
+      GetHandler()->Bind([](uint16_t, uint8_t, uint16_t, uint16_t) {}));
+  le_acl_connection_interface_ = hci_->GetLeAclConnectionInterface(
+      GetHandler()->Bind([](LeMetaEventView) {}),
+      GetHandler()->Bind([](uint16_t, hci::ErrorCode) {}),
+      GetHandler()->Bind([](uint16_t, uint8_t, uint16_t, uint16_t) {}));
   le_advertising_interface_ = hci_->GetLeAdvertisingInterface(GetHandler()->Bind([](LeMetaEventView) {}));
   le_scanning_interface_ = hci_->GetLeScanningInterface(GetHandler()->Bind([](LeMetaEventView) {}));
 }
@@ -100,12 +104,11 @@ void HciLayerFuzzClient::injectLeSecurityCommand(std::vector<uint8_t> data) {
 }
 
 void HciLayerFuzzClient::injectAclConnectionCommand(std::vector<uint8_t> data) {
-  inject_command<ConnectionManagementCommandView, ConnectionManagementCommandBuilder>(data, acl_connection_interface_);
+  inject_command<AclCommandView, AclCommandBuilder>(data, acl_connection_interface_);
 }
 
 void HciLayerFuzzClient::injectLeAclConnectionCommand(std::vector<uint8_t> data) {
-  inject_command<LeConnectionManagementCommandView, LeConnectionManagementCommandBuilder>(data,
-                                                                                          le_acl_connection_interface_);
+  inject_command<AclCommandView, AclCommandBuilder>(data, le_acl_connection_interface_);
 }
 
 void HciLayerFuzzClient::injectLeAdvertisingCommand(std::vector<uint8_t> data) {

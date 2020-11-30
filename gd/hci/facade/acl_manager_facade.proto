@@ -30,8 +30,8 @@ message PolicyMsg {
 }
 
 enum NewRole {
-  MASTER = 0;
-  SLAVE = 1;
+  CENTRAL = 0;
+  PERIPHERAL = 1;
 }
 
 message RoleMsg {
@@ -44,7 +44,7 @@ message ConnectionCommandMsg {
 }
 
 message ConnectionEvent {
-  bytes event = 1;
+  bytes payload = 1;
 }
 
 message AclData {

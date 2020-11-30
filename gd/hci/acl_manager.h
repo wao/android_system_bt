@@ -95,7 +95,7 @@ class AclManager : public Module {
   virtual void RemoveDeviceFromConnectList(AddressWithType address_with_type);
   virtual void RemoveDeviceFromResolvingList(AddressWithType address_with_type);
 
-  virtual void MasterLinkKey(KeyFlag key_flag);
+  virtual void CentralLinkKey(KeyFlag key_flag);
   virtual void SwitchRole(Address address, Role role);
   virtual uint16_t ReadDefaultLinkPolicySettings();
   virtual void WriteDefaultLinkPolicySettings(uint16_t default_link_policy_settings);
@@ -115,6 +115,8 @@ class AclManager : public Module {
   void Stop() override;
 
   std::string ToString() const override;
+
+  DumpsysDataFinisher GetDumpsysData(flatbuffers::FlatBufferBuilder* builder) const override;  // Module
 
  private:
   virtual uint16_t HACK_GetHandle(const Address address);

@@ -48,6 +48,7 @@ void BTA_dm_init() {
   bta_sys_register(BTA_ID_DM_SEARCH, &bta_dm_search_reg);
   /* if UUID list is not provided as static data */
   bta_sys_eir_register(bta_dm_eir_update_uuid);
+  bta_sys_cust_eir_register(bta_dm_eir_update_cust_uuid);
 }
 
 /** Enables bluetooth device under test mode */
@@ -240,7 +241,6 @@ void BTA_DmAddDevice(const RawAddress& bd_addr, DEV_CLASS dev_class,
   }
 
   memset(msg->bd_name, 0, BD_NAME_LEN + 1);
-  memset(msg->features, 0, sizeof(msg->features));
   msg->pin_length = pin_length;
 
   do_in_main_thread(FROM_HERE,
@@ -362,7 +362,7 @@ tBTA_STATUS BTA_DmSetLocalDiRecord(tBTA_DI_RECORD* p_device_info,
  *
  ******************************************************************************/
 void BTA_DmAddBleKey(const RawAddress& bd_addr, tBTA_LE_KEY_VALUE* p_le_key,
-                     tBTA_LE_KEY_TYPE key_type) {
+                     tBTM_LE_KEY_TYPE key_type) {
   do_in_main_thread(
       FROM_HERE, base::Bind(bta_dm_add_blekey, bd_addr, *p_le_key, key_type));
 }
@@ -455,7 +455,7 @@ void BTA_DmBleSecurityGrant(const RawAddress& bd_addr,
  *                  scan_window      - scan window
  *                  min_conn_int     - minimum preferred connection interval
  *                  max_conn_int     - maximum preferred connection interval
- *                  slave_latency    - preferred slave latency
+ *                  peripheral_latency    - preferred peripheral latency
  *                  supervision_tout - preferred supervision timeout
  *
  *
@@ -464,11 +464,12 @@ void BTA_DmBleSecurityGrant(const RawAddress& bd_addr,
  ******************************************************************************/
 void BTA_DmSetBlePrefConnParams(const RawAddress& bd_addr,
                                 uint16_t min_conn_int, uint16_t max_conn_int,
-                                uint16_t slave_latency,
+                                uint16_t peripheral_latency,
                                 uint16_t supervision_tout) {
   do_in_main_thread(
-      FROM_HERE, base::Bind(bta_dm_ble_set_conn_params, bd_addr, min_conn_int,
-                            max_conn_int, slave_latency, supervision_tout));
+      FROM_HERE,
+      base::Bind(bta_dm_ble_set_conn_params, bd_addr, min_conn_int,
+                 max_conn_int, peripheral_latency, supervision_tout));
 }
 
 /*******************************************************************************
@@ -483,7 +484,7 @@ void BTA_DmSetBlePrefConnParams(const RawAddress& bd_addr,
  *                                  [0x0004 ~ 0x4000]
  *                  max_int   -     maximum connection interval,
  *                                  [0x0004 ~ 0x4000]
- *                  latency   -     slave latency [0 ~ 500]
+ *                  latency   -     peripheral latency [0 ~ 500]
  *                  timeout   -     supervision timeout [0x000a ~ 0xc80]
  *
  * Returns          void

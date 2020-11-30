@@ -60,7 +60,6 @@ typedef uint8_t tBTA_AV_STATUS;
 #define BTA_AV_FEAT_MULTI_AV \
   0x0080                          /* use multi-av, if controller supports it */
 #define BTA_AV_FEAT_BROWSE 0x0010 /* use browsing channel */
-#define BTA_AV_FEAT_MASTER 0x0100 /* stream only as master role */
 #define BTA_AV_FEAT_ADV_CTRL \
   0x0200 /* remote control Advanced Control command/response */
 #define BTA_AV_FEAT_DELAY_RPT 0x0400 /* allow delay reporting */
@@ -376,14 +375,8 @@ typedef void (*tBTA_AV_ACT)(tBTA_AV_SCB* p_cb, tBTA_AV_DATA* p_data);
 /* AV configuration structure */
 typedef struct {
   uint32_t company_id;  /* AVRCP Company ID */
-  uint16_t avrc_mtu;    /* AVRCP MTU at L2CAP for control channel */
-  uint16_t avrc_br_mtu; /* AVRCP MTU at L2CAP for browsing channel */
   uint16_t avrc_ct_cat; /* AVRCP controller categories */
   uint16_t avrc_tg_cat; /* AVRCP target categories */
-  uint16_t sig_mtu;     /* AVDTP signaling channel MTU at L2CAP */
-  uint16_t audio_mtu;   /* AVDTP audio transport channel MTU at L2CAP */
-  const uint16_t*
-      p_audio_flush_to;    /* AVDTP audio transport channel flush timeout */
   uint16_t audio_mqs;      /* AVDTP audio channel max data queue size */
   bool avrc_group;     /* true, to accept AVRC 1.3 group nevigation command */
   uint8_t num_co_ids;  /* company id count in p_meta_co_ids */

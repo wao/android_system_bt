@@ -76,10 +76,8 @@ class TestHciLayer : public HciLayer {
       auto result = command_future_->wait_for(std::chrono::milliseconds(1000));
       EXPECT_NE(std::future_status::timeout, result);
     }
-    if (command_queue_.empty()) {
-      return ConnectionManagementCommandView::Create(
-          CommandPacketView::Create(PacketView<kLittleEndian>(std::make_shared<std::vector<uint8_t>>())));
-    }
+    ASSERT_LOG(
+        !command_queue_.empty(), "Expecting command %s but command queue was empty", OpCodeText(op_code).c_str());
     CommandPacketView command_packet_view = GetLastCommand();
     EXPECT_TRUE(command_packet_view.IsValid());
     EXPECT_EQ(command_packet_view.GetOpCode(), op_code);
@@ -326,7 +324,8 @@ TEST_F(LeAddressManagerWithSingleClientTest, add_device_to_connect_list) {
   test_hci_layer_->SetCommandFuture();
   le_address_manager_->AddDeviceToConnectList(ConnectListAddressType::RANDOM, address);
   auto packet = test_hci_layer_->GetCommandPacket(OpCode::LE_ADD_DEVICE_TO_CONNECT_LIST);
-  auto packet_view = LeAddDeviceToConnectListView::Create(LeConnectionManagementCommandView::Create(packet));
+  auto packet_view =
+      LeAddDeviceToConnectListView::Create(LeConnectionManagementCommandView::Create(AclCommandView::Create(packet)));
   ASSERT_TRUE(packet_view.IsValid());
   ASSERT_EQ(ConnectListAddressType::RANDOM, packet_view.GetAddressType());
   ASSERT_EQ(address, packet_view.GetAddress());
@@ -346,7 +345,8 @@ TEST_F(LeAddressManagerWithSingleClientTest, remove_device_from_connect_list) {
   test_hci_layer_->SetCommandFuture();
   le_address_manager_->RemoveDeviceFromConnectList(ConnectListAddressType::RANDOM, address);
   auto packet = test_hci_layer_->GetCommandPacket(OpCode::LE_REMOVE_DEVICE_FROM_CONNECT_LIST);
-  auto packet_view = LeRemoveDeviceFromConnectListView::Create(LeConnectionManagementCommandView::Create(packet));
+  auto packet_view = LeRemoveDeviceFromConnectListView::Create(
+      LeConnectionManagementCommandView::Create(AclCommandView::Create(packet)));
   ASSERT_TRUE(packet_view.IsValid());
   ASSERT_EQ(ConnectListAddressType::RANDOM, packet_view.GetAddressType());
   ASSERT_EQ(address, packet_view.GetAddress());
@@ -437,7 +437,8 @@ TEST_F(LeAddressManagerWithSingleClientTest, register_during_command_complete) {
   test_hci_layer_->SetCommandFuture();
   le_address_manager_->AddDeviceToConnectList(ConnectListAddressType::RANDOM, address);
   auto packet = test_hci_layer_->GetCommandPacket(OpCode::LE_ADD_DEVICE_TO_CONNECT_LIST);
-  auto packet_view = LeAddDeviceToConnectListView::Create(LeConnectionManagementCommandView::Create(packet));
+  auto packet_view =
+      LeAddDeviceToConnectListView::Create(LeConnectionManagementCommandView::Create(AclCommandView::Create(packet)));
   ASSERT_TRUE(packet_view.IsValid());
   ASSERT_EQ(ConnectListAddressType::RANDOM, packet_view.GetAddressType());
   ASSERT_EQ(address, packet_view.GetAddress());
@@ -446,8 +447,6 @@ TEST_F(LeAddressManagerWithSingleClientTest, register_during_command_complete) {
   AllocateClients(1);
   test_hci_layer_->SetCommandFuture();
   le_address_manager_->Register(clients[1].get());
-  test_hci_layer_->GetCommandPacket(OpCode::LE_SET_RANDOM_ADDRESS);
-  test_hci_layer_->IncomingEvent(LeSetRandomAddressCompleteBuilder::Create(0x01, ErrorCode::SUCCESS));
   clients[0].get()->WaitForResume();
   clients[1].get()->WaitForResume();
 }
