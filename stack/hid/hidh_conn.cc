@@ -65,8 +65,10 @@ static const tL2CAP_APPL_INFO hst_reg_info = {
     hidh_l2cif_config_ind,     hidh_l2cif_config_cfm,
     hidh_l2cif_disconnect_ind, hidh_l2cif_data_ind,
     hidh_l2cif_cong_ind,       NULL,
-    hidh_on_l2cap_error,
+    hidh_on_l2cap_error,       NULL,
+    NULL,                      NULL
 };
+static void hidh_try_repage(uint8_t dhandle);
 
 /*******************************************************************************
  *
@@ -87,6 +89,12 @@ tHID_STATUS hidh_conn_reg(void) {
   hh_cb.l2cap_cfg.mtu = HID_HOST_MTU;
 
   /* Now, register with L2CAP */
+  if (!L2CA_Register2(HID_PSM_CONTROL, hst_reg_info, false /* enable_snoop */,
+                      nullptr, HID_HOST_MTU, 0,
+                      BTA_SEC_AUTHENTICATE | BTA_SEC_ENCRYPT)) {
+    HIDH_TRACE_ERROR("HID-Host Control Registration failed");
+    return (HID_ERR_L2CAP_FAILED);
+  }
   if (!L2CA_Register2(HID_PSM_INTERRUPT, hst_reg_info, false /* enable_snoop */,
                       nullptr, HID_HOST_MTU, 0,
                       BTA_SEC_AUTHENTICATE | BTA_SEC_ENCRYPT)) {
@@ -217,7 +225,7 @@ static void hidh_l2cif_connect_ind(const RawAddress& bd_addr,
       psm, l2cap_cid);
 }
 
-void hidh_process_repage_timer_timeout(void* data) {
+static void hidh_process_repage_timer_timeout(void* data) {
   uint8_t dhandle = PTR_TO_UINT(data);
   hidh_try_repage(dhandle);
 }
@@ -231,7 +239,7 @@ void hidh_process_repage_timer_timeout(void* data) {
  * Returns          void
  *
  ******************************************************************************/
-void hidh_try_repage(uint8_t dhandle) {
+static void hidh_try_repage(uint8_t dhandle) {
   tHID_HOST_DEV_CTB* device;
 
   hidh_conn_initiate(dhandle);
@@ -804,9 +812,6 @@ tHID_STATUS hidh_conn_snd_data(uint8_t dhandle, uint8_t trans_type,
  *
  ******************************************************************************/
 tHID_STATUS hidh_conn_initiate(uint8_t dhandle) {
-  uint8_t service_id = BTM_SEC_SERVICE_HIDH_NOSEC_CTRL;
-  uint32_t mx_chan_id = HID_NOSEC_CHN;
-
   tHID_HOST_DEV_CTB* p_dev = &hh_cb.devices[dhandle];
 
   if (p_dev->conn.conn_state != HID_CONN_STATE_UNUSED)
@@ -820,11 +825,6 @@ tHID_STATUS hidh_conn_initiate(uint8_t dhandle) {
 
   /* We are the originator of this connection */
   p_dev->conn.conn_flags = HID_CONN_FLAGS_IS_ORIG;
-
-  if (p_dev->attr_mask & HID_SEC_REQUIRED) {
-    service_id = BTM_SEC_SERVICE_HIDH_SEC_CTRL;
-    mx_chan_id = HID_SEC_CHN;
-  }
 
   /* Check if L2CAP started the connection process */
   p_dev->conn.ctrl_cid = L2CA_ConnectReq2(

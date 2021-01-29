@@ -76,7 +76,6 @@ cc_defaults {
     name: "gd_clang_tidy",
     tidy: true,
     tidy_checks: [
-        "cppcoreguidelines-pro-type-member-init",
         "clang-analyzer-core.CallAndMessage",
         "clang-analyzer-optin.cplusplus.UninitializedObject",
         "-google*",
@@ -131,6 +130,10 @@ cc_defaults {
                 "libutils",
                 "libcutils",
             ],
+            static_libs: [
+                "libbt_common_sys_prop_cxx",
+                "libbt_hidl_hal_cxx",
+            ],
         },
     },
     srcs: [
@@ -142,6 +145,7 @@ cc_defaults {
         ":BluetoothDumpsysSources",
         ":BluetoothHalSources",
         ":BluetoothHciSources",
+        ":BluetoothIsoSources",
         ":BluetoothL2capSources",
         ":BluetoothNeighborSources",
         ":BluetoothPacketSources",
@@ -159,10 +163,16 @@ cc_defaults {
         "libchrome",
         "libcrypto",
         "libflatbuffers-cpp",
+        "libgrpc++",
+        "libgrpc_wrap",
     ],
     static_libs: [
         "libbluetooth-protos",
-    ]
+        "libbluetooth_rust_interop",
+        "libbt_shim_ffi",
+        "libcxxbridge05",
+    ],
+    export_static_lib_headers: [ "libbluetooth_rust_interop" ],
 }
 
 cc_library {
@@ -221,12 +231,17 @@ cc_binary {
         "libbluetooth-protos",
         "libbluetooth_gd",
         "libflatbuffers-cpp",
+        "libbluetooth_rust_interop",
+        "libbt_shim_ffi",
+        "libcxxbridge05",
     ],
     shared_libs: [
         "libbacktrace",
         "libchrome",
         "libcrypto",
+        "libgrpc++",
         "libgrpc++_unsecure",
+        "libgrpc_wrap",
         "libprotobuf-cpp-full",
     ],
     target: {
@@ -237,6 +252,10 @@ cc_binary {
                 "libutils",
                 "libcutils",
             ],
+            static_libs: [
+                "libbt_common_sys_prop_cxx",
+                "libbt_hidl_hal_cxx",
+            ],
         },
         host: {
             required: [
@@ -244,6 +263,10 @@ cc_binary {
             ],
         },
     },
+    sanitize: {
+        address: true,
+        cfi: true,
+    }
 }
 
 cc_test {
@@ -254,6 +277,9 @@ cc_test {
         "gd_clang_coverage_bin",
     ],
     host_supported: true,
+    test_options: {
+        unit_test: true,
+    },
     target: {
         linux: {
             srcs: [
@@ -277,6 +303,10 @@ cc_test {
                 "libutils",
                 "libcutils",
             ],
+            static_libs: [
+                "libbt_common_sys_prop_cxx",
+                "libbt_hidl_hal_cxx",
+            ],
         },
     },
     srcs: [
@@ -288,6 +318,7 @@ cc_test {
         ":BluetoothDumpsysTestSources",
         ":BluetoothHalTestSources",
         ":BluetoothHciTestSources",
+        ":BluetoothIsoTestSources",
         ":BluetoothL2capTestSources",
         ":BluetoothNeighborTestSources",
         ":BluetoothPacketTestSources",
@@ -309,10 +340,15 @@ cc_test {
         "libc++fs",
         "libflatbuffers-cpp",
         "libgmock",
+        "libbluetooth_rust_interop",
+        "libbt_shim_ffi",
+        "libcxxbridge05",
     ],
     shared_libs: [
         "libchrome",
         "libcrypto",
+        "libgrpc++",
+        "libgrpc_wrap",
     ],
     sanitize: {
         address: true,
@@ -327,7 +363,11 @@ cc_test {
         "gd_clang_coverage_bin",
     ],
     host_supported: true,
+    test_options: {
+        unit_test: true,
+    },
     srcs: [
+        ":BluetoothCommonSources",
         ":BluetoothPacketSources",
         ":BluetoothPacketParserTestPacketTestSources",
     ],
@@ -337,6 +377,30 @@ cc_test {
     sanitize: {
         address: true,
         cfi: true,
+    },
+    static_libs: [
+        "libbluetooth_rust_interop",
+        "libbt_shim_ffi",
+        "libcxxbridge05",
+        "libchrome",
+    ],
+    shared_libs: [
+        "libgrpc++",
+        "libgrpc_wrap",
+    ],
+    target: {
+        android: {
+            shared_libs: [
+                "android.hardware.bluetooth@1.0",
+                "libhidlbase",
+                "libutils",
+                "libcutils",
+            ],
+            static_libs: [
+                "libbt_common_sys_prop_cxx",
+                "libbt_hidl_hal_cxx",
+            ],
+        },
     },
 }
 
@@ -353,6 +417,9 @@ cc_defaults {
         "libchrome",
         "libgmock",
         "libgtest",
+        "libbluetooth_rust_interop",
+        "libbt_shim_ffi",
+        "libcxxbridge05",
     ],
     host_supported: true,
     generated_headers: [
@@ -362,6 +429,8 @@ cc_defaults {
     shared_libs: [
         "libcrypto",
         "libflatbuffers-cpp",
+        "libgrpc++",
+        "libgrpc_wrap",
     ],
     cflags: [
         "-DFUZZ_TARGET",
@@ -373,6 +442,10 @@ cc_defaults {
                 "libcutils",
                 "libhidlbase",
                 "libutils",
+            ],
+            static_libs: [
+                "libbt_common_sys_prop_cxx",
+                "libbt_hidl_hal_cxx",
             ],
         },
     },
@@ -447,6 +520,36 @@ genrule {
     ],
 }
 
+genrule {
+    name: "BluetoothGeneratedPackets_rust",
+    tools: [
+        "bluetooth_packetgen",
+    ],
+    cmd: "$(location bluetooth_packetgen) --include=system/bt/gd --out=$(genDir) $(in) --rust",
+    srcs: [
+        "hci/hci_packets.pdl",
+    ],
+    out: [
+        "hci/hci_packets.rs",
+    ],
+}
+
+rust_library {
+    name: "libbt_packets",
+    defaults: ["gd_rust_defaults"],
+    crate_name: "bt_packets",
+    srcs: ["rust/packets/lib.rs", ":BluetoothGeneratedPackets_rust"],
+    edition: "2018",
+    host_supported: true,
+    proc_macros: ["libnum_derive"],
+    rustlibs: [
+        "libbytes",
+        "libnum_traits",
+        "libthiserror",
+        "libbt_hci_custom_types",
+    ],
+}
+
 // Generates binary schema data to be bundled and source file generated
 genrule {
     name: "BluetoothGeneratedDumpsysBinarySchema_bfbs",
@@ -457,6 +560,7 @@ genrule {
     srcs: [
         "common/init_flags.fbs",
         "dumpsys_data.fbs",
+        "hci/hci_acl_manager.fbs",
         "l2cap/classic/l2cap_classic_module.fbs",
         "shim/dumpsys.fbs",
     ],
@@ -464,6 +568,7 @@ genrule {
         "init_flags.bfbs",
         "dumpsys.bfbs",
         "dumpsys_data.bfbs",
+        "hci_acl_manager.bfbs",
         "l2cap_classic_module.bfbs",
     ],
 }
@@ -477,12 +582,14 @@ genrule {
     srcs: [
         "common/init_flags.fbs",
         "dumpsys_data.fbs",
+        "hci/hci_acl_manager.fbs",
         "l2cap/classic/l2cap_classic_module.fbs",
         "shim/dumpsys.fbs",
     ],
     out: [
         "dumpsys_data_generated.h",
         "dumpsys_generated.h",
+        "hci_acl_manager_generated.h",
         "init_flags_generated.h",
         "l2cap_classic_module_generated.h",
     ],
@@ -541,8 +648,8 @@ filegroup {
     srcs: [
         "facade/common.proto",
         "facade/rootservice.proto",
-        "hal/facade.proto",
-        "hci/facade/facade.proto",
+        "hal/hal_facade.proto",
+        "hci/facade/hci_facade.proto",
         "hci/facade/acl_manager_facade.proto",
         "hci/facade/controller_facade.proto",
         "hci/facade/le_acl_manager_facade.proto",
@@ -572,10 +679,10 @@ genrule {
         "facade/common.pb.h",
         "facade/rootservice.grpc.pb.h",
         "facade/rootservice.pb.h",
-        "hal/facade.grpc.pb.h",
-        "hal/facade.pb.h",
-        "hci/facade/facade.grpc.pb.h",
-        "hci/facade/facade.pb.h",
+        "hal/hal_facade.grpc.pb.h",
+        "hal/hal_facade.pb.h",
+        "hci/facade/hci_facade.grpc.pb.h",
+        "hci/facade/hci_facade.pb.h",
         "hci/facade/acl_manager_facade.grpc.pb.h",
         "hci/facade/acl_manager_facade.pb.h",
         "hci/facade/controller_facade.grpc.pb.h",
@@ -616,10 +723,10 @@ genrule {
         "facade/common.pb.cc",
         "facade/rootservice.grpc.pb.cc",
         "facade/rootservice.pb.cc",
-        "hal/facade.grpc.pb.cc",
-        "hal/facade.pb.cc",
-        "hci/facade/facade.grpc.pb.cc",
-        "hci/facade/facade.pb.cc",
+        "hal/hal_facade.grpc.pb.cc",
+        "hal/hal_facade.pb.cc",
+        "hci/facade/hci_facade.grpc.pb.cc",
+        "hci/facade/hci_facade.pb.cc",
         "hci/facade/acl_manager_facade.grpc.pb.cc",
         "hci/facade/acl_manager_facade.pb.cc",
         "hci/facade/controller_facade.grpc.pb.cc",
@@ -760,4 +867,17 @@ cc_library_host_shared {
         "-fexceptions",
     ],
     rtti: true,
+}
+
+rust_protobuf {
+    name: "libbt_facade_proto",
+    crate_name: "bt_facade_proto",
+    protos: ["facade/common.proto"],
+    grpc_protos: [
+        "hci/facade/hci_facade.proto",
+        "hal/hal_facade.proto",
+        "facade/rootservice.proto",
+    ],
+    source_stem: "facade",
+    host_supported: true,
 }

@@ -48,7 +48,9 @@
 #define BT_PROFILE_AV_RC_ID "avrcp"
 #define BT_PROFILE_AV_RC_CTRL_ID "avrcp_ctrl"
 #define BT_PROFILE_HEARING_AID_ID "hearing_aid"
+#define BT_PROFILE_LE_AUDIO_ID "le_audio"
 #define BT_KEYSTORE_ID "bluetooth_keystore"
+#define BT_ACTIVITY_ATTRIBUTION_ID "activity_attribution"
 
 /** Bluetooth Device Name */
 typedef struct { uint8_t name[249]; } __attribute__((packed)) bt_bdname_t;
@@ -79,7 +81,7 @@ typedef enum {
 /** We need to build on this */
 
 typedef enum {
-  BT_STATUS_SUCCESS,
+  BT_STATUS_SUCCESS = 0,
   BT_STATUS_FAIL,
   BT_STATUS_NOT_READY,
   BT_STATUS_NOMEM,
@@ -95,6 +97,43 @@ typedef enum {
   BT_STATUS_JNI_THREAD_ATTACH_ERROR,
   BT_STATUS_WAKELOCK_ERROR
 } bt_status_t;
+
+inline std::string bt_status_text(const bt_status_t& status) {
+  switch (status) {
+    case BT_STATUS_SUCCESS:
+      return std::string("success");
+    case BT_STATUS_FAIL:
+      return std::string("fail");
+    case BT_STATUS_NOT_READY:
+      return std::string("not_ready");
+    case BT_STATUS_NOMEM:
+      return std::string("no_memory");
+    case BT_STATUS_BUSY:
+      return std::string("busy");
+    case BT_STATUS_DONE:
+      return std::string("already_done");
+    case BT_STATUS_UNSUPPORTED:
+      return std::string("unsupported");
+    case BT_STATUS_PARM_INVALID:
+      return std::string("parameter_invalid");
+    case BT_STATUS_UNHANDLED:
+      return std::string("unhandled");
+    case BT_STATUS_AUTH_FAILURE:
+      return std::string("failure");
+    case BT_STATUS_RMT_DEV_DOWN:
+      return std::string("remote_device_down");
+    case BT_STATUS_AUTH_REJECTED:
+      return std::string("rejected");
+    case BT_STATUS_JNI_ENVIRONMENT_ERROR:
+      return std::string("jni_env_error");
+    case BT_STATUS_JNI_THREAD_ATTACH_ERROR:
+      return std::string("jni_thread_error");
+    case BT_STATUS_WAKELOCK_ERROR:
+      return std::string("wakelock_error");
+    default:
+      return std::string("UNKNOWN");
+  }
+}
 
 /** Bluetooth PinKey Code */
 typedef struct { uint8_t pin[16]; } __attribute__((packed)) bt_pin_code_t;
@@ -157,7 +196,21 @@ typedef struct {
   bool le_extended_advertising_supported;
   bool le_periodic_advertising_supported;
   uint16_t le_maximum_advertising_data_length;
+  uint32_t dynamic_audio_buffer_supported;
 } bt_local_le_features_t;
+
+/* Stored the default/maximum/minimum buffer time for dynamic audio buffer.
+ * For A2DP offload usage, the unit is millisecond.
+ * For A2DP legacy usage, the unit is buffer queue size*/
+typedef struct {
+  uint16_t default_buffer_time;
+  uint16_t maximum_buffer_time;
+  uint16_t minimum_buffer_time;
+} bt_dynamic_audio_buffer_type_t;
+
+typedef struct {
+  bt_dynamic_audio_buffer_type_t dab_item[32];
+} bt_dynamic_audio_buffer_item_t;
 
 /* Bluetooth Adapter and Remote Device property types */
 typedef enum {
@@ -262,6 +315,8 @@ typedef enum {
    * Data Type - bt_io_cap_t.
    */
   BT_PROPERTY_LOCAL_IO_CAPS_BLE,
+
+  BT_PROPERTY_DYNAMIC_AUDIO_BUFFER,
 
   BT_PROPERTY_REMOTE_DEVICE_TIMESTAMP = 0xFF,
 } bt_property_type_t;
@@ -474,9 +529,10 @@ typedef struct {
    * The |config_compare_result| flag show the config checksum check result if
    * is in NIAP mode.
    * The |init_flags| are config flags that cannot change during run.
+   * The |is_atv| flag indicates whether the local device is an Android TV
    */
   int (*init)(bt_callbacks_t* callbacks, bool guest_mode, bool is_niap_mode,
-              int config_compare_result, const char** init_flags);
+              int config_compare_result, const char** init_flags, bool is_atv);
 
   /** Enable Bluetooth. */
   int (*enable)();
@@ -637,6 +693,11 @@ typedef struct {
    * @return int incremental Bluetooth id
    */
   int (*get_metric_id)(const RawAddress& address);
+
+  /**
+   * Set the dynamic audio buffer size to the Controller
+   */
+  int (*set_dynamic_audio_buffer_size)(int codec, int size);
 } bt_interface_t;
 
 #define BLUETOOTH_INTERFACE_STRING "bluetoothInterface"

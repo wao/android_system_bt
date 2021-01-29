@@ -39,10 +39,6 @@ void FacadeConfigurationApi::SetAuthenticationRequirements(hci::AuthenticationRe
       authentication_requirement);
 }
 
-void FacadeConfigurationApi::SetOobDataPresent(hci::OobDataPresent data_present) {
-  security_handler_->CallOn(security_manager_impl_, &internal::SecurityManagerImpl::SetOobDataPresent, data_present);
-}
-
 void FacadeConfigurationApi::SetLeIoCapability(security::IoCapability io_capability) {
   security_handler_->CallOn(security_manager_impl_, &internal::SecurityManagerImpl::SetLeIoCapability, io_capability);
 }
@@ -51,25 +47,32 @@ void FacadeConfigurationApi::SetLeAuthRequirements(uint8_t auth_req) {
   security_handler_->CallOn(security_manager_impl_, &internal::SecurityManagerImpl::SetLeAuthRequirements, auth_req);
 }
 
+void FacadeConfigurationApi::SetLeMaximumEncryptionKeySize(uint8_t maximum_encryption_key_size) {
+  security_handler_->CallOn(
+      security_manager_impl_,
+      &internal::SecurityManagerImpl::SetLeMaximumEncryptionKeySize,
+      maximum_encryption_key_size);
+}
+
 void FacadeConfigurationApi::SetLeOobDataPresent(OobDataFlag oob_present) {
   security_handler_->CallOn(security_manager_impl_, &internal::SecurityManagerImpl::SetLeOobDataPresent, oob_present);
 }
 
-void FacadeConfigurationApi::GetOutOfBandData(
-    std::array<uint8_t, 16>* le_sc_confirmation_value, std::array<uint8_t, 16>* le_sc_random_value) {
-  security_manager_impl_->GetOutOfBandData(le_sc_confirmation_value, le_sc_random_value);
+void FacadeConfigurationApi::GetLeOutOfBandData(
+    std::array<uint8_t, 16>* confirmation_value, std::array<uint8_t, 16>* random_value) {
+  security_manager_impl_->GetLeOutOfBandData(confirmation_value, random_value);
 }
 
 void FacadeConfigurationApi::SetOutOfBandData(
     hci::AddressWithType remote_address,
-    std::array<uint8_t, 16> le_sc_confirmation_value,
-    std::array<uint8_t, 16> le_sc_random_value) {
+    std::array<uint8_t, 16> confirmation_value,
+    std::array<uint8_t, 16> random_value) {
   security_handler_->CallOn(
       security_manager_impl_,
       &internal::SecurityManagerImpl::SetOutOfBandData,
       remote_address,
-      le_sc_confirmation_value,
-      le_sc_random_value);
+      confirmation_value,
+      random_value);
 }
 
 void FacadeConfigurationApi::EnforceSecurityPolicy(

@@ -71,9 +71,9 @@ typedef struct {
   uint32_t aa_frame_counter;
   int32_t aa_feed_counter;
   int32_t aa_feed_residue;
-  uint32_t counter;
-  uint32_t bytes_per_tick;              // pcm bytes read each media task tick
-  uint64_t last_frame_timestamp_100ns;  // values in 1/10 microseconds
+  float counter;
+  uint32_t bytes_per_tick; /* pcm bytes read each media task tick */
+  uint64_t last_frame_us;
 } tA2DP_SBC_FEEDING_STATE;
 
 typedef struct {
@@ -217,9 +217,9 @@ static void a2dp_sbc_encoder_update(uint16_t peer_mtu,
   p_feeding_params->bits_per_sample =
       a2dp_codec_config->getAudioBitsPerSample();
   p_feeding_params->channel_count = A2DP_GetTrackChannelCountSbc(p_codec_info);
-  LOG_DEBUG("%s: sample_rate=%u bits_per_sample=%u channel_count=%u", __func__,
-            p_feeding_params->sample_rate, p_feeding_params->bits_per_sample,
-            p_feeding_params->channel_count);
+  LOG_INFO("%s: sample_rate=%u bits_per_sample=%u channel_count=%u", __func__,
+           p_feeding_params->sample_rate, p_feeding_params->bits_per_sample,
+           p_feeding_params->channel_count);
   a2dp_sbc_feeding_reset();
 
   // The codec parameters
@@ -270,10 +270,9 @@ static void a2dp_sbc_encoder_update(uint16_t peer_mtu,
   // Set the initial target bit rate
   p_encoder_params->u16BitRate = a2dp_sbc_source_rate();
 
-  LOG_DEBUG("%s: MTU=%d, peer_mtu=%d min_bitpool=%d max_bitpool=%d", __func__,
-            a2dp_sbc_encoder_cb.TxAaMtuSize, peer_mtu, min_bitpool,
-            max_bitpool);
-  LOG_DEBUG(
+  LOG_INFO("%s: MTU=%d, peer_mtu=%d min_bitpool=%d max_bitpool=%d", __func__,
+           a2dp_sbc_encoder_cb.TxAaMtuSize, peer_mtu, min_bitpool, max_bitpool);
+  LOG_INFO(
       "%s: ChannelMode=%d, NumOfSubBands=%d, NumOfBlocks=%d, "
       "AllocationMethod=%d, BitRate=%d, SamplingFreq=%d BitPool=%d",
       __func__, p_encoder_params->s16ChannelMode,
@@ -329,11 +328,11 @@ static void a2dp_sbc_encoder_update(uint16_t peer_mtu,
 
     if (s16BitPool < 0) s16BitPool = 0;
 
-    LOG_DEBUG("%s: bitpool candidate: %d (%d kbps)", __func__, s16BitPool,
-              p_encoder_params->u16BitRate);
+    LOG_VERBOSE("%s: bitpool candidate: %d (%d kbps)", __func__, s16BitPool,
+                p_encoder_params->u16BitRate);
 
     if (s16BitPool > max_bitpool) {
-      LOG_DEBUG("%s: computed bitpool too large (%d)", __func__, s16BitPool);
+      LOG_VERBOSE("%s: computed bitpool too large (%d)", __func__, s16BitPool);
       /* Decrease bitrate */
       p_encoder_params->u16BitRate -= A2DP_SBC_BITRATE_STEP;
       /* Record that we have decreased the bitrate */
@@ -361,8 +360,8 @@ static void a2dp_sbc_encoder_update(uint16_t peer_mtu,
   /* Finally update the bitpool in the encoder structure */
   p_encoder_params->s16BitPool = s16BitPool;
 
-  LOG_DEBUG("%s: final bit rate %d, final bit pool %d", __func__,
-            p_encoder_params->u16BitRate, p_encoder_params->s16BitPool);
+  LOG_INFO("%s: final bit rate %d, final bit pool %d", __func__,
+           p_encoder_params->u16BitRate, p_encoder_params->s16BitPool);
 
   /* Reset the SBC encoder */
   SBC_Encoder_Init(&a2dp_sbc_encoder_cb.sbc_encoder_params);
@@ -385,12 +384,12 @@ void a2dp_sbc_feeding_reset(void) {
        A2DP_SBC_ENCODER_INTERVAL_MS) /
       1000;
 
-  LOG_DEBUG("%s: PCM bytes per tick %u", __func__,
-            a2dp_sbc_encoder_cb.feeding_state.bytes_per_tick);
+  LOG_INFO("%s: PCM bytes per tick %u", __func__,
+           a2dp_sbc_encoder_cb.feeding_state.bytes_per_tick);
 }
 
 void a2dp_sbc_feeding_flush(void) {
-  a2dp_sbc_encoder_cb.feeding_state.counter = 0;
+  a2dp_sbc_encoder_cb.feeding_state.counter = 0.0f;
   a2dp_sbc_encoder_cb.feeding_state.aa_feed_residue = 0;
 }
 
@@ -430,29 +429,15 @@ static void a2dp_sbc_get_num_frame_iteration(uint8_t* num_of_iterations,
       a2dp_sbc_encoder_cb.feeding_params.bits_per_sample / 8;
   LOG_VERBOSE("%s: pcm_bytes_per_frame %u", __func__, pcm_bytes_per_frame);
 
-  uint32_t hecto_ns_this_tick = A2DP_SBC_ENCODER_INTERVAL_MS * 10000;
-  uint64_t* last_100ns =
-      &a2dp_sbc_encoder_cb.feeding_state.last_frame_timestamp_100ns;
-  uint64_t now_100ns = timestamp_us * 10;
-  if (*last_100ns != 0) {
-    hecto_ns_this_tick = (now_100ns - *last_100ns);
-  }
-  *last_100ns = now_100ns;
+  uint32_t us_this_tick = A2DP_SBC_ENCODER_INTERVAL_MS * 1000;
+  uint64_t now_us = timestamp_us;
+  if (a2dp_sbc_encoder_cb.feeding_state.last_frame_us != 0)
+    us_this_tick = (now_us - a2dp_sbc_encoder_cb.feeding_state.last_frame_us);
+  a2dp_sbc_encoder_cb.feeding_state.last_frame_us = now_us;
 
-  uint32_t bytes_this_tick = a2dp_sbc_encoder_cb.feeding_state.bytes_per_tick *
-                             hecto_ns_this_tick /
-                             (A2DP_SBC_ENCODER_INTERVAL_MS * 10000);
-  a2dp_sbc_encoder_cb.feeding_state.counter += bytes_this_tick;
-  // Without this erratum, there was a three microseocnd shift per tick which
-  // would cause one SBC frame mismatched after every 20 seconds
-  uint32_t erratum_100ns =
-      ceil(1.0f * A2DP_SBC_ENCODER_INTERVAL_MS * 10000 * bytes_this_tick /
-           a2dp_sbc_encoder_cb.feeding_state.bytes_per_tick);
-  if (erratum_100ns < hecto_ns_this_tick) {
-    LOG_VERBOSE("%s: hecto_ns_this_tick=%d, bytes=%d, erratum_100ns=%d",
-                __func__, hecto_ns_this_tick, bytes_this_tick, erratum_100ns);
-    *last_100ns -= hecto_ns_this_tick - erratum_100ns;
-  }
+  a2dp_sbc_encoder_cb.feeding_state.counter +=
+      (float)a2dp_sbc_encoder_cb.feeding_state.bytes_per_tick * us_this_tick /
+      (A2DP_SBC_ENCODER_INTERVAL_MS * 1000);
 
   /* Calculate the number of frames pending for this media tick */
   projected_nof =
@@ -902,7 +887,7 @@ static uint32_t a2dp_sbc_frame_length(void) {
 
 uint32_t a2dp_sbc_get_bitrate() {
   SBC_ENC_PARAMS* p_encoder_params = &a2dp_sbc_encoder_cb.sbc_encoder_params;
-  LOG_DEBUG("%s: bit rate %d ", __func__, p_encoder_params->u16BitRate);
+  LOG_INFO("%s: bit rate %d ", __func__, p_encoder_params->u16BitRate);
   return p_encoder_params->u16BitRate * 1000;
 }
 

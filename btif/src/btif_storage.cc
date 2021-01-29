@@ -83,6 +83,7 @@ using bluetooth::Uuid;
 #define BTIF_STORAGE_KEY_LOCAL_IO_CAPS_BLE "LocalIOCapsBLE"
 #define BTIF_STORAGE_KEY_ADAPTER_DISC_TIMEOUT "DiscoveryTimeout"
 #define BTIF_STORAGE_KEY_GATT_CLIENT_SUPPORTED "GattClientSupportedFeatures"
+#define BTIF_STORAGE_KEY_GATT_CLIENT_DB_HASH "GattClientDatabaseHash"
 
 /* This is a local property to add a device found */
 #define BT_PROPERTY_REMOTE_DEVICE_TIMESTAMP 0xFF
@@ -835,7 +836,7 @@ bt_status_t btif_storage_add_bonded_device(RawAddress* remote_bd_addr,
 bt_status_t btif_storage_remove_bonded_device(
     const RawAddress* remote_bd_addr) {
   std::string bdstr = remote_bd_addr->ToString();
-  LOG_DEBUG("Removing bonded device addr:%s", bdstr.c_str());
+  LOG_INFO("Removing bonded device addr:%s", bdstr.c_str());
 
   btif_storage_remove_ble_bonding_keys(remote_bd_addr);
 
@@ -851,6 +852,9 @@ bt_status_t btif_storage_remove_bonded_device(
   }
   if (btif_config_exist(bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_SUPPORTED)) {
     ret &= btif_config_remove(bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_SUPPORTED);
+  }
+  if (btif_config_exist(bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_DB_HASH)) {
+    ret &= btif_config_remove(bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_DB_HASH);
   }
 
   /* write bonded info immediately */
@@ -1128,7 +1132,7 @@ bt_status_t btif_storage_get_ble_bonding_key(const RawAddress& remote_bd_addr,
 bt_status_t btif_storage_remove_ble_bonding_keys(
     const RawAddress* remote_bd_addr) {
   std::string bdstr = remote_bd_addr->ToString();
-  LOG_DEBUG("Removing bonding keys for bd addr:%s", bdstr.c_str());
+  LOG_INFO("Removing bonding keys for bd addr:%s", bdstr.c_str());
   int ret = 1;
   if (btif_config_exist(bdstr, "LE_KEY_PENC"))
     ret &= btif_config_remove(bdstr, "LE_KEY_PENC");
@@ -1459,7 +1463,7 @@ constexpr char HEARING_AID_SERVICE_CHANGED_CCC_HANDLE[] =
 constexpr char HEARING_AID_SYNC_ID[] = "HearingAidSyncId";
 constexpr char HEARING_AID_RENDER_DELAY[] = "HearingAidRenderDelay";
 constexpr char HEARING_AID_PREPARATION_DELAY[] = "HearingAidPreparationDelay";
-constexpr char HEARING_AID_IS_WHITE_LISTED[] = "HearingAidIsWhiteListed";
+constexpr char HEARING_AID_IS_ACCEPTLISTED[] = "HearingAidIsAcceptlisted";
 
 void btif_storage_add_hearing_aid(const HearingDevice& dev_info) {
   do_in_jni_thread(
@@ -1489,7 +1493,7 @@ void btif_storage_add_hearing_aid(const HearingDevice& dev_info) {
                                 dev_info.render_delay);
             btif_config_set_int(bdstr, HEARING_AID_PREPARATION_DELAY,
                                 dev_info.preparation_delay);
-            btif_config_set_int(bdstr, HEARING_AID_IS_WHITE_LISTED, true);
+            btif_config_set_int(bdstr, HEARING_AID_IS_ACCEPTLISTED, true);
             btif_config_save();
           },
           dev_info));
@@ -1572,9 +1576,9 @@ void btif_storage_load_bonded_hearing_aids() {
     if (btif_config_get_int(name, HEARING_AID_PREPARATION_DELAY, &value))
       preparation_delay = value;
 
-    uint16_t is_white_listed = 0;
-    if (btif_config_get_int(name, HEARING_AID_IS_WHITE_LISTED, &value))
-      is_white_listed = value;
+    uint16_t is_acceptlisted = 0;
+    if (btif_config_get_int(name, HEARING_AID_IS_ACCEPTLISTED, &value))
+      is_acceptlisted = value;
 
     // add extracted information to BTA Hearing Aid
     do_in_main_thread(
@@ -1585,7 +1589,7 @@ void btif_storage_load_bonded_hearing_aids() {
                            audio_status_ccc_handle, service_changed_ccc_handle,
                            volume_handle, read_psm_handle, hi_sync_id,
                            render_delay, preparation_delay),
-             is_white_listed));
+             is_acceptlisted));
   }
 }
 
@@ -1603,16 +1607,16 @@ void btif_storage_remove_hearing_aid(const RawAddress& address) {
   btif_config_remove(addrstr, HEARING_AID_SYNC_ID);
   btif_config_remove(addrstr, HEARING_AID_RENDER_DELAY);
   btif_config_remove(addrstr, HEARING_AID_PREPARATION_DELAY);
-  btif_config_remove(addrstr, HEARING_AID_IS_WHITE_LISTED);
+  btif_config_remove(addrstr, HEARING_AID_IS_ACCEPTLISTED);
   btif_config_save();
 }
 
-/** Set/Unset the hearing aid device HEARING_AID_IS_WHITE_LISTED flag. */
-void btif_storage_set_hearing_aid_white_list(const RawAddress& address,
-                                             bool add_to_whitelist) {
+/** Set/Unset the hearing aid device HEARING_AID_IS_ACCEPTLISTED flag. */
+void btif_storage_set_hearing_aid_acceptlist(const RawAddress& address,
+                                             bool add_to_acceptlist) {
   std::string addrstr = address.ToString();
 
-  btif_config_set_int(addrstr, HEARING_AID_IS_WHITE_LISTED, add_to_whitelist);
+  btif_config_set_int(addrstr, HEARING_AID_IS_ACCEPTLISTED, add_to_acceptlist);
   btif_config_save();
 }
 
@@ -1782,4 +1786,62 @@ uint8_t btif_storage_get_gatt_cl_supp_feat(const RawAddress& bd_addr) {
                    name.c_str(), value);
 
   return value;
+}
+
+/** Remove client supported features */
+void btif_storage_remove_gatt_cl_supp_feat(const RawAddress& bd_addr) {
+  do_in_jni_thread(
+      FROM_HERE, Bind(
+                     [](const RawAddress& bd_addr) {
+                       auto bdstr = bd_addr.ToString();
+                       if (btif_config_exist(
+                               bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_SUPPORTED)) {
+                         btif_config_remove(
+                             bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_SUPPORTED);
+                         btif_config_save();
+                       }
+                     },
+                     bd_addr));
+}
+
+/** Store last server database hash for remote client */
+void btif_storage_set_gatt_cl_db_hash(const RawAddress& bd_addr, Octet16 hash) {
+  do_in_jni_thread(FROM_HERE, Bind(
+                                  [](const RawAddress& bd_addr, Octet16 hash) {
+                                    auto bdstr = bd_addr.ToString();
+                                    btif_config_set_bin(
+                                        bdstr,
+                                        BTIF_STORAGE_KEY_GATT_CLIENT_DB_HASH,
+                                        hash.data(), hash.size());
+                                    btif_config_save();
+                                  },
+                                  bd_addr, hash));
+}
+
+/** Get last server database hash for remote client */
+Octet16 btif_storage_get_gatt_cl_db_hash(const RawAddress& bd_addr) {
+  auto bdstr = bd_addr.ToString();
+
+  Octet16 hash;
+  size_t size = hash.size();
+  btif_config_get_bin(bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_DB_HASH, hash.data(),
+                      &size);
+
+  return hash;
+}
+
+/** Remove las server database hash for remote client */
+void btif_storage_remove_gatt_cl_db_hash(const RawAddress& bd_addr) {
+  do_in_jni_thread(FROM_HERE,
+                   Bind(
+                       [](const RawAddress& bd_addr) {
+                         auto bdstr = bd_addr.ToString();
+                         if (btif_config_exist(
+                                 bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_DB_HASH)) {
+                           btif_config_remove(
+                               bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_DB_HASH);
+                           btif_config_save();
+                         }
+                       },
+                       bd_addr));
 }

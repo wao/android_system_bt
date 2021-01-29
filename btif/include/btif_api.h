@@ -121,6 +121,18 @@ int get_niap_config_compare_result(void);
 
 /*******************************************************************************
  *
+ * Function         is_atv_device
+ *
+ * Description      Returns true if the local device is an Android TV
+ *                  device, false if it is not.
+ *
+ * Returns          bool
+ *
+ ******************************************************************************/
+bool is_atv_device(void);
+
+/*******************************************************************************
+ *
  * Function         btif_get_adapter_properties
  *
  * Description      Fetches all local adapter properties
@@ -365,5 +377,16 @@ bt_status_t btif_config_hci_snoop_log(uint8_t enable);
  *
  ******************************************************************************/
 void btif_debug_bond_event_dump(int fd);
+
+/*******************************************************************************
+ *
+ * Function         btif_set_dynamic_audio_buffer_size
+ *
+ * Description     Set dynamic audio buffer size
+ *
+ * Returns          BT_STATUS_SUCCESS on success
+ *
+ ******************************************************************************/
+bt_status_t btif_set_dynamic_audio_buffer_size(int codec, int size);
 
 #endif /* BTIF_API_H */

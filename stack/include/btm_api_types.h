@@ -19,13 +19,16 @@
 #ifndef BTM_API_TYPES_H
 #define BTM_API_TYPES_H
 
+#include <base/strings/stringprintf.h>
 #include <cstdint>
+#include <string>
 
 #include "device/include/esco_parameters.h"
 #include "internal_include/bt_target.h"
 #include "stack/include/btm_status.h"
 #include "stack/include/hcidefs.h"
 #include "stack/include/smp_api_types.h"
+#include "types/ble_address_with_type.h"
 #include "types/bt_transport.h"
 
 /* Device name of peer (may be truncated to save space in BTM database) */
@@ -334,8 +337,8 @@ typedef struct {
   uint8_t pcm_intf_rate; /* PCM interface rate: 0: 128kbps, 1: 256 kbps;
                              2:512 bps; 3: 1024kbps; 4: 2048kbps */
   uint8_t frame_type;    /* frame type: 0: short; 1: long */
-  uint8_t sync_mode;     /* sync mode: 0: slave; 1: master */
-  uint8_t clock_mode;    /* clock mode: 0: slave; 1: master */
+  uint8_t sync_mode;     /* sync mode: 0: peripheral; 1: central */
+  uint8_t clock_mode;    /* clock mode: 0: peripheral; 1: central */
 
 } tBTM_SCO_PCM_PARAM;
 
@@ -418,7 +421,7 @@ typedef struct {
 } tBTM_CHG_ESCO_PARAMS;
 
 /* Returned by BTM_ReadEScoLinkParms() */
-typedef struct {
+struct tBTM_ESCO_DATA {
   uint16_t rx_pkt_len;
   uint16_t tx_pkt_len;
   RawAddress bd_addr;
@@ -426,7 +429,7 @@ typedef struct {
   uint8_t tx_interval;
   uint8_t retrans_window;
   uint8_t air_mode;
-} tBTM_ESCO_DATA;
+};
 
 typedef struct {
   uint16_t sco_inx;
@@ -462,40 +465,40 @@ typedef void(tBTM_ESCO_CBACK)(tBTM_ESCO_EVT event, tBTM_ESCO_EVT_DATA* p_data);
  *  Security Manager Constants
  *******************************/
 
-/* Security Mode (BTM_SetSecurityMode) */
-#define BTM_SEC_MODE_SERVICE 2
-#define BTM_SEC_MODE_SP 4
-#define BTM_SEC_MODE_SC 6
+typedef enum : uint8_t {
+  BTM_SEC_MODE_SERVICE = 2,
+  BTM_SEC_MODE_SP = 4,
+  BTM_SEC_MODE_SC = 6,
+} tSECURITY_MODE;
 
-/* Security Service Levels [bit mask] (BTM_SetSecurityLevel)
- * Encryption should not be used without authentication
-*/
-/* Nothing required */
-#define BTM_SEC_NONE 0x0000
-/* Inbound call requires authentication */
-#define BTM_SEC_IN_AUTHENTICATE 0x0002
-/* Inbound call requires encryption */
-#define BTM_SEC_IN_ENCRYPT 0x0004
-/* Outbound call requires authentication */
-#define BTM_SEC_OUT_AUTHENTICATE 0x0010
-/* Outbound call requires encryption */
-#define BTM_SEC_OUT_ENCRYPT 0x0020
-/* Secure Connections Only Mode */
-#define BTM_SEC_MODE4_LEVEL4 0x0040
-/* Need to switch connection to be master */
-#define BTM_SEC_FORCE_MASTER 0x0100
-/* Try to switch connection to be master */
-#define BTM_SEC_ATTEMPT_MASTER 0x0200
-/* Need to switch connection to be master */
-#define BTM_SEC_FORCE_SLAVE 0x0400
-/* Try to switch connection to be slave */
-#define BTM_SEC_ATTEMPT_SLAVE 0x0800
-/* inbound Do man in the middle protection */
-#define BTM_SEC_IN_MITM 0x1000
-/* outbound Do man in the middle protection */
-#define BTM_SEC_OUT_MITM 0x2000
-/* enforce a minimum of 16 digit for sec mode 2 */
-#define BTM_SEC_IN_MIN_16_DIGIT_PIN 0x4000
+enum : uint16_t {
+  /* Nothing required */
+  BTM_SEC_NONE = 0x0000,
+  /* Inbound call requires authentication */
+  BTM_SEC_IN_AUTHENTICATE = 0x0002,
+  /* Inbound call requires encryption */
+  BTM_SEC_IN_ENCRYPT = 0x0004,
+  /* Outbound call requires authentication */
+  BTM_SEC_OUT_AUTHENTICATE = 0x0010,
+  /* Outbound call requires encryption */
+  BTM_SEC_OUT_ENCRYPT = 0x0020,
+  /* Secure Connections Only Mode */
+  BTM_SEC_MODE4_LEVEL4 = 0x0040,
+  /* Need to switch connection to be central */
+  BTM_SEC_FORCE_CENTRAL = 0x0100,
+  /* Need to switch connection to be central */
+  BTM_SEC_ATTEMPT_CENTRAL = 0x0200,
+  /* Need to switch connection to be peripheral */
+  BTM_SEC_FORCE_PERIPHERAL = 0x0400,
+  /* Try to switch connection to be peripheral */
+  BTM_SEC_ATTEMPT_PERIPHERAL = 0x0800,
+  /* inbound Do man in the middle protection */
+  BTM_SEC_IN_MITM = 0x1000,
+  /* outbound Do man in the middle protection */
+  BTM_SEC_OUT_MITM = 0x2000,
+  /* enforce a minimum of 16 digit for sec mode 2 */
+  BTM_SEC_IN_MIN_16_DIGIT_PIN = 0x4000,
+};
 
 /* Security Flags [bit mask] (BTM_GetSecurityFlags)
 */
@@ -530,49 +533,16 @@ typedef uint8_t tBTM_LINK_KEY_TYPE;
 #define BTM_SEC_PROTO_HID 6 /* HID      */
 #define BTM_SEC_PROTO_AVDT 7
 
-/* Security service definitions (BTM_SetSecurityLevel)
- * Used for Authorization APIs
-*/
-#define BTM_SEC_SERVICE_SDP_SERVER 0
-#define BTM_SEC_SERVICE_SERIAL_PORT 1
-#define BTM_SEC_SERVICE_LAN_ACCESS 2
-#define BTM_SEC_SERVICE_DUN 3
-#define BTM_SEC_SERVICE_IRMC_SYNC 4
-#define BTM_SEC_SERVICE_OBEX 6
-#define BTM_SEC_SERVICE_OBEX_FTP 7
 #define BTM_SEC_SERVICE_HEADSET 8
-#define BTM_SEC_SERVICE_CORDLESS 9
-#define BTM_SEC_SERVICE_INTERCOM 10
 #define BTM_SEC_SERVICE_HEADSET_AG 12
-#define BTM_SEC_SERVICE_BPP_JOB 22
-#define BTM_SEC_SERVICE_BNEP_PANU 25
-#define BTM_SEC_SERVICE_BNEP_GN 26
-#define BTM_SEC_SERVICE_BNEP_NAP 27
-#define BTM_SEC_SERVICE_HF_HANDSFREE 28
 #define BTM_SEC_SERVICE_AG_HANDSFREE 29
-
-#define BTM_SEC_SERVICE_HIDH_SEC_CTRL 32
-#define BTM_SEC_SERVICE_HIDH_NOSEC_CTRL 33
-#define BTM_SEC_SERVICE_HIDH_INTR 34
-#define BTM_SEC_SERVICE_BIP 35
-#define BTM_SEC_SERVICE_AVDTP 37
-#define BTM_SEC_SERVICE_AVDTP_NOSEC 38
-#define BTM_SEC_SERVICE_AVCTP 39
-#define BTM_SEC_SERVICE_SAP 40
-#define BTM_SEC_SERVICE_PBAP 41
 #define BTM_SEC_SERVICE_RFC_MUX 42
-#define BTM_SEC_SERVICE_AVCTP_BROWSE 43
-#define BTM_SEC_SERVICE_MAP 44
-#define BTM_SEC_SERVICE_HDP_SNK 48
-#define BTM_SEC_SERVICE_ATT 50
-#define BTM_SEC_SERVICE_HIDD_SEC_CTRL 51
-#define BTM_SEC_SERVICE_HIDD_NOSEC_CTRL 52
-#define BTM_SEC_SERVICE_HIDD_INTR 53
 #define BTM_SEC_SERVICE_HEARING_AID_LEFT 54
 #define BTM_SEC_SERVICE_HEARING_AID_RIGHT 55
+#define BTM_SEC_SERVICE_EATT 56
 
 /* Update these as services are added */
-#define BTM_SEC_SERVICE_FIRST_EMPTY 56
+#define BTM_SEC_SERVICE_FIRST_EMPTY 57
 
 #ifndef BTM_SEC_MAX_SERVICES
 #define BTM_SEC_MAX_SERVICES 75
@@ -640,42 +610,62 @@ enum {
 };
 typedef uint8_t tBTM_SP_EVT;
 
-#define BTM_IO_CAP_OUT 0    /* DisplayOnly */
-#define BTM_IO_CAP_IO 1     /* DisplayYesNo */
-#define BTM_IO_CAP_IN 2     /* KeyboardOnly */
-#define BTM_IO_CAP_NONE 3   /* NoInputNoOutput */
-#define BTM_IO_CAP_KBDISP 4 /* Keyboard display */
-#define BTM_IO_CAP_MAX 5
-#define BTM_IO_CAP_UNKNOWN 0xFF /* Unknown value */
-
+enum : uint8_t {
+  BTM_IO_CAP_OUT = 0,    /* DisplayOnly */
+  BTM_IO_CAP_IO = 1,     /* DisplayYesNo */
+  BTM_IO_CAP_IN = 2,     /* KeyboardOnly */
+  BTM_IO_CAP_NONE = 3,   /* NoInputNoOutput */
+  BTM_IO_CAP_KBDISP = 4, /* Keyboard display */
+  BTM_IO_CAP_MAX = 5,
+  BTM_IO_CAP_UNKNOWN = 0xFF /* Unknown value */
+};
 typedef uint8_t tBTM_IO_CAP;
+
+inline std::string io_capabilities_text(const tBTM_IO_CAP& io_caps) {
+  switch (io_caps) {
+    case BTM_IO_CAP_OUT:
+      return std::string("Display only");
+    case BTM_IO_CAP_IO:
+      return std::string("Display yes-no");
+    case BTM_IO_CAP_IN:
+      return std::string("Keyboard Only");
+    case BTM_IO_CAP_NONE:
+      return std::string("No input or output");
+    case BTM_IO_CAP_KBDISP:
+      return std::string("Keyboard-Display");
+    default:
+      return base::StringPrintf("UNKNOWN[%hhu]", io_caps);
+  }
+}
 
 #define BTM_MAX_PASSKEY_VAL (999999)
 
-/* MITM Protection Not Required - Single Profile/non-bonding Numeric comparison
- * with automatic accept allowed */
-// NO_BONDING
-#define BTM_AUTH_SP_NO 0
-/* MITM Protection Required - Single Profile/non-bonding. Use IO Capabilities to
- * determine authentication procedure */
-// NO_BONDING_MITM_PROTECTION
-#define BTM_AUTH_SP_YES 1
-/* MITM Protection Not Required - All Profiles/dedicated bonding Numeric
- * comparison with automatic accept allowed */
-// DEDICATED_BONDING
-#define BTM_AUTH_AP_NO 2
-/* MITM Protection Required - All Profiles/dedicated bonding Use IO Capabilities
- * to determine authentication procedure */
-// DEDICATED_BONDING_MITM_PROTECTION
-#define BTM_AUTH_AP_YES 3
-/* MITM Protection Not Required - Single Profiles/general bonding Numeric
- * comparison with automatic accept allowed */
-// GENERAL_BONDING
-#define BTM_AUTH_SPGB_NO 4
-/* MITM Protection Required - Single Profiles/general bonding Use IO
- * Capabilities to determine authentication procedure */
-// GENERAL_BONDING_MITM_PROTECTION
-#define BTM_AUTH_SPGB_YES 5
+typedef enum : uint8_t {
+  /* MITM Protection Not Required - Single Profile/non-bonding Numeric
+   * comparison with automatic accept allowed */
+  // NO_BONDING
+  BTM_AUTH_SP_NO = 0,
+  /* MITM Protection Required - Single Profile/non-bonding. Use IO Capabilities
+   * to determine authentication procedure */
+  // NO_BONDING_MITM_PROTECTION
+  BTM_AUTH_SP_YES = 1,
+  /* MITM Protection Not Required - All Profiles/dedicated bonding Numeric
+   * comparison with automatic accept allowed */
+  // DEDICATED_BONDING
+  BTM_AUTH_AP_NO = 2,
+  /* MITM Protection Required - All Profiles/dedicated bonding Use IO
+   * Capabilities to determine authentication procedure */
+  // DEDICATED_BONDING_MITM_PROTECTION
+  BTM_AUTH_AP_YES = 3,
+  /* MITM Protection Not Required - Single Profiles/general bonding Numeric
+   * comparison with automatic accept allowed */
+  // GENERAL_BONDING
+  BTM_AUTH_SPGB_NO = 4,
+  /* MITM Protection Required - Single Profiles/general bonding Use IO
+   * Capabilities to determine authentication procedure */
+  // GENERAL_BONDING_MITM_PROTECTION
+  BTM_AUTH_SPGB_YES = 5,
+} tBTM_AUTH;
 
 /* this bit is ORed with BTM_AUTH_SP_* when IO exchange for dedicated bonding */
 #define BTM_AUTH_DD_BOND 2
@@ -815,23 +805,25 @@ typedef void(tBTM_BOND_CANCEL_CMPL_CALLBACK)(tBTM_STATUS result);
 #define BTM_LE_LAST_FROM_SMP BTM_LE_BR_KEYS_REQ_EVT
 /* KEY update event */
 #define BTM_LE_KEY_EVT (BTM_LE_LAST_FROM_SMP + 1)
+#define BTM_LE_CONSENT_REQ_EVT SMP_CONSENT_REQ_EVT
 typedef uint8_t tBTM_LE_EVT;
 
-#define BTM_LE_KEY_NONE 0
-/* encryption information of peer device */
-#define BTM_LE_KEY_PENC SMP_SEC_KEY_TYPE_ENC
-/* identity key of the peer device */
-#define BTM_LE_KEY_PID SMP_SEC_KEY_TYPE_ID
-/* peer SRK */
-#define BTM_LE_KEY_PCSRK SMP_SEC_KEY_TYPE_CSRK
-#define BTM_LE_KEY_PLK SMP_SEC_KEY_TYPE_LK
-#define BTM_LE_KEY_LLK (SMP_SEC_KEY_TYPE_LK << 4)
-/* master role security information:div */
-#define BTM_LE_KEY_LENC (SMP_SEC_KEY_TYPE_ENC << 4)
-/* master device ID key */
-#define BTM_LE_KEY_LID (SMP_SEC_KEY_TYPE_ID << 4)
-/* local CSRK has been deliver to peer */
-#define BTM_LE_KEY_LCSRK (SMP_SEC_KEY_TYPE_CSRK << 4)
+enum : uint8_t {
+  BTM_LE_KEY_NONE = 0,
+  BTM_LE_KEY_PENC = SMP_SEC_KEY_TYPE_ENC,
+  /* identity key of the peer device */
+  BTM_LE_KEY_PID = SMP_SEC_KEY_TYPE_ID,
+  /* peer SRK */
+  BTM_LE_KEY_PCSRK = SMP_SEC_KEY_TYPE_CSRK,
+  BTM_LE_KEY_PLK = SMP_SEC_KEY_TYPE_LK,
+  BTM_LE_KEY_LLK = (SMP_SEC_KEY_TYPE_LK << 4),
+  /* master role security information:div */
+  BTM_LE_KEY_LENC = (SMP_SEC_KEY_TYPE_ENC << 4),
+  /* master device ID key */
+  BTM_LE_KEY_LID = (SMP_SEC_KEY_TYPE_ID << 4),
+  /* local CSRK has been deliver to peer */
+  BTM_LE_KEY_LCSRK = (SMP_SEC_KEY_TYPE_CSRK << 4),
+};
 typedef uint8_t tBTM_LE_KEY_TYPE;
 
 #define BTM_LE_AUTH_REQ_NO_BOND SMP_AUTH_NO_BOND /* 0 */
@@ -1003,15 +995,66 @@ enum : uint8_t {
 };
 typedef uint8_t tBTM_PM_STATUS;
 
+inline std::string power_mode_status_text(tBTM_PM_STATUS status) {
+  switch (status) {
+    case BTM_PM_STS_ACTIVE:
+      return std::string("active");
+    case BTM_PM_STS_HOLD:
+      return std::string("hold");
+    case BTM_PM_STS_SNIFF:
+      return std::string("sniff");
+    case BTM_PM_STS_PARK:
+      return std::string("park");
+    case BTM_PM_STS_SSR:
+      return std::string("sniff_subrating");
+    case BTM_PM_STS_PENDING:
+      return std::string("pending");
+    case BTM_PM_STS_ERROR:
+      return std::string("error");
+    default:
+      return std::string("UNKNOWN");
+  }
+}
+
 /* BTM Power manager modes */
 enum : uint8_t {
   BTM_PM_MD_ACTIVE = HCI_MODE_ACTIVE,  // 0x00
   BTM_PM_MD_HOLD = HCI_MODE_HOLD,      // 0x01
   BTM_PM_MD_SNIFF = HCI_MODE_SNIFF,    // 0x02
   BTM_PM_MD_PARK = HCI_MODE_PARK,      // 0x03
-  BTM_PM_MD_FORCE = 0x10 /* OR this to force ACL link to a certain mode */
+  BTM_PM_MD_FORCE = 0x10, /* OR this to force ACL link to a certain mode */
+  BTM_PM_MD_UNKNOWN = 0xEF,
 };
 typedef uint8_t tBTM_PM_MODE;
+#define HCI_TO_BTM_POWER_MODE(mode) (static_cast<tBTM_PM_MODE>(mode))
+
+inline bool is_legal_power_mode(tBTM_PM_MODE mode) {
+  switch (mode & ~BTM_PM_MD_FORCE) {
+    case BTM_PM_MD_ACTIVE:
+    case BTM_PM_MD_HOLD:
+    case BTM_PM_MD_SNIFF:
+    case BTM_PM_MD_PARK:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline std::string power_mode_text(tBTM_PM_MODE mode) {
+  std::string s = base::StringPrintf((mode & BTM_PM_MD_FORCE) ? "" : "forced:");
+  switch (mode & ~BTM_PM_MD_FORCE) {
+    case BTM_PM_MD_ACTIVE:
+      return s + std::string("active");
+    case BTM_PM_MD_HOLD:
+      return s + std::string("hold");
+    case BTM_PM_MD_SNIFF:
+      return s + std::string("sniff");
+    case BTM_PM_MD_PARK:
+      return s + std::string("park");
+    default:
+      return s + std::string("UNKNOWN");
+  }
+}
 
 #define BTM_PM_SET_ONLY_ID 0x80
 
@@ -1041,7 +1084,7 @@ typedef struct {
  *************************************/
 typedef void(tBTM_PM_STATUS_CBACK)(const RawAddress& p_bda,
                                    tBTM_PM_STATUS status, uint16_t value,
-                                   uint8_t hci_status);
+                                   tHCI_STATUS hci_status);
 
 /************************
  *  Stored Linkkey Types

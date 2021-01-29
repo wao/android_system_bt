@@ -1,0 +1,35 @@
+rust_library {
+    name: "libbt_hci",
+    defaults: ["gd_rust_defaults"],
+    crate_name: "bt_hci",
+    srcs: ["src/lib.rs"],
+    edition: "2018",
+    rustlibs: [
+        "libbt_hal",
+        "libbt_facade_proto",
+        "libbt_packets",
+        "libbytes",
+        "libfutures",
+        "libgrpcio",
+        "libnum_traits",
+        "libthiserror",
+        "libtokio",
+        "libprotobuf",
+        "libgddi",
+        "liblog_rust",
+        "libbt_common",
+        "libbt_hci_custom_types",
+        "libbt_facade_helpers",
+    ],
+    proc_macros: [
+        "libnum_derive",
+    ],
+}
+
+rust_library {
+    name: "libbt_hci_custom_types",
+    defaults: ["gd_rust_defaults"],
+    crate_name: "bt_hci_custom_types",
+    srcs: ["custom_types/lib.rs"],
+    edition: "2018",
+}

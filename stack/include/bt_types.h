@@ -234,20 +234,29 @@ typedef struct {
 
 #define BT_HDR_SIZE (sizeof(BT_HDR))
 
-#define BT_PSM_SDP 0x0001
-#define BT_PSM_RFCOMM 0x0003
-#define BT_PSM_TCS 0x0005
-#define BT_PSM_CTP 0x0007
-#define BT_PSM_BNEP 0x000F
-#define BT_PSM_HIDC 0x0011
-#define BT_PSM_HIDI 0x0013
-#define BT_PSM_UPNP 0x0015
-#define BT_PSM_AVCTP 0x0017
-#define BT_PSM_AVDTP 0x0019
-#define BT_PSM_AVCTP_13 0x001B /* Advanced Control - Browsing */
-#define BT_PSM_UDI_CP \
-  0x001D /* Unrestricted Digital Information Profile C-Plane  */
-#define BT_PSM_ATT 0x001F /* Attribute Protocol  */
+enum : uint16_t {
+  BT_PSM_SDP = 0x0001,
+  BT_PSM_RFCOMM = 0x0003,
+  BT_PSM_TCS = 0x0005,
+  BT_PSM_CTP = 0x0007,
+  BT_PSM_BNEP = 0x000F,
+  BT_PSM_HIDC = 0x0011,
+  HID_PSM_CONTROL = 0x0011,
+  BT_PSM_HIDI = 0x0013,
+  HID_PSM_INTERRUPT = 0x0013,
+  BT_PSM_UPNP = 0x0015,
+  BT_PSM_AVCTP = 0x0017,
+  BT_PSM_AVDTP = 0x0019,
+  BT_PSM_AVCTP_13 = 0x001B, /* Advanced Control - Browsing */
+  BT_PSM_UDI_CP =
+      0x001D,          /* Unrestricted Digital Information Profile C-Plane  */
+  BT_PSM_ATT = 0x001F, /* Attribute Protocol  */
+  BT_PSM_EATT = 0x0027,
+  /* We will not allocate a PSM in the reserved range to 3rd party apps
+   */
+  BRCM_RESERVED_PSM_START = 0x5AE1,
+  BRCM_RESERVED_PSM_END = 0x5AFF,
+};
 
 /* These macros extract the HCI opcodes from a buffer
  */
@@ -569,17 +578,8 @@ inline void STREAM_TO_BDADDR(RawAddress& a, uint8_t*& p) {
 
 #endif
 
-#define AMP_KEY_TYPE_GAMP 0
-#define AMP_KEY_TYPE_WIFI 1
-#define AMP_KEY_TYPE_UWB 2
-typedef uint8_t tAMP_KEY_TYPE;
-
 #define BT_OCTET8_LEN 8
 typedef uint8_t BT_OCTET8[BT_OCTET8_LEN]; /* octet array: size 16 */
-
-#define AMP_LINK_KEY_LEN 32
-typedef uint8_t
-    AMP_LINK_KEY[AMP_LINK_KEY_LEN]; /* Dedicated AMP and GAMP Link Keys */
 
 /* Some C files include this header file */
 #ifdef __cplusplus
@@ -602,26 +602,36 @@ inline bool is_sample_ltk(const Octet16& ltk) { return ltk == SAMPLE_LTK; }
 
 #define PIN_CODE_LEN 16
 typedef uint8_t PIN_CODE[PIN_CODE_LEN]; /* Pin Code (upto 128 bits) MSB is 0 */
-typedef uint8_t* PIN_CODE_PTR;          /* Pointer to Pin Code */
 
 #define BT_OCTET32_LEN 32
 typedef uint8_t BT_OCTET32[BT_OCTET32_LEN]; /* octet array: size 32 */
 
 #define DEV_CLASS_LEN 3
 typedef uint8_t DEV_CLASS[DEV_CLASS_LEN]; /* Device class */
-typedef uint8_t* DEV_CLASS_PTR;           /* Pointer to Device class */
 
 #define EXT_INQ_RESP_LEN 3
 typedef uint8_t EXT_INQ_RESP[EXT_INQ_RESP_LEN]; /* Extended Inquiry Response */
-typedef uint8_t* EXT_INQ_RESP_PTR; /* Pointer to Extended Inquiry Response */
 
 #define BD_NAME_LEN 248
 typedef uint8_t BD_NAME[BD_NAME_LEN + 1]; /* Device name */
-typedef uint8_t* BD_NAME_PTR;             /* Pointer to Device name */
 
 #define BD_FEATURES_LEN 8
 typedef uint8_t
     BD_FEATURES[BD_FEATURES_LEN]; /* LMP features supported by device */
+
+#ifdef __cplusplus
+// Bit order [0]:0-7 [1]:8-15 ... [7]:56-63
+inline std::string bd_features_text(const BD_FEATURES& features) {
+  uint8_t len = BD_FEATURES_LEN;
+  char buf[255];
+  char* pbuf = buf;
+  const uint8_t* b = features;
+  while (len--) {
+    pbuf += sprintf(pbuf, "0x%02x ", *b++);
+  }
+  return std::string(buf);
+}
+#endif  // __cplusplus
 
 #define BT_EVENT_MASK_LEN 8
 typedef uint8_t BT_EVENT_MASK[BT_EVENT_MASK_LEN]; /* Event Mask */
@@ -629,12 +639,6 @@ typedef uint8_t BT_EVENT_MASK[BT_EVENT_MASK_LEN]; /* Event Mask */
 #define LAP_LEN 3
 typedef uint8_t LAP[LAP_LEN];     /* IAC as passed to Inquiry (LAP) */
 typedef uint8_t INQ_LAP[LAP_LEN]; /* IAC as passed to Inquiry (LAP) */
-
-#define RAND_NUM_LEN 16
-typedef uint8_t RAND_NUM[RAND_NUM_LEN];
-
-#define ACO_LEN 12
-typedef uint8_t ACO[ACO_LEN]; /* Authenticated ciphering offset */
 
 #define COF_LEN 12
 typedef uint8_t COF[COF_LEN]; /* ciphering offset number */
@@ -650,33 +654,8 @@ typedef struct {
 } FLOW_SPEC;
 
 /* Values for service_type */
-#define SVC_TYPE_NO_TRAFFIC 0
 #define SVC_TYPE_BEST_EFFORT 1
 #define SVC_TYPE_GUARANTEED 2
-
-/* Service class of the CoD */
-#define SERV_CLASS_NETWORKING (1 << 1)
-#define SERV_CLASS_RENDERING (1 << 2)
-#define SERV_CLASS_CAPTURING (1 << 3)
-#define SERV_CLASS_OBJECT_TRANSFER (1 << 4)
-#define SERV_CLASS_OBJECT_AUDIO (1 << 5)
-#define SERV_CLASS_OBJECT_TELEPHONY (1 << 6)
-#define SERV_CLASS_OBJECT_INFORMATION (1 << 7)
-
-/* Second byte */
-#define SERV_CLASS_LIMITED_DISC_MODE (0x20)
-
-/* Field size definitions. Note that byte lengths are rounded up. */
-#define ACCESS_CODE_BIT_LEN 72
-#define ACCESS_CODE_BYTE_LEN 9
-#define SHORTENED_ACCESS_CODE_BIT_LEN 68
-
-typedef uint8_t ACCESS_CODE[ACCESS_CODE_BYTE_LEN];
-
-#define SYNTH_TX 1 /* want synth code to TRANSMIT at this freq */
-#define SYNTH_RX 2 /* want synth code to RECEIVE at this freq */
-
-#define SYNC_REPS 1 /* repeats of sync word transmitted to start of burst */
 
 #define BT_1SEC_TIMEOUT_MS (1 * 1000) /* 1 second */
 
@@ -699,105 +678,6 @@ typedef uint8_t ACCESS_CODE[ACCESS_CODE_BYTE_LEN];
 #define BT_EIR_SERVICE_DATA_32BITS_UUID_TYPE 0x20
 #define BT_EIR_SERVICE_DATA_128BITS_UUID_TYPE 0x21
 #define BT_EIR_MANUFACTURER_SPECIFIC_TYPE 0xFF
-
-#define BT_OOB_COD_SIZE 3
-#define BT_OOB_HASH_C_SIZE 16
-#define BT_OOB_RAND_R_SIZE 16
-
-/* Broadcom proprietary UUIDs and reserved PSMs
- *
- * The lowest 4 bytes byte of the UUID or GUID depend on the feature. Typically,
- * the value of those bytes will be the PSM or SCN.
- */
-#define BRCM_PROPRIETARY_UUID_BASE \
-  0xDA, 0x23, 0x41, 0x02, 0xA3, 0xBB, 0xC1, 0x71, 0xBA, 0x09, 0x6f, 0x21
-#define BRCM_PROPRIETARY_GUID_BASE \
-  0xda23, 0x4102, 0xa3, 0xbb, 0xc1, 0x71, 0xba, 0x09, 0x6f, 0x21
-
-/* We will not allocate a PSM in the reserved range to 3rd party apps
- */
-#define BRCM_RESERVED_PSM_START 0x5AE1
-#define BRCM_RESERVED_PSM_END 0x5AFF
-
-#define BRCM_UTILITY_SERVICE_PSM 0x5AE1
-#define BRCM_MATCHER_PSM 0x5AE3
-
-/* Connection statistics
- */
-
-/* Structure to hold connection stats */
-#ifndef BT_CONN_STATS_DEFINED
-#define BT_CONN_STATS_DEFINED
-
-/* These bits are used in the bIsConnected field */
-#define BT_CONNECTED_USING_BREDR 1
-#define BT_CONNECTED_USING_AMP 2
-
-typedef struct {
-  uint32_t is_connected;
-  int32_t rssi;
-  uint32_t bytes_sent;
-  uint32_t bytes_rcvd;
-  uint32_t duration;
-} tBT_CONN_STATS;
-
-#endif
-
-/*****************************************************************************
- *                          Low Energy definitions
- *
- * Address types
- */
-#define BLE_ADDR_PUBLIC 0x00
-#define BLE_ADDR_RANDOM 0x01
-#define BLE_ADDR_PUBLIC_ID 0x02
-#define BLE_ADDR_RANDOM_ID 0x03
-#define BLE_ADDR_ANONYMOUS 0xFF
-typedef uint8_t tBLE_ADDR_TYPE;
-
-/* BLE ADDR type ID bit */
-#define BLE_ADDR_TYPE_ID_BIT 0x02
-
-#ifdef __cplusplus
-constexpr uint8_t kBleAddressPublicDevice = BLE_ADDR_PUBLIC;
-constexpr uint8_t kBleAddressRandomDevice = BLE_ADDR_RANDOM;
-constexpr uint8_t kBleAddressIdentityBit = BLE_ADDR_TYPE_ID_BIT;
-constexpr uint8_t kBleAddressPublicIdentity =
-    kBleAddressIdentityBit | kBleAddressPublicDevice;
-constexpr uint8_t kBleAddressRandomIdentity =
-    kBleAddressIdentityBit | kBleAddressRandomDevice;
-
-constexpr uint8_t kResolvableAddressMask = 0xc0;
-constexpr uint8_t kResolvableAddressMsb = 0x40;
-
-struct tBLE_BD_ADDR {
-  tBLE_ADDR_TYPE type;
-  RawAddress bda;
-  bool AddressEquals(const RawAddress& other) const { return other == bda; }
-  bool IsPublicDeviceType() const { return type == kBleAddressPublicDevice; }
-  bool IsRandomDeviceType() const { return type == kBleAddressRandomDevice; }
-  bool IsPublicIdentityType() const {
-    return type == kBleAddressPublicIdentity;
-  }
-  bool lsRandomIdentityType() const {
-    return type == kBleAddressRandomIdentity;
-  }
-  bool IsAddressResolvable() const {
-    return ((bda.address)[0] & kResolvableAddressMask) == kResolvableAddressMsb;
-  }
-  bool IsPublic() const { return type & 0x01; }
-  bool IsResolvablePrivateAddress() const {
-    return IsAddressResolvable() && IsRandomDeviceType();
-  }
-  bool IsIdentityType() const {
-    return IsPublicIdentityType() || lsRandomIdentityType();
-  }
-  bool TypeWithoutIdentityEquals(const tBLE_ADDR_TYPE other) const {
-    return (other & ~kBleAddressIdentityBit) ==
-           (type & ~kBleAddressIdentityBit);
-  }
-};
-#endif
 
 /* Device Types
  */
@@ -868,12 +748,5 @@ inline std::string DeviceTypeText(tBT_DEVICE_TYPE type) {
 #define TRACE_TYPE_API 0x00000002
 #define TRACE_TYPE_EVENT 0x00000003
 #define TRACE_TYPE_DEBUG 0x00000004
-
-#define TCS_PSM_INTERCOM 5
-#define TCS_PSM_CORDLESS 7
-#define BT_PSM_BNEP 0x000F
-/* Define PSMs HID uses */
-#define HID_PSM_CONTROL 0x0011
-#define HID_PSM_INTERRUPT 0x0013
 
 #endif

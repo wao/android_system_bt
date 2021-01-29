@@ -80,7 +80,12 @@ void SecurityManagerChannel::SendCommand(std::unique_ptr<hci::SecurityCommandBui
                                           handler_->BindOnceOn(this, &SecurityManagerChannel::OnCommandComplete));
 }
 
-void SecurityManagerChannel::OnHciEventReceived(hci::EventPacketView packet) {
+void SecurityManagerChannel::SendCommand(
+    std::unique_ptr<hci::SecurityCommandBuilder> command, SecurityCommandStatusCallback callback) {
+  hci_security_interface_->EnqueueCommand(std::move(command), std::forward<SecurityCommandStatusCallback>(callback));
+}
+
+void SecurityManagerChannel::OnHciEventReceived(hci::EventView packet) {
   ASSERT_LOG(listener_ != nullptr, "No listener set!");
   ASSERT(packet.IsValid());
   listener_->OnHciEventReceived(packet);
@@ -119,8 +124,6 @@ void SecurityManagerChannel::OnAuthenticationComplete(hci::Address remote) {
 }
 
 void SecurityManagerChannel::OnEncryptionChange(hci::Address remote, bool encrypted) {
-  ASSERT_LOG(listener_ != nullptr, "No listener set!");
-  listener_->OnEncryptionChange(remote, encrypted);
 }
 
 }  // namespace channel

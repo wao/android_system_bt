@@ -241,7 +241,6 @@ void BTA_DmAddDevice(const RawAddress& bd_addr, DEV_CLASS dev_class,
   }
 
   memset(msg->bd_name, 0, BD_NAME_LEN + 1);
-  memset(msg->features, 0, sizeof(msg->features));
   msg->pin_length = pin_length;
 
   do_in_main_thread(FROM_HERE,
@@ -298,6 +297,40 @@ void BTA_GetEirService(uint8_t* p_eir, size_t eir_len,
     if (*(p_uuid16 + xx) == UUID_SERVCLASS_HDP_SINK)
       *p_services |= BTA_HL_SERVICE_MASK;
   }
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_AddEirUuid
+ *
+ * Description      Request to add a service class UID to the local
+ *                  device's EIR data.
+ *
+ * Parameters       uuid16 - The service class UUID you wish to add
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTA_AddEirUuid(uint16_t uuid16) {
+  APPL_TRACE_API("%s: %d", __func__, uuid16);
+  bta_sys_add_uuid(uuid16);
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_RemoveEirUuid
+ *
+ * Description      Request to remove a service class UID from the local
+ *                  device's EIR data.
+ *
+ * Parameters       uuid16 - The service class UUID you wish to remove
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTA_RemoveEirUuid(uint16_t uuid16) {
+  APPL_TRACE_API("%s: %d", __func__, uuid16);
+  bta_sys_remove_uuid(uuid16);
 }
 
 /*******************************************************************************
@@ -363,7 +396,7 @@ tBTA_STATUS BTA_DmSetLocalDiRecord(tBTA_DI_RECORD* p_device_info,
  *
  ******************************************************************************/
 void BTA_DmAddBleKey(const RawAddress& bd_addr, tBTA_LE_KEY_VALUE* p_le_key,
-                     tBTA_LE_KEY_TYPE key_type) {
+                     tBTM_LE_KEY_TYPE key_type) {
   do_in_main_thread(
       FROM_HERE, base::Bind(bta_dm_add_blekey, bd_addr, *p_le_key, key_type));
 }
@@ -456,7 +489,7 @@ void BTA_DmBleSecurityGrant(const RawAddress& bd_addr,
  *                  scan_window      - scan window
  *                  min_conn_int     - minimum preferred connection interval
  *                  max_conn_int     - maximum preferred connection interval
- *                  slave_latency    - preferred slave latency
+ *                  peripheral_latency    - preferred peripheral latency
  *                  supervision_tout - preferred supervision timeout
  *
  *
@@ -465,11 +498,12 @@ void BTA_DmBleSecurityGrant(const RawAddress& bd_addr,
  ******************************************************************************/
 void BTA_DmSetBlePrefConnParams(const RawAddress& bd_addr,
                                 uint16_t min_conn_int, uint16_t max_conn_int,
-                                uint16_t slave_latency,
+                                uint16_t peripheral_latency,
                                 uint16_t supervision_tout) {
   do_in_main_thread(
-      FROM_HERE, base::Bind(bta_dm_ble_set_conn_params, bd_addr, min_conn_int,
-                            max_conn_int, slave_latency, supervision_tout));
+      FROM_HERE,
+      base::Bind(bta_dm_ble_set_conn_params, bd_addr, min_conn_int,
+                 max_conn_int, peripheral_latency, supervision_tout));
 }
 
 /*******************************************************************************
@@ -484,7 +518,7 @@ void BTA_DmSetBlePrefConnParams(const RawAddress& bd_addr,
  *                                  [0x0004 ~ 0x4000]
  *                  max_int   -     maximum connection interval,
  *                                  [0x0004 ~ 0x4000]
- *                  latency   -     slave latency [0 ~ 500]
+ *                  latency   -     peripheral latency [0 ~ 500]
  *                  timeout   -     supervision timeout [0x000a ~ 0xc80]
  *
  * Returns          void
@@ -536,10 +570,9 @@ void BTA_DmBleGetEnergyInfo(tBTA_BLE_ENERGY_INFO_CBACK* p_cmpl_cback) {
 }
 
 /** This function is to set maximum LE data packet size */
-void BTA_DmBleSetDataLength(const RawAddress& remote_device,
-                            uint16_t tx_data_length) {
-  do_in_main_thread(FROM_HERE, base::Bind(bta_dm_ble_set_data_length,
-                                          remote_device, tx_data_length));
+void BTA_DmBleRequestMaxTxDataLength(const RawAddress& remote_device) {
+  do_in_main_thread(FROM_HERE,
+                    base::Bind(bta_dm_ble_set_data_length, remote_device));
 }
 
 /*******************************************************************************

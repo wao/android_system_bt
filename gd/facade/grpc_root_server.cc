@@ -46,7 +46,6 @@
 #include "security/security_module.h"
 #include "shim/dumpsys.h"
 #include "shim/facade/facade.h"
-#include "shim/l2cap.h"
 #include "stack_manager.h"
 #include "storage/storage_module.h"
 
@@ -79,11 +78,11 @@ class RootFacadeService : public ::bluetooth::facade::RootFacade::Service {
         break;
       case BluetoothModule::HCI:
         modules.add<::bluetooth::facade::ReadOnlyPropertyServerModule>();
-        modules.add<::bluetooth::hci::facade::HciLayerFacadeModule>();
+        modules.add<::bluetooth::hci::facade::HciFacadeModule>();
         break;
       case BluetoothModule::HCI_INTERFACES:
         modules.add<::bluetooth::facade::ReadOnlyPropertyServerModule>();
-        modules.add<::bluetooth::hci::facade::HciLayerFacadeModule>();
+        modules.add<::bluetooth::hci::facade::HciFacadeModule>();
         modules.add<::bluetooth::hci::facade::AclManagerFacadeModule>();
         modules.add<::bluetooth::hci::facade::ControllerFacadeModule>();
         modules.add<::bluetooth::hci::facade::LeAclManagerFacadeModule>();
@@ -100,7 +99,7 @@ class RootFacadeService : public ::bluetooth::facade::RootFacade::Service {
         modules.add<::bluetooth::facade::ReadOnlyPropertyServerModule>();
         modules.add<::bluetooth::l2cap::classic::L2capClassicModuleFacadeModule>();
         modules.add<::bluetooth::l2cap::le::L2capLeModuleFacadeModule>();
-        modules.add<::bluetooth::hci::facade::HciLayerFacadeModule>();
+        modules.add<::bluetooth::hci::facade::HciFacadeModule>();
         break;
       case BluetoothModule::SECURITY:
         modules.add<::bluetooth::facade::ReadOnlyPropertyServerModule>();
@@ -108,14 +107,13 @@ class RootFacadeService : public ::bluetooth::facade::RootFacade::Service {
         modules.add<::bluetooth::security::SecurityModuleFacadeModule>();
         modules.add<::bluetooth::neighbor::facade::NeighborFacadeModule>();
         modules.add<::bluetooth::l2cap::classic::L2capClassicModuleFacadeModule>();
-        modules.add<::bluetooth::hci::facade::HciLayerFacadeModule>();
+        modules.add<::bluetooth::hci::facade::HciFacadeModule>();
         modules.add<::bluetooth::hci::facade::ControllerFacadeModule>();
         modules.add<::bluetooth::hci::facade::LeAdvertisingManagerFacadeModule>();
         modules.add<::bluetooth::hci::facade::LeScanningManagerFacadeModule>();
         break;
       case BluetoothModule::SHIM:
         modules.add<::bluetooth::shim::facade::ShimFacadeModule>();
-        modules.add<::bluetooth::shim::L2cap>();
         break;
       default:
         return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "invalid module under test");

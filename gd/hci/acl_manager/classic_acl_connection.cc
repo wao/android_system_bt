@@ -26,7 +26,7 @@ class AclConnectionTracker : public ConnectionManagementCallbacks {
  public:
   AclConnectionTracker(AclConnectionInterface* acl_connection_interface)
       : acl_connection_interface_(acl_connection_interface) {}
-  ~AclConnectionTracker() override {
+  ~AclConnectionTracker() {
     // If callbacks were registered, they should have been delivered.
     ASSERT(client_callbacks_ == nullptr || queued_callbacks_.empty());
   }
@@ -66,6 +66,18 @@ class AclConnectionTracker : public ConnectionManagementCallbacks {
   }
   void OnModeChange(Mode current_mode, uint16_t interval) override {
     SAVE_OR_CALL(OnModeChange, current_mode, interval)
+  }
+  void OnSniffSubrating(
+      uint16_t maximum_transmit_latency,
+      uint16_t maximum_receive_latency,
+      uint16_t minimum_remote_timeout,
+      uint16_t minimum_local_timeout) override {
+    SAVE_OR_CALL(
+        OnSniffSubrating,
+        maximum_transmit_latency,
+        maximum_receive_latency,
+        minimum_remote_timeout,
+        minimum_local_timeout);
   }
   void OnQosSetupComplete(ServiceType service_type, uint32_t token_rate, uint32_t peak_bandwidth, uint32_t latency,
                           uint32_t delay_variation) override {
@@ -110,17 +122,21 @@ class AclConnectionTracker : public ConnectionManagementCallbacks {
   void OnReadClockComplete(uint32_t clock, uint16_t accuracy) override {
     SAVE_OR_CALL(OnReadClockComplete, clock, accuracy)
   }
-  void OnMasterLinkKeyComplete(KeyFlag key_flag) override {
-    SAVE_OR_CALL(OnMasterLinkKeyComplete, key_flag)
+  void OnCentralLinkKeyComplete(KeyFlag key_flag) override {
+    SAVE_OR_CALL(OnCentralLinkKeyComplete, key_flag)
   }
   void OnRoleChange(Role new_role) override {
     SAVE_OR_CALL(OnRoleChange, new_role)
   }
+  void OnReadRemoteVersionInformationComplete(
+      uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) override {
+    SAVE_OR_CALL(OnReadRemoteVersionInformationComplete, lmp_version, manufacturer_name, sub_version);
+  }
+  void OnReadRemoteExtendedFeaturesComplete(uint8_t page_number, uint8_t max_page_number, uint64_t features) override {
+    SAVE_OR_CALL(OnReadRemoteExtendedFeaturesComplete, page_number, max_page_number, features);
+  }
   void OnDisconnection(ErrorCode reason) {
     SAVE_OR_CALL(OnDisconnection, reason);
-  }
-  void OnReadRemoteVersionInformationComplete(uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) {
-    SAVE_OR_CALL(OnReadRemoteVersionInformationComplete, lmp_version, manufacturer_name, sub_version);
   }
 
 #undef SAVE_OR_CALL
@@ -253,7 +269,6 @@ class AclConnectionTracker : public ConnectionManagementCallbacks {
 
   void on_read_remote_version_information_status(CommandStatusView view) {
     ASSERT_LOG(view.IsValid(), "Bad status packet!");
-    LOG_INFO("UNIMPLEMENTED called: %s", hci::ErrorCodeText(view.GetStatus()).c_str());
   }
 
   void on_read_remote_supported_features_status(CommandStatusView view) {
@@ -262,9 +277,9 @@ class AclConnectionTracker : public ConnectionManagementCallbacks {
   }
 
   void on_read_remote_extended_features_status(CommandStatusView view) {
-    ASSERT_LOG(view.IsValid(), "Broken");
-    LOG_INFO("UNIMPLEMENTED called: %s", hci::ErrorCodeText(view.GetStatus()).c_str());
+    ASSERT_LOG(view.IsValid(), "Bad status packet!");
   }
+
   void on_read_clock_complete(CommandCompleteView view) {
     auto complete_view = ReadClockCompleteView::Create(view);
     if (!complete_view.IsValid()) {
@@ -533,11 +548,11 @@ bool ClassicAclConnection::ReadRemoteSupportedFeatures() {
   return true;
 }
 
-bool ClassicAclConnection::ReadRemoteExtendedFeatures() {
+bool ClassicAclConnection::ReadRemoteExtendedFeatures(uint8_t page_number) {
   acl_connection_interface_->EnqueueCommand(
-      ReadRemoteExtendedFeaturesBuilder::Create(handle_, 1),
-      pimpl_->tracker.client_handler_->BindOnceOn(&pimpl_->tracker,
-                                                  &AclConnectionTracker::on_read_remote_extended_features_status));
+      ReadRemoteExtendedFeaturesBuilder::Create(handle_, page_number),
+      pimpl_->tracker.client_handler_->BindOnceOn(
+          &pimpl_->tracker, &AclConnectionTracker::on_read_remote_extended_features_status));
   return true;
 }
 

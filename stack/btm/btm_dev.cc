@@ -30,7 +30,6 @@
 #include "bt_common.h"
 #include "bt_types.h"
 #include "btm_api.h"
-#include "btm_int.h"
 #include "btu.h"
 #include "device/include/controller.h"
 #include "hcidefs.h"
@@ -40,6 +39,8 @@
 #include "main/shim/shim.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/include/acl_api.h"
+
+extern tBTM_CB btm_cb;
 
 /*******************************************************************************
  *
@@ -86,7 +87,7 @@ bool BTM_SecAddDevice(const RawAddress& bd_addr, DEV_CLASS dev_class,
      * bond state for an existing device here? This logic should be verified
      * as part of a larger refactor.
      */
-    p_dev_rec->bond_type = BOND_TYPE_UNKNOWN;
+    p_dev_rec->bond_type = tBTM_SEC_DEV_REC::BOND_TYPE_UNKNOWN;
   }
 
   if (dev_class) memcpy(p_dev_rec->dev_class, dev_class, DEV_CLASS_LEN);
@@ -97,24 +98,6 @@ bool BTM_SecAddDevice(const RawAddress& bd_addr, DEV_CLASS dev_class,
     p_dev_rec->sec_flags |= BTM_SEC_NAME_KNOWN;
     strlcpy((char*)p_dev_rec->sec_bd_name, (char*)bd_name,
             BTM_MAX_REM_BD_NAME_LEN + 1);
-  }
-
-  p_dev_rec->num_read_pages = 0;
-  if (features) {
-    bool found = false;
-    memcpy(p_dev_rec->feature_pages, features,
-           sizeof(p_dev_rec->feature_pages));
-    for (int i = HCI_EXT_FEATURES_PAGE_MAX; !found && i >= 0; i--) {
-      for (int j = 0; j < HCI_FEATURE_BYTES_PER_PAGE; j++) {
-        if (p_dev_rec->feature_pages[i][j] != 0) {
-          found = true;
-          p_dev_rec->num_read_pages = i + 1;
-          break;
-        }
-      }
-    }
-  } else {
-    memset(p_dev_rec->feature_pages, 0, sizeof(p_dev_rec->feature_pages));
   }
 
   if (p_link_key) {
@@ -132,13 +115,6 @@ bool BTM_SecAddDevice(const RawAddress& bd_addr, DEV_CLASS dev_class,
           BTM_SEC_16_DIGIT_PIN_AUTHED | BTM_SEC_LINK_KEY_AUTHED;
     }
   }
-
-#if (BTIF_MIXED_MODE_INCLUDED == TRUE)
-  if (key_type < BTM_MAX_PRE_SM4_LKEY_TYPE)
-    p_dev_rec->sm4 = BTM_SM4_KNOWN;
-  else
-    p_dev_rec->sm4 = BTM_SM4_TRUE;
-#endif
 
   p_dev_rec->rmt_io_caps = BTM_IO_CAP_OUT;
   p_dev_rec->device_type |= BT_DEVICE_TYPE_BREDR;
@@ -240,8 +216,7 @@ tBTM_SEC_DEV_REC* btm_sec_alloc_dev(const RawAddress& bd_addr) {
 
   tBTM_SEC_DEV_REC* p_dev_rec = btm_sec_allocate_dev_rec();
 
-  BTM_TRACE_EVENT("%s: allocated p_dev_rec=%p, bd_addr=%s", __func__, p_dev_rec,
-                  bd_addr.ToString().c_str());
+  LOG_DEBUG("Allocated device record bd_addr:%s", PRIVATE_ADDRESS(bd_addr));
 
   /* Check with the BT manager if details about remote device are known */
   /* outgoing connection */
@@ -290,27 +265,18 @@ bool btm_dev_support_role_switch(const RawAddress& bd_addr) {
     return false;
   }
 
-  if (!controller_get_interface()->supports_master_slave_role_switch()) {
+  if (!controller_get_interface()->supports_central_peripheral_role_switch()) {
     BTM_TRACE_DEBUG("%s Local controller does not support role switch",
                     __func__);
     return false;
   }
 
-  if (HCI_SWITCH_SUPPORTED(p_dev_rec->feature_pages[0])) {
+  if (p_dev_rec->remote_supports_hci_role_switch) {
     BTM_TRACE_DEBUG("%s Peer controller supports role switch", __func__);
     return true;
   }
 
-  /* If the feature field is all zero, we never received them */
-  bool feature_empty = true;
-  for (int xx = 0; xx < BD_FEATURES_LEN; xx++) {
-    if (p_dev_rec->feature_pages[0][xx] != 0x00) {
-      feature_empty = false; /* at least one is != 0 */
-      break;
-    }
-  }
-
-  if (feature_empty) {
+  if (!p_dev_rec->remote_feature_received) {
     BTM_TRACE_DEBUG(
         "%s Unknown peer capabilities, assuming peer supports role switch",
         __func__);
@@ -527,7 +493,7 @@ tBTM_SEC_DEV_REC* btm_sec_allocate_dev_rec(void) {
 
   // Initialize defaults
   p_dev_rec->sec_flags = BTM_SEC_IN_USE;
-  p_dev_rec->bond_type = BOND_TYPE_UNKNOWN;
+  p_dev_rec->bond_type = tBTM_SEC_DEV_REC::BOND_TYPE_UNKNOWN;
   p_dev_rec->timestamp = btm_cb.dev_rec_count++;
   p_dev_rec->rmt_io_caps = BTM_IO_CAP_UNKNOWN;
 
@@ -544,10 +510,11 @@ tBTM_SEC_DEV_REC* btm_sec_allocate_dev_rec(void) {
  * Returns          The device bond type if known, otherwise BOND_TYPE_UNKNOWN
  *
  ******************************************************************************/
-tBTM_BOND_TYPE btm_get_bond_type_dev(const RawAddress& bd_addr) {
+tBTM_SEC_DEV_REC::tBTM_BOND_TYPE btm_get_bond_type_dev(
+    const RawAddress& bd_addr) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
 
-  if (p_dev_rec == NULL) return BOND_TYPE_UNKNOWN;
+  if (p_dev_rec == NULL) return tBTM_SEC_DEV_REC::BOND_TYPE_UNKNOWN;
 
   return p_dev_rec->bond_type;
 }
@@ -563,7 +530,7 @@ tBTM_BOND_TYPE btm_get_bond_type_dev(const RawAddress& bd_addr) {
  *
  ******************************************************************************/
 bool btm_set_bond_type_dev(const RawAddress& bd_addr,
-                           tBTM_BOND_TYPE bond_type) {
+                           tBTM_SEC_DEV_REC::tBTM_BOND_TYPE bond_type) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
 
   if (p_dev_rec == NULL) return false;

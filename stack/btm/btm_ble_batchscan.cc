@@ -23,12 +23,15 @@
 #include "bt_target.h"
 
 #include "bt_types.h"
-#include "bt_utils.h"
 #include "btm_ble_api.h"
 #include "btm_int.h"
 #include "btu.h"
 #include "device/include/controller.h"
 #include "hcimsgs.h"
+#include "stack/btm/btm_int_types.h"
+#include "utils/include/bt_utils.h"
+
+extern tBTM_CB btm_cb;
 
 using base::Bind;
 using base::Callback;
@@ -123,7 +126,7 @@ void btm_ble_batchscan_filter_track_adv_vse_cback(uint8_t len, uint8_t* p) {
                     adv_data.advertiser_state);
 
     // Make sure the device is known
-    BTM_SecAddBleDevice(adv_data.bd_addr, NULL, BT_DEVICE_TYPE_BLE,
+    BTM_SecAddBleDevice(adv_data.bd_addr, BT_DEVICE_TYPE_BLE,
                         adv_data.addr_type);
 
     ble_advtrack_cb.p_track_cback(&adv_data);

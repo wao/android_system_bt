@@ -19,10 +19,15 @@
 
 #include "l2cap/le/dynamic_channel_manager.h"
 #include "l2cap/le/fixed_channel_manager.h"
+#include "l2cap/le/link_property_listener.h"
 #include "l2cap/le/security_enforcement_interface.h"
 #include "module.h"
 
 namespace bluetooth {
+
+namespace shim {
+void L2CA_UseLegacySecurityModule();
+}
 
 namespace security {
 class SecurityModule;
@@ -62,12 +67,21 @@ class L2capLeModule : public bluetooth::Module {
   std::unique_ptr<impl> pimpl_;
 
   friend security::SecurityModule;
+  friend void bluetooth::shim::L2CA_UseLegacySecurityModule();
+
   /**
    * Only for the LE security module to inject functionality to enforce security level for a connection. When LE
    * security module is stopping, inject nullptr. Note: We expect this only to be called during stack startup. This is
    * not synchronized.
    */
   virtual void InjectSecurityEnforcementInterface(SecurityEnforcementInterface* security_enforcement_interface);
+
+  /**
+   * Set the link property listener.
+   * This is not synchronized.
+   */
+  virtual void SetLinkPropertyListener(os::Handler* handler, LinkPropertyListener* listener);
+
   DISALLOW_COPY_AND_ASSIGN(L2capLeModule);
 };
 

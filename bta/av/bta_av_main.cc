@@ -28,10 +28,12 @@
 #include <string.h>
 
 #include "bt_target.h"
+#include "main/shim/dumpsys.h"
 #include "osi/include/log.h"
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
 
+#include "avrcp_service.h"
 #include "bta_av_co.h"
 #include "bta_av_int.h"
 #include "btif/include/btif_av_co.h"
@@ -85,7 +87,7 @@
 #endif
 
 #ifndef AVRCP_DEFAULT_VERSION
-#define AVRCP_DEFAULT_VERSION AVRCP_1_4_STRING
+#define AVRCP_DEFAULT_VERSION AVRCP_1_5_STRING
 #endif
 
 /* state machine states */
@@ -328,8 +330,8 @@ void tBTA_AV_SCB::OnDisconnected() {
 
 void tBTA_AV_SCB::SetAvdtpVersion(uint16_t avdtp_version) {
   avdtp_version_ = avdtp_version;
-  LOG_DEBUG("%s: AVDTP version for %s set to 0x%x", __func__,
-            peer_address_.ToString().c_str(), avdtp_version_);
+  LOG_INFO("%s: AVDTP version for %s set to 0x%x", __func__,
+           peer_address_.ToString().c_str(), avdtp_version_);
 }
 
 /*******************************************************************************
@@ -477,25 +479,32 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
         /* For the Audio Sink role we support additional TG to support
          * absolute volume.
          */
-        uint16_t profile_version = AVRC_REV_1_0;
-
-        if (!strncmp(AVRCP_1_6_STRING, avrcp_version,
-                     sizeof(AVRCP_1_6_STRING))) {
-          profile_version = AVRC_REV_1_6;
-        } else if (!strncmp(AVRCP_1_5_STRING, avrcp_version,
-                            sizeof(AVRCP_1_5_STRING))) {
-          profile_version = AVRC_REV_1_5;
-        } else if (!strncmp(AVRCP_1_3_STRING, avrcp_version,
-                            sizeof(AVRCP_1_3_STRING))) {
-          profile_version = AVRC_REV_1_3;
+        if (is_new_avrcp_enabled()) {
+          APPL_TRACE_DEBUG("%s: newavrcp is the owner of the AVRCP Target SDP "
+              "record. Don't create the SDP record", __func__);
         } else {
-          profile_version = AVRC_REV_1_4;
-        }
+          APPL_TRACE_DEBUG("%s: newavrcp is not enabled. Create SDP record",
+              __func__);
 
-        bta_ar_reg_avrc(
-            UUID_SERVCLASS_AV_REM_CTRL_TARGET, "AV Remote Control Target", NULL,
-            p_bta_av_cfg->avrc_tg_cat,
-            (bta_av_cb.features & BTA_AV_FEAT_BROWSE), profile_version);
+          uint16_t profile_version = AVRC_REV_1_0;
+          if (!strncmp(AVRCP_1_6_STRING, avrcp_version,
+                      sizeof(AVRCP_1_6_STRING))) {
+            profile_version = AVRC_REV_1_6;
+          } else if (!strncmp(AVRCP_1_5_STRING, avrcp_version,
+                              sizeof(AVRCP_1_5_STRING))) {
+            profile_version = AVRC_REV_1_5;
+          } else if (!strncmp(AVRCP_1_3_STRING, avrcp_version,
+                              sizeof(AVRCP_1_3_STRING))) {
+            profile_version = AVRC_REV_1_3;
+          } else {
+            profile_version = AVRC_REV_1_4;
+          }
+
+          bta_ar_reg_avrc(
+              UUID_SERVCLASS_AV_REM_CTRL_TARGET, "AV Remote Control Target", NULL,
+              p_bta_av_cfg->avrc_tg_cat,
+              (bta_av_cb.features & BTA_AV_FEAT_BROWSE), profile_version);
+        }
       }
 
       /* Set the Capturing service class bit */
@@ -842,7 +851,7 @@ static void bta_av_sys_rs_cback(UNUSED_ATTR tBTA_SYS_CONN_STATUS status,
   /* restore role switch policy, if role switch failed */
   if ((HCI_SUCCESS != app_id) &&
       (BTM_GetRole(peer_addr, &cur_role) == BTM_SUCCESS) &&
-      (cur_role == HCI_ROLE_SLAVE)) {
+      (cur_role == HCI_ROLE_PERIPHERAL)) {
     BTM_unblock_role_switch_for(peer_addr);
   }
 
@@ -895,9 +904,12 @@ static void bta_av_sco_chg_cback(tBTA_SYS_CONN_STATUS status, uint8_t id,
   int i;
   tBTA_AV_API_STOP stop;
 
-  LOG(INFO) << __func__ << ": status=" << +status << ", num_links=" << +id;
+  LOG(INFO) << __func__ << ": status=" << bta_sys_conn_status_text(status)
+            << ", num_links=" << +id;
   if (id) {
     bta_av_cb.sco_occupied = true;
+    LOG_DEBUG("SCO occupied peer:%s status:%s", PRIVATE_ADDRESS(peer_addr),
+              bta_sys_conn_status_text(status).c_str());
 
     if (bta_av_cb.features & BTA_AV_FEAT_NO_SCO_SSPD) {
       return;
@@ -919,6 +931,8 @@ static void bta_av_sco_chg_cback(tBTA_SYS_CONN_STATUS status, uint8_t id,
     }
   } else {
     bta_av_cb.sco_occupied = false;
+    LOG_DEBUG("SCO unoccupied peer:%s status:%s", PRIVATE_ADDRESS(peer_addr),
+              bta_sys_conn_status_text(status).c_str());
 
     if (bta_av_cb.features & BTA_AV_FEAT_NO_SCO_SSPD) {
       return;
@@ -941,7 +955,7 @@ static void bta_av_sco_chg_cback(tBTA_SYS_CONN_STATUS status, uint8_t id,
  * Function         bta_av_switch_if_needed
  *
  * Description      This function checks if there is another existing AV
- *                  channel that is local as slave role.
+ *                  channel that is local as peripheral role.
  *                  If so, role switch and remove it from link policy.
  *
  * Returns          true, if role switch is done
@@ -949,7 +963,7 @@ static void bta_av_sco_chg_cback(tBTA_SYS_CONN_STATUS status, uint8_t id,
  ******************************************************************************/
 bool bta_av_switch_if_needed(tBTA_AV_SCB* p_scb) {
   // TODO: A workaround for devices that are connected first, become
-  // Master, and block follow-up role changes - b/72122792 .
+  // Central, and block follow-up role changes - b/72122792 .
   return false;
 #if 0
   uint8_t role;
@@ -967,11 +981,11 @@ bool bta_av_switch_if_needed(tBTA_AV_SCB* p_scb) {
       BTM_GetRole(p_scbi->PeerAddress(), &role);
       /* this channel is open - clear the role switch link policy for this link
        */
-      if (HCI_ROLE_MASTER != role) {
-        if (bta_av_cb.features & BTA_AV_FEAT_MASTER)
+      if (HCI_ROLE_CENTRAL != role) {
+        if (bta_av_cb.features & BTA_AV_FEAT_CENTRAL)
           BTM_block_role_switch_for(p_scbi->PeerAddress());
         if (BTM_CMD_STARTED !=
-            BTM_SwitchRole(p_scbi->PeerAddress(), HCI_ROLE_MASTER)) {
+            BTM_SwitchRole(p_scbi->PeerAddress(), HCI_ROLE_CENTRAL)) {
           /* can not switch role on SCBI
            * start the timer on SCB - because this function is ONLY called when
            * SCB gets API_OPEN */
@@ -1009,20 +1023,16 @@ bool bta_av_link_role_ok(tBTA_AV_SCB* p_scb, uint8_t bits) {
         "features:0x%x",
         __func__, p_scb->PeerAddress().ToString().c_str(), p_scb->hndl, role,
         bta_av_cb.conn_audio, bits, bta_av_cb.features);
-    if (HCI_ROLE_MASTER != role &&
-        (A2DP_BitsSet(bta_av_cb.conn_audio) > bits ||
-         (bta_av_cb.features & BTA_AV_FEAT_MASTER))) {
-      if (bta_av_cb.features & BTA_AV_FEAT_MASTER)
-        BTM_block_role_switch_for(p_scb->PeerAddress());
-
-      tBTM_STATUS status =
-          BTM_SwitchRole(p_scb->PeerAddress(), HCI_ROLE_MASTER);
+    if (HCI_ROLE_CENTRAL != role &&
+        (A2DP_BitsSet(bta_av_cb.conn_audio) > bits)) {
+      tBTM_STATUS status = BTM_SwitchRoleToCentral(p_scb->PeerAddress());
       if (status != BTM_CMD_STARTED) {
         /* can not switch role on SCB - start the timer on SCB */
-        LOG_ERROR("%s: peer %s BTM_SwitchRole(HCI_ROLE_MASTER) error: %d",
-                  __func__, p_scb->PeerAddress().ToString().c_str(), status);
+        LOG_ERROR(
+            "%s: peer %s BTM_SwitchRoleToCentral(HCI_ROLE_CENTRAL) error: %d",
+            __func__, p_scb->PeerAddress().ToString().c_str(), status);
       }
-      if (status != BTM_MODE_UNSUPPORTED && status != BTM_DEV_BLACKLISTED) {
+      if (status != BTM_MODE_UNSUPPORTED && status != BTM_DEV_RESTRICT_LISTED) {
         is_ok = false;
         p_scb->wait |= BTA_AV_WAIT_ROLE_SW_RES_START;
       }

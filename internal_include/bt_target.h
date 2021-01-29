@@ -64,7 +64,7 @@
 #endif
 
 #ifndef BTA_HH_ROLE
-#define BTA_HH_ROLE BTA_MASTER_ROLE_PREF
+#define BTA_HH_ROLE BTA_CENTRAL_ROLE_PREF
 #endif
 
 #ifndef BTA_AV_SINK_INCLUDED
@@ -563,10 +563,6 @@
  * ATT/GATT Protocol/Profile Settings
  *
  *****************************************************************************/
-#ifndef BLE_LLT_INCLUDED
-#define BLE_LLT_INCLUDED TRUE
-#endif
-
 #ifndef BLE_DELAY_REQUEST_ENC
 /* This flag is to work around IPHONE problem, We need to wait for iPhone ready
    before send encryption request to iPhone */

@@ -33,6 +33,7 @@
 
 #include "common/time_util.h"
 #include "device/include/controller.h"
+#include "main/shim/acl_api.h"
 #include "main/shim/btm_api.h"
 #include "main/shim/shim.h"
 #include "osi/include/log.h"
@@ -68,6 +69,7 @@ extern void btm_clear_all_pending_le_entry(void);
 #define BTM_VSC_CHIP_CAPABILITY_RSP_LEN_L_RELEASE \
   BTM_VSC_CHIP_CAPABILITY_RSP_LEN
 #define BTM_VSC_CHIP_CAPABILITY_RSP_LEN_M_RELEASE 15
+#define BTM_VSC_CHIP_CAPABILITY_RSP_LEN_S_RELEASE 25
 
 namespace {
 
@@ -181,8 +183,11 @@ static void btm_ble_inquiry_timer_gap_limited_discovery_timeout(void* data);
 static void btm_ble_inquiry_timer_timeout(void* data);
 static void btm_ble_observer_timer_timeout(void* data);
 
-#define BTM_BLE_INQ_RESULT 0x01
-#define BTM_BLE_OBS_RESULT 0x02
+enum : uint8_t {
+  BTM_BLE_NOT_SCANNING = 0x00,
+  BTM_BLE_INQ_RESULT = 0x01,
+  BTM_BLE_OBS_RESULT = 0x02,
+};
 
 static bool ble_evt_type_is_connectable(uint16_t evt_type) {
   return evt_type & (1 << BLE_EVT_CONNECTABLE_BIT);
@@ -214,11 +219,11 @@ constexpr uint8_t UNSUPPORTED = 255;
 const uint8_t btm_le_state_combo_tbl[BTM_BLE_STATE_MAX][BTM_BLE_STATE_MAX] = {
     {
         /* single state support */
-        HCI_LE_STATES_CONN_ADV_BIT, /* conn_adv */
-        HCI_LE_STATES_INIT_BIT,     /* init */
-        HCI_LE_STATES_INIT_BIT,     /* master */
-        HCI_LE_STATES_SLAVE_BIT,    /* slave */
-        UNSUPPORTED,                /* todo: lo du dir adv, not covered ? */
+        HCI_LE_STATES_CONN_ADV_BIT,   /* conn_adv */
+        HCI_LE_STATES_INIT_BIT,       /* init */
+        HCI_LE_STATES_INIT_BIT,       /* central */
+        HCI_LE_STATES_PERIPHERAL_BIT, /* peripheral */
+        UNSUPPORTED,                  /* todo: lo du dir adv, not covered ? */
         HCI_LE_STATES_HI_DUTY_DIR_ADV_BIT, /* hi duty dir adv */
         HCI_LE_STATES_NON_CONN_ADV_BIT,    /* non connectable adv */
         HCI_LE_STATES_PASS_SCAN_BIT,       /*  passive scan */
@@ -229,8 +234,8 @@ const uint8_t btm_le_state_combo_tbl[BTM_BLE_STATE_MAX][BTM_BLE_STATE_MAX] = {
         /* conn_adv =0 */
         UNSUPPORTED,                            /* conn_adv */
         HCI_LE_STATES_CONN_ADV_INIT_BIT,        /* init: 32 */
-        HCI_LE_STATES_CONN_ADV_MASTER_BIT,      /* master: 35 */
-        HCI_LE_STATES_CONN_ADV_SLAVE_BIT,       /* slave: 38,*/
+        HCI_LE_STATES_CONN_ADV_CENTRAL_BIT,     /* central: 35 */
+        HCI_LE_STATES_CONN_ADV_PERIPHERAL_BIT,  /* peripheral: 38,*/
         UNSUPPORTED,                            /* lo du dir adv */
         UNSUPPORTED,                            /* hi duty dir adv */
         UNSUPPORTED,                            /* non connectable adv */
@@ -240,69 +245,69 @@ const uint8_t btm_le_state_combo_tbl[BTM_BLE_STATE_MAX][BTM_BLE_STATE_MAX] = {
     },
     {
         /* init */
-        HCI_LE_STATES_CONN_ADV_INIT_BIT,        /* conn_adv: 32 */
-        UNSUPPORTED,                            /* init */
-        HCI_LE_STATES_INIT_MASTER_BIT,          /* master 28 */
-        HCI_LE_STATES_INIT_MASTER_SLAVE_BIT,    /* slave 41 */
-        HCI_LE_STATES_LO_DUTY_DIR_ADV_INIT_BIT, /* lo du dir adv 34 */
-        HCI_LE_STATES_HI_DUTY_DIR_ADV_INIT_BIT, /* hi duty dir adv 33 */
-        HCI_LE_STATES_NON_CONN_INIT_BIT,        /*  non connectable adv */
-        HCI_LE_STATES_PASS_SCAN_INIT_BIT,       /* passive scan */
-        HCI_LE_STATES_ACTIVE_SCAN_INIT_BIT,     /*  active scan */
-        HCI_LE_STATES_SCAN_ADV_INIT_BIT         /* scanable adv */
+        HCI_LE_STATES_CONN_ADV_INIT_BIT,           /* conn_adv: 32 */
+        UNSUPPORTED,                               /* init */
+        HCI_LE_STATES_INIT_CENTRAL_BIT,            /* central 28 */
+        HCI_LE_STATES_INIT_CENTRAL_PERIPHERAL_BIT, /* peripheral 41 */
+        HCI_LE_STATES_LO_DUTY_DIR_ADV_INIT_BIT,    /* lo du dir adv 34 */
+        HCI_LE_STATES_HI_DUTY_DIR_ADV_INIT_BIT,    /* hi duty dir adv 33 */
+        HCI_LE_STATES_NON_CONN_INIT_BIT,           /*  non connectable adv */
+        HCI_LE_STATES_PASS_SCAN_INIT_BIT,          /* passive scan */
+        HCI_LE_STATES_ACTIVE_SCAN_INIT_BIT,        /*  active scan */
+        HCI_LE_STATES_SCAN_ADV_INIT_BIT            /* scanable adv */
 
     },
     {
-        /* master */
-        HCI_LE_STATES_CONN_ADV_MASTER_BIT,        /* conn_adv: 35 */
-        HCI_LE_STATES_INIT_MASTER_BIT,            /* init 28 */
-        HCI_LE_STATES_INIT_MASTER_BIT,            /* master 28 */
-        HCI_LE_STATES_CONN_ADV_INIT_BIT,          /* slave: 32 */
-        HCI_LE_STATES_LO_DUTY_DIR_ADV_MASTER_BIT, /* lo duty cycle adv 37 */
-        HCI_LE_STATES_HI_DUTY_DIR_ADV_MASTER_BIT, /* hi duty cycle adv 36 */
-        HCI_LE_STATES_NON_CONN_ADV_MASTER_BIT,    /*  non connectable adv*/
-        HCI_LE_STATES_PASS_SCAN_MASTER_BIT,       /*  passive scan */
-        HCI_LE_STATES_ACTIVE_SCAN_MASTER_BIT,     /*   active scan */
-        HCI_LE_STATES_SCAN_ADV_MASTER_BIT         /*  scanable adv */
+        /* central */
+        HCI_LE_STATES_CONN_ADV_CENTRAL_BIT,        /* conn_adv: 35 */
+        HCI_LE_STATES_INIT_CENTRAL_BIT,            /* init 28 */
+        HCI_LE_STATES_INIT_CENTRAL_BIT,            /* central 28 */
+        HCI_LE_STATES_CONN_ADV_INIT_BIT,           /* peripheral: 32 */
+        HCI_LE_STATES_LO_DUTY_DIR_ADV_CENTRAL_BIT, /* lo duty cycle adv 37 */
+        HCI_LE_STATES_HI_DUTY_DIR_ADV_CENTRAL_BIT, /* hi duty cycle adv 36 */
+        HCI_LE_STATES_NON_CONN_ADV_CENTRAL_BIT,    /*  non connectable adv*/
+        HCI_LE_STATES_PASS_SCAN_CENTRAL_BIT,       /*  passive scan */
+        HCI_LE_STATES_ACTIVE_SCAN_CENTRAL_BIT,     /*   active scan */
+        HCI_LE_STATES_SCAN_ADV_CENTRAL_BIT         /*  scanable adv */
 
     },
     {
-        /* slave */
-        HCI_LE_STATES_CONN_ADV_SLAVE_BIT,        /* conn_adv: 38,*/
-        HCI_LE_STATES_INIT_MASTER_SLAVE_BIT,     /* init 41 */
-        HCI_LE_STATES_INIT_MASTER_SLAVE_BIT,     /* master 41 */
-        HCI_LE_STATES_CONN_ADV_SLAVE_BIT,        /* slave: 38,*/
-        HCI_LE_STATES_LO_DUTY_DIR_ADV_SLAVE_BIT, /* lo duty cycle adv 40 */
-        HCI_LE_STATES_HI_DUTY_DIR_ADV_SLAVE_BIT, /* hi duty cycle adv 39 */
-        HCI_LE_STATES_NON_CONN_ADV_SLAVE_BIT,    /* non connectable adv */
-        HCI_LE_STATES_PASS_SCAN_SLAVE_BIT,       /* passive scan */
-        HCI_LE_STATES_ACTIVE_SCAN_SLAVE_BIT,     /*  active scan */
-        HCI_LE_STATES_SCAN_ADV_SLAVE_BIT         /* scanable adv */
+        /* peripheral */
+        HCI_LE_STATES_CONN_ADV_PERIPHERAL_BIT,        /* conn_adv: 38,*/
+        HCI_LE_STATES_INIT_CENTRAL_PERIPHERAL_BIT,    /* init 41 */
+        HCI_LE_STATES_INIT_CENTRAL_PERIPHERAL_BIT,    /* central 41 */
+        HCI_LE_STATES_CONN_ADV_PERIPHERAL_BIT,        /* peripheral: 38,*/
+        HCI_LE_STATES_LO_DUTY_DIR_ADV_PERIPHERAL_BIT, /* lo duty cycle adv 40 */
+        HCI_LE_STATES_HI_DUTY_DIR_ADV_PERIPHERAL_BIT, /* hi duty cycle adv 39 */
+        HCI_LE_STATES_NON_CONN_ADV_PERIPHERAL_BIT,    /* non connectable adv */
+        HCI_LE_STATES_PASS_SCAN_PERIPHERAL_BIT,       /* passive scan */
+        HCI_LE_STATES_ACTIVE_SCAN_PERIPHERAL_BIT,     /*  active scan */
+        HCI_LE_STATES_SCAN_ADV_PERIPHERAL_BIT         /* scanable adv */
 
     },
     {
         /* lo duty cycle adv */
-        UNSUPPORTED,                              /* conn_adv: 38,*/
-        HCI_LE_STATES_LO_DUTY_DIR_ADV_INIT_BIT,   /* init 34 */
-        HCI_LE_STATES_LO_DUTY_DIR_ADV_MASTER_BIT, /* master 37 */
-        HCI_LE_STATES_LO_DUTY_DIR_ADV_SLAVE_BIT,  /* slave: 40 */
-        UNSUPPORTED,                              /* lo duty cycle adv 40 */
-        UNSUPPORTED,                              /* hi duty cycle adv 39 */
-        UNSUPPORTED,                              /*  non connectable adv */
+        UNSUPPORTED,                                  /* conn_adv: 38,*/
+        HCI_LE_STATES_LO_DUTY_DIR_ADV_INIT_BIT,       /* init 34 */
+        HCI_LE_STATES_LO_DUTY_DIR_ADV_CENTRAL_BIT,    /* central 37 */
+        HCI_LE_STATES_LO_DUTY_DIR_ADV_PERIPHERAL_BIT, /* peripheral: 40 */
+        UNSUPPORTED,                                  /* lo duty cycle adv 40 */
+        UNSUPPORTED,                                  /* hi duty cycle adv 39 */
+        UNSUPPORTED,                                  /*  non connectable adv */
         UNSUPPORTED, /* TODO: passive scan, not covered? */
         UNSUPPORTED, /* TODO:  active scan, not covered? */
         UNSUPPORTED  /*  scanable adv */
     },
     {
         /* hi duty cycle adv */
-        UNSUPPORTED,                                 /* conn_adv: 38,*/
-        HCI_LE_STATES_HI_DUTY_DIR_ADV_INIT_BIT,      /* init 33 */
-        HCI_LE_STATES_HI_DUTY_DIR_ADV_MASTER_BIT,    /* master 36 */
-        HCI_LE_STATES_HI_DUTY_DIR_ADV_SLAVE_BIT,     /* slave: 39*/
-        UNSUPPORTED,                                 /* lo duty cycle adv 40 */
-        UNSUPPORTED,                                 /* hi duty cycle adv 39 */
-        UNSUPPORTED,                                 /* non connectable adv */
-        HCI_LE_STATES_HI_DUTY_DIR_ADV_PASS_SCAN_BIT, /* passive scan */
+        UNSUPPORTED,                                  /* conn_adv: 38,*/
+        HCI_LE_STATES_HI_DUTY_DIR_ADV_INIT_BIT,       /* init 33 */
+        HCI_LE_STATES_HI_DUTY_DIR_ADV_CENTRAL_BIT,    /* central 36 */
+        HCI_LE_STATES_HI_DUTY_DIR_ADV_PERIPHERAL_BIT, /* peripheral: 39*/
+        UNSUPPORTED,                                  /* lo duty cycle adv 40 */
+        UNSUPPORTED,                                  /* hi duty cycle adv 39 */
+        UNSUPPORTED,                                  /* non connectable adv */
+        HCI_LE_STATES_HI_DUTY_DIR_ADV_PASS_SCAN_BIT,  /* passive scan */
         HCI_LE_STATES_HI_DUTY_DIR_ADV_ACTIVE_SCAN_BIT, /* active scan */
         UNSUPPORTED                                    /* scanable adv */
     },
@@ -310,8 +315,8 @@ const uint8_t btm_le_state_combo_tbl[BTM_BLE_STATE_MAX][BTM_BLE_STATE_MAX] = {
         /* non connectable adv */
         UNSUPPORTED,                                /* conn_adv: */
         HCI_LE_STATES_NON_CONN_INIT_BIT,            /* init  */
-        HCI_LE_STATES_NON_CONN_ADV_MASTER_BIT,      /* master  */
-        HCI_LE_STATES_NON_CONN_ADV_SLAVE_BIT,       /* slave: */
+        HCI_LE_STATES_NON_CONN_ADV_CENTRAL_BIT,     /* central  */
+        HCI_LE_STATES_NON_CONN_ADV_PERIPHERAL_BIT,  /* peripheral: */
         UNSUPPORTED,                                /* lo duty cycle adv */
         UNSUPPORTED,                                /* hi duty cycle adv */
         UNSUPPORTED,                                /* non connectable adv */
@@ -323,8 +328,8 @@ const uint8_t btm_le_state_combo_tbl[BTM_BLE_STATE_MAX][BTM_BLE_STATE_MAX] = {
         /* passive scan */
         HCI_LE_STATES_CONN_ADV_PASS_SCAN_BIT,        /* conn_adv: */
         HCI_LE_STATES_PASS_SCAN_INIT_BIT,            /* init  */
-        HCI_LE_STATES_PASS_SCAN_MASTER_BIT,          /* master  */
-        HCI_LE_STATES_PASS_SCAN_SLAVE_BIT,           /* slave: */
+        HCI_LE_STATES_PASS_SCAN_CENTRAL_BIT,         /* central  */
+        HCI_LE_STATES_PASS_SCAN_PERIPHERAL_BIT,      /* peripheral: */
         UNSUPPORTED,                                 /* lo duty cycle adv */
         HCI_LE_STATES_HI_DUTY_DIR_ADV_PASS_SCAN_BIT, /* hi duty cycle adv */
         HCI_LE_STATES_NON_CONN_ADV_PASS_SCAN_BIT,    /* non connectable adv */
@@ -336,8 +341,8 @@ const uint8_t btm_le_state_combo_tbl[BTM_BLE_STATE_MAX][BTM_BLE_STATE_MAX] = {
         /* active scan */
         HCI_LE_STATES_CONN_ADV_ACTIVE_SCAN_BIT,        /* conn_adv: */
         HCI_LE_STATES_ACTIVE_SCAN_INIT_BIT,            /* init  */
-        HCI_LE_STATES_ACTIVE_SCAN_MASTER_BIT,          /* master  */
-        HCI_LE_STATES_ACTIVE_SCAN_SLAVE_BIT,           /* slave: */
+        HCI_LE_STATES_ACTIVE_SCAN_CENTRAL_BIT,         /* central  */
+        HCI_LE_STATES_ACTIVE_SCAN_PERIPHERAL_BIT,      /* peripheral: */
         UNSUPPORTED,                                   /* lo duty cycle adv */
         HCI_LE_STATES_HI_DUTY_DIR_ADV_ACTIVE_SCAN_BIT, /* hi duty cycle adv */
         HCI_LE_STATES_NON_CONN_ADV_ACTIVE_SCAN_BIT, /*  non connectable adv */
@@ -349,8 +354,8 @@ const uint8_t btm_le_state_combo_tbl[BTM_BLE_STATE_MAX][BTM_BLE_STATE_MAX] = {
         /* scanable adv */
         UNSUPPORTED,                            /* conn_adv: */
         HCI_LE_STATES_SCAN_ADV_INIT_BIT,        /* init  */
-        HCI_LE_STATES_SCAN_ADV_MASTER_BIT,      /* master  */
-        HCI_LE_STATES_SCAN_ADV_SLAVE_BIT,       /* slave: */
+        HCI_LE_STATES_SCAN_ADV_CENTRAL_BIT,     /* central  */
+        HCI_LE_STATES_SCAN_ADV_PERIPHERAL_BIT,  /* peripheral: */
         UNSUPPORTED,                            /* lo duty cycle adv */
         UNSUPPORTED,                            /* hi duty cycle adv */
         UNSUPPORTED,                            /* non connectable adv */
@@ -374,7 +379,7 @@ inline bool BTM_LE_STATES_SUPPORTED(const uint8_t* x, uint8_t bit_num) {
  *                  events from a broadcast device.
  *
  * Parameters       start: start or stop observe.
- *                  white_list: use white list in observer mode or not.
+ *                  acceptlist: use acceptlist in observer mode or not.
  *
  * Returns          void
  *
@@ -418,7 +423,7 @@ tBTM_STATUS BTM_BleObserve(bool start, uint8_t duration,
       p_inq->scan_type = (p_inq->scan_type == BTM_BLE_SCAN_MODE_NONE)
                              ? BTM_BLE_SCAN_MODE_ACTI
                              : p_inq->scan_type;
-/* assume observe always not using white list */
+      /* assume observe always not using acceptlist */
       /* enable resolving list */
       btm_ble_enable_resolving_list_for_platform(BTM_BLE_RL_SCAN);
 
@@ -426,7 +431,7 @@ tBTM_STATUS BTM_BleObserve(bool start, uint8_t duration,
           p_inq->scan_type, (uint16_t)scan_interval, (uint16_t)scan_window,
           btm_cb.ble_ctr_cb.addr_mgnt_cb.own_addr_type, BTM_BLE_DEFAULT_SFP);
 
-      status = btm_ble_start_scan();
+      btm_ble_start_scan();
     }
 
     if (status == BTM_CMD_STARTED) {
@@ -449,6 +454,60 @@ tBTM_STATUS BTM_BleObserve(bool start, uint8_t duration,
 }
 
 #if (BLE_VND_INCLUDED == TRUE)
+
+static void btm_get_dynamic_audio_buffer_vsc_cmpl_cback(
+    tBTM_VSC_CMPL* p_vsc_cmpl_params) {
+  LOG(INFO) << __func__;
+
+  if (p_vsc_cmpl_params->param_len < 1) {
+    LOG(ERROR) << __func__
+               << ": The length of returned parameters is less than 1";
+    return;
+  }
+  uint8_t* p_event_param_buf = p_vsc_cmpl_params->p_param_buf;
+  uint8_t status = 0xff;
+  uint8_t opcode = 0xff;
+  uint32_t codec_mask = 0xffffffff;
+
+  // [Return Parameter]         | [Size]   | [Purpose]
+  // Status                     | 1 octet  | Command complete status
+  // Dynamic_Audio_Buffer_opcode| 1 octet  | 0x01 - Get buffer time
+  // Audio_Codedc_Type_Supported| 4 octet  | Bit masks for selected codec types
+  // Audio_Codec_Buffer_Time    | 192 octet| Default/Max/Min buffer time
+  STREAM_TO_UINT8(status, p_event_param_buf);
+  if (status != HCI_SUCCESS) {
+    LOG(ERROR) << __func__
+               << ": Fail to configure DFTB. status: " << loghex(status);
+    return;
+  }
+
+  if (p_vsc_cmpl_params->param_len != 198) {
+    LOG(FATAL) << __func__
+               << ": The length of returned parameters is not equal to 198: "
+               << std::to_string(p_vsc_cmpl_params->param_len);
+    return;
+  }
+
+  STREAM_TO_UINT8(opcode, p_event_param_buf);
+  LOG(INFO) << __func__ << ": opcode = " << loghex(opcode);
+
+  if (opcode == 0x01) {
+    STREAM_TO_UINT32(codec_mask, p_event_param_buf);
+    LOG(INFO) << __func__ << ": codec_mask = " << loghex(codec_mask);
+
+    for (int i = 0; i < BTM_CODEC_TYPE_MAX_RECORDS; i++) {
+      STREAM_TO_UINT16(btm_cb.dynamic_audio_buffer_cb[i].default_buffer_time,
+                       p_event_param_buf);
+      STREAM_TO_UINT16(btm_cb.dynamic_audio_buffer_cb[i].maximum_buffer_time,
+                       p_event_param_buf);
+      STREAM_TO_UINT16(btm_cb.dynamic_audio_buffer_cb[i].minimum_buffer_time,
+                       p_event_param_buf);
+    }
+
+    LOG(INFO) << __func__ << ": Succeed to receive Media Tx Buffer.";
+  }
+}
+
 /*******************************************************************************
  *
  * Function         btm_vsc_brcm_features_complete
@@ -499,6 +558,28 @@ static void btm_ble_vendor_capability_vsc_cmpl_cback(
     STREAM_TO_UINT8(btm_cb.cmn_ble_vsc_cb.extended_scan_support, p);
     STREAM_TO_UINT8(btm_cb.cmn_ble_vsc_cb.debug_logging_supported, p);
   }
+
+  if (btm_cb.cmn_ble_vsc_cb.version_supported >=
+      BTM_VSC_CHIP_CAPABILITY_S_VERSION) {
+    if (p_vcs_cplt_params->param_len >=
+        BTM_VSC_CHIP_CAPABILITY_RSP_LEN_S_RELEASE) {
+      STREAM_TO_UINT8(
+          btm_cb.cmn_ble_vsc_cb.le_address_generation_offloading_support, p);
+      STREAM_TO_UINT32(
+          btm_cb.cmn_ble_vsc_cb.a2dp_source_offload_capability_mask, p);
+      STREAM_TO_UINT8(btm_cb.cmn_ble_vsc_cb.quality_report_support, p);
+      STREAM_TO_UINT32(btm_cb.cmn_ble_vsc_cb.dynamic_audio_buffer_support, p);
+
+      if (btm_cb.cmn_ble_vsc_cb.dynamic_audio_buffer_support != 0) {
+        uint8_t param[3] = {0};
+        uint8_t* p_param = param;
+
+        UINT8_TO_STREAM(p_param, HCI_CONTROLLER_DAB_GET_BUFFER_TIME);
+        BTM_VendorSpecificCommand(HCI_CONTROLLER_DAB, p_param - param, param,
+                                  btm_get_dynamic_audio_buffer_vsc_cmpl_cback);
+      }
+    }
+  }
   btm_cb.cmn_ble_vsc_cb.values_read = true;
 
   BTM_TRACE_DEBUG(
@@ -540,6 +621,17 @@ extern void BTM_BleGetVendorCapabilities(tBTM_BLE_VSC_CB* p_cmn_vsc_cb) {
 
   if (NULL != p_cmn_vsc_cb) {
     *p_cmn_vsc_cb = btm_cb.cmn_ble_vsc_cb;
+  }
+}
+
+extern void BTM_BleGetDynamicAudioBuffer(
+    tBTM_BT_DYNAMIC_AUDIO_BUFFER_CB p_dynamic_audio_buffer_cb[]) {
+  BTM_TRACE_DEBUG("BTM_BleGetDynamicAudioBuffer");
+
+  if (NULL != p_dynamic_audio_buffer_cb) {
+    for (int i = 0; i < 32; i++) {
+      p_dynamic_audio_buffer_cb[i] = btm_cb.dynamic_audio_buffer_cb[i];
+    }
   }
 }
 
@@ -615,6 +707,9 @@ bool BTM_BleConfigPrivacy(bool privacy_mode) {
 
   GAP_BleAttrDBUpdate(GATT_UUID_GAP_CENTRAL_ADDR_RESOL, &gap_ble_attr_value);
 
+  if (bluetooth::shim::is_gd_acl_enabled()) {
+    bluetooth::shim::ACL_ConfigureLePrivacy(privacy_mode);
+  }
   return true;
 }
 
@@ -758,25 +853,19 @@ static uint8_t btm_set_conn_mode_adv_init_addr(
 void BTM_BleSetScanParams(uint32_t scan_interval, uint32_t scan_window,
                           tBLE_SCAN_MODE scan_mode,
                           base::Callback<void(uint8_t)> cb) {
-  tBTM_BLE_INQ_CB* p_cb = &btm_cb.ble_ctr_cb.inq_var;
-  uint32_t max_scan_interval;
-  uint32_t max_scan_window;
+  if (!controller_get_interface()->supports_ble()) {
+    LOG_INFO("Controller does not support ble");
+    return;
+  }
 
-  BTM_TRACE_EVENT("%s", __func__);
-  if (!controller_get_interface()->supports_ble()) return;
-
-  /* If not supporting extended scan support, use the older range for checking
-   */
+  uint32_t max_scan_interval = BTM_BLE_EXT_SCAN_INT_MAX;
+  uint32_t max_scan_window = BTM_BLE_EXT_SCAN_WIN_MAX;
   if (btm_cb.cmn_ble_vsc_cb.extended_scan_support == 0) {
     max_scan_interval = BTM_BLE_SCAN_INT_MAX;
     max_scan_window = BTM_BLE_SCAN_WIN_MAX;
-  } else {
-    /* If supporting extended scan support, use the new extended range for
-     * checking */
-    max_scan_interval = BTM_BLE_EXT_SCAN_INT_MAX;
-    max_scan_window = BTM_BLE_EXT_SCAN_WIN_MAX;
   }
 
+  tBTM_BLE_INQ_CB* p_cb = &btm_cb.ble_ctr_cb.inq_var;
   if (BTM_BLE_ISVALID_PARAM(scan_interval, BTM_BLE_SCAN_INT_MIN,
                             max_scan_interval) &&
       BTM_BLE_ISVALID_PARAM(scan_window, BTM_BLE_SCAN_WIN_MIN,
@@ -790,9 +879,8 @@ void BTM_BleSetScanParams(uint32_t scan_interval, uint32_t scan_window,
     cb.Run(BTM_SUCCESS);
   } else {
     cb.Run(BTM_ILLEGAL_VALUE);
-
-    BTM_TRACE_ERROR("Illegal params: scan_interval = %d scan_window = %d",
-                    scan_interval, scan_window);
+    LOG_WARN("Illegal params: scan_interval = %d scan_window = %d",
+             scan_interval, scan_window);
   }
 }
 
@@ -918,7 +1006,7 @@ void btm_ble_set_adv_flag(uint16_t connect_mode, uint16_t disc_mode) {
 
   btm_ble_update_dmt_flag_bits(&flag, connect_mode, disc_mode);
 
-  LOG_DEBUG("disc_mode %04x", disc_mode);
+  LOG_INFO("disc_mode %04x", disc_mode);
   /* update discoverable flag */
   if (disc_mode & BTM_BLE_LIMITED_DISCOVERABLE) {
     flag &= ~BTM_BLE_GEN_DISC_FLAG;
@@ -1172,7 +1260,7 @@ tBTM_STATUS btm_ble_start_inquiry(uint8_t duration) {
     /* enable IRK list */
     btm_ble_enable_resolving_list_for_platform(BTM_BLE_RL_SCAN);
     p_ble_cb->inq_var.scan_type = BTM_BLE_SCAN_MODE_ACTI;
-    status = btm_ble_start_scan();
+    btm_ble_start_scan();
   } else if ((p_ble_cb->inq_var.scan_interval !=
               BTM_BLE_LOW_LATENCY_SCAN_INT) ||
              (p_ble_cb->inq_var.scan_window != BTM_BLE_LOW_LATENCY_SCAN_WIN)) {
@@ -1215,7 +1303,7 @@ tBTM_STATUS btm_ble_start_inquiry(uint8_t duration) {
  ******************************************************************************/
 void btm_ble_read_remote_name_cmpl(bool status, const RawAddress& bda,
                                    uint16_t length, char* p_name) {
-  uint8_t hci_status = HCI_SUCCESS;
+  tHCI_STATUS hci_status = HCI_SUCCESS;
   BD_NAME bd_name;
 
   memset(bd_name, 0, (BD_NAME_LEN + 1));
@@ -1343,15 +1431,17 @@ static void btm_ble_update_adv_flag(uint8_t flag) {
  * Check ADV flag to make sure device is discoverable and match the search
  * condition
  */
-uint8_t btm_ble_is_discoverable(const RawAddress& bda,
-                                std::vector<uint8_t> const& adv_data) {
-  uint8_t flag = 0, rt = 0;
-  uint8_t data_len;
+static uint8_t btm_ble_is_discoverable(const RawAddress& bda,
+                                       std::vector<uint8_t> const& adv_data) {
+  uint8_t scan_state = BTM_BLE_NOT_SCANNING;
 
   /* for observer, always "discoverable */
-  if (btm_cb.ble_ctr_cb.is_ble_observe_active()) rt |= BTM_BLE_OBS_RESULT;
+  if (btm_cb.ble_ctr_cb.is_ble_observe_active())
+    scan_state |= BTM_BLE_OBS_RESULT;
 
   if (!adv_data.empty()) {
+    uint8_t flag = 0;
+    uint8_t data_len;
     const uint8_t* p_flag = AdvertiseDataParser::GetFieldByType(
         adv_data, BTM_BLE_AD_TYPE_FLAG, &data_len);
     if (p_flag != NULL && data_len != 0) {
@@ -1359,12 +1449,11 @@ uint8_t btm_ble_is_discoverable(const RawAddress& bda,
 
       if ((btm_cb.btm_inq_vars.inq_active & BTM_BLE_GENERAL_INQUIRY) &&
           (flag & (BTM_BLE_LIMIT_DISC_FLAG | BTM_BLE_GEN_DISC_FLAG)) != 0) {
-        BTM_TRACE_DEBUG("Find Generable Discoverable device");
-        rt |= BTM_BLE_INQ_RESULT;
+        scan_state |= BTM_BLE_INQ_RESULT;
       }
     }
   }
-  return rt;
+  return scan_state;
 }
 
 static void btm_ble_appearance_to_cod(uint16_t appearance, uint8_t* dev_class) {
@@ -1572,13 +1661,13 @@ void btm_ble_update_inq_result(tINQ_DB_ENT* p_i, uint8_t addr_type,
   if ((p_cur->flag & BTM_BLE_BREDR_NOT_SPT) == 0 &&
       !ble_evt_type_is_directed(evt_type)) {
     if (p_cur->ble_addr_type != BLE_ADDR_RANDOM) {
-      LOG_DEBUG("NOT_BR_EDR support bit not set, treat device as DUMO");
+      LOG_VERBOSE("NOT_BR_EDR support bit not set, treat device as DUMO");
       p_cur->device_type |= BT_DEVICE_TYPE_DUMO;
     } else {
-      LOG_DEBUG("Random address, treat device as LE only");
+      LOG_VERBOSE("Random address, treat device as LE only");
     }
   } else {
-    LOG_DEBUG("NOT_BR/EDR support bit set, treat device as LE only");
+    LOG_VERBOSE("NOT_BR/EDR support bit set, treat device as LE only");
   }
 }
 
@@ -1841,7 +1930,7 @@ void btm_ble_process_adv_pkt_cont(uint16_t evt_type, uint8_t addr_type,
   if (btm_inq_find_bdaddr(bda)) {
     /* never been report as an LE device */
     if (p_i && (!(p_i->inq_info.results.device_type & BT_DEVICE_TYPE_BLE) ||
-                /* scan repsonse to be updated */
+                /* scan response to be updated */
                 (!p_i->scan_rsp))) {
       update = true;
     } else if (btm_cb.ble_ctr_cb.is_ble_observe_active()) {
@@ -1875,8 +1964,8 @@ void btm_ble_process_adv_pkt_cont(uint16_t evt_type, uint8_t addr_type,
 
   uint8_t result = btm_ble_is_discoverable(bda, adv_data);
   if (result == 0) {
+    // Device no longer discoverable so discard outstanding advertising packet
     cache.Clear(addr_type, bda);
-    LOG_DEBUG("device no longer discoverable, discarding advertising packet");
     return;
   }
 
@@ -1897,6 +1986,71 @@ void btm_ble_process_adv_pkt_cont(uint16_t evt_type, uint8_t addr_type,
   cache.Clear(addr_type, bda);
 }
 
+/**
+ * This function copy from btm_ble_process_adv_pkt_cont to process adv packet
+ * from gd scanning module to handle inquiry result callback.
+ */
+void btm_ble_process_adv_pkt_cont_for_inquiry(
+    uint16_t evt_type, uint8_t addr_type, const RawAddress& bda,
+    uint8_t primary_phy, uint8_t secondary_phy, uint8_t advertising_sid,
+    int8_t tx_power, int8_t rssi, uint16_t periodic_adv_int,
+    std::vector<uint8_t> advertising_data) {
+  tBTM_INQUIRY_VAR_ST* p_inq = &btm_cb.btm_inq_vars;
+  bool update = true;
+
+  tINQ_DB_ENT* p_i = btm_inq_db_find(bda);
+
+  /* Check if this address has already been processed for this inquiry */
+  if (btm_inq_find_bdaddr(bda)) {
+    /* never been report as an LE device */
+    if (p_i && (!(p_i->inq_info.results.device_type & BT_DEVICE_TYPE_BLE) ||
+                /* scan response to be updated */
+                (!p_i->scan_rsp))) {
+      update = true;
+    } else if (btm_cb.ble_ctr_cb.is_ble_observe_active()) {
+      update = false;
+    } else {
+      /* if yes, skip it */
+      return; /* assumption: one result per event */
+    }
+  }
+
+  /* If existing entry, use that, else get  a new one (possibly reusing the
+   * oldest) */
+  if (p_i == NULL) {
+    p_i = btm_inq_db_new(bda);
+    if (p_i != NULL) {
+      p_inq->inq_cmpl_info.num_resp++;
+      p_i->time_of_resp = bluetooth::common::time_get_os_boottime_ms();
+    } else
+      return;
+  } else if (p_i->inq_count !=
+             p_inq->inq_counter) /* first time seen in this inquiry */
+  {
+    p_i->time_of_resp = bluetooth::common::time_get_os_boottime_ms();
+    p_inq->inq_cmpl_info.num_resp++;
+  }
+
+  /* update the LE device information in inquiry database */
+  btm_ble_update_inq_result(p_i, addr_type, bda, evt_type, primary_phy,
+                            secondary_phy, advertising_sid, tx_power, rssi,
+                            periodic_adv_int, advertising_data);
+
+  uint8_t result = btm_ble_is_discoverable(bda, advertising_data);
+  if (result == 0) {
+    return;
+  }
+
+  if (!update) result &= ~BTM_BLE_INQ_RESULT;
+
+  tBTM_INQ_RESULTS_CB* p_inq_results_cb = p_inq->p_inq_results_cb;
+  if (p_inq_results_cb && (result & BTM_BLE_INQ_RESULT)) {
+    (p_inq_results_cb)((tBTM_INQ_RESULTS*)&p_i->inq_info.results,
+                       const_cast<uint8_t*>(advertising_data.data()),
+                       advertising_data.size());
+  }
+}
+
 void btm_ble_process_phy_update_pkt(uint8_t len, uint8_t* data) {
   uint8_t status, tx_phy, rx_phy;
   uint16_t handle;
@@ -1909,7 +2063,8 @@ void btm_ble_process_phy_update_pkt(uint8_t len, uint8_t* data) {
   STREAM_TO_UINT8(tx_phy, p);
   STREAM_TO_UINT8(rx_phy, p);
 
-  gatt_notify_phy_updated(status, handle, tx_phy, rx_phy);
+  gatt_notify_phy_updated(static_cast<tGATT_STATUS>(status), handle, tx_phy,
+                          rx_phy);
 }
 
 /*******************************************************************************
@@ -1921,7 +2076,7 @@ void btm_ble_process_phy_update_pkt(uint8_t len, uint8_t* data) {
  * Returns          void
  *
  ******************************************************************************/
-tBTM_STATUS btm_ble_start_scan(void) {
+void btm_ble_start_scan() {
   tBTM_BLE_INQ_CB* p_inq = &btm_cb.ble_ctr_cb.inq_var;
   /* start scan, disable duplicate filtering */
   btm_send_hci_scan_enable(BTM_BLE_SCAN_ENABLE, BTM_BLE_DUPLICATE_DISABLE);
@@ -1930,8 +2085,6 @@ tBTM_STATUS btm_ble_start_scan(void) {
     btm_ble_set_topology_mask(BTM_BLE_STATE_ACTIVE_SCAN_BIT);
   else
     btm_ble_set_topology_mask(BTM_BLE_STATE_PASSIVE_SCAN_BIT);
-
-  return BTM_CMD_STARTED;
 }
 
 /*******************************************************************************
@@ -2180,8 +2333,6 @@ static void btm_ble_observer_timer_timeout(UNUSED_ATTR void* data) {
  *
  ******************************************************************************/
 void btm_ble_read_remote_features_complete(uint8_t* p) {
-  BTM_TRACE_EVENT("%s", __func__);
-
   uint16_t handle;
   uint8_t status;
   STREAM_TO_UINT8(status, p);
@@ -2189,15 +2340,18 @@ void btm_ble_read_remote_features_complete(uint8_t* p) {
   handle = handle & 0x0FFF;  // only 12 bits meaningful
 
   if (status != HCI_SUCCESS) {
-    BTM_TRACE_ERROR("%s: failed for handle: 0x%04d, status 0x%02x", __func__,
-                    handle, status);
-    if (status != HCI_ERR_UNSUPPORTED_REM_FEATURE) return;
+    if (status != HCI_ERR_UNSUPPORTED_REM_FEATURE) {
+      LOG_ERROR("Failed to read remote features status:%s",
+                hci_error_code_text(static_cast<tHCI_STATUS>(status)).c_str());
+      return;
+    }
+    LOG_WARN("Remote does not support reading remote feature");
   }
 
   if (status == HCI_SUCCESS) {
     if (!acl_set_peer_le_features_from_handle(handle, p)) {
-      BTM_TRACE_ERROR("%s: can't find acl for handle: 0x%04d", __func__,
-                      handle);
+      LOG_ERROR(
+          "Unable to find existing connection after read remote features");
       return;
     }
   }
@@ -2288,13 +2442,13 @@ static void btm_ble_update_link_topology_mask(uint8_t link_role,
   else if (btm_cb.ble_ctr_cb.link_count[link_role] > 0)
     btm_cb.ble_ctr_cb.link_count[link_role]--;
 
-  if (btm_cb.ble_ctr_cb.link_count[HCI_ROLE_MASTER])
-    btm_ble_set_topology_mask(BTM_BLE_STATE_MASTER_BIT);
+  if (btm_cb.ble_ctr_cb.link_count[HCI_ROLE_CENTRAL])
+    btm_ble_set_topology_mask(BTM_BLE_STATE_CENTRAL_BIT);
 
-  if (btm_cb.ble_ctr_cb.link_count[HCI_ROLE_SLAVE])
-    btm_ble_set_topology_mask(BTM_BLE_STATE_SLAVE_BIT);
+  if (btm_cb.ble_ctr_cb.link_count[HCI_ROLE_PERIPHERAL])
+    btm_ble_set_topology_mask(BTM_BLE_STATE_PERIPHERAL_BIT);
 
-  if (link_role == HCI_ROLE_SLAVE && increase) {
+  if (link_role == HCI_ROLE_PERIPHERAL && increase) {
     btm_cb.ble_ctr_cb.inq_var.adv_mode = BTM_BLE_ADV_DISABLE;
     /* make device fall back into undirected adv mode by default */
     btm_cb.ble_ctr_cb.inq_var.directed_conn = BTM_BLE_ADV_IND_EVT;
@@ -2337,7 +2491,7 @@ void btm_ble_update_mode_operation(uint8_t link_role, const RawAddress* bd_addr,
   }
 
   /* in case of disconnected, we must cancel bgconn and restart
-     in order to add back device to white list in order to reconnect */
+     in order to add back device to acceptlist in order to reconnect */
   if (bd_addr) btm_ble_bgconn_cancel_if_disconnected(*bd_addr);
 
   /* when no connection is attempted, and controller is not rejecting last
@@ -2396,6 +2550,12 @@ void btm_ble_init(void) {
 #if (BLE_VND_INCLUDED == FALSE)
   btm_ble_adv_filter_init();
 #endif
+}
+
+// Clean up btm ble control block
+void btm_ble_free() {
+  tBTM_BLE_CB* p_cb = &btm_cb.ble_ctr_cb;
+  alarm_free(p_cb->addr_mgnt_cb.refresh_raddr_timer);
 }
 
 /*******************************************************************************

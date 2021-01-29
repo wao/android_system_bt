@@ -30,26 +30,27 @@
 
 #include "bt_types.h"
 #include "bta/dm/bta_dm_int.h"
+#include "bta/sys/bta_sys.h"
 #include "btcore/include/module.h"
 #include "btm_int.h"
 #include "btu.h"
 #include "common/message_loop_thread.h"
 #include "device/include/controller.h"
-#include "hci_layer.h"
+#include "hci/include/hci_layer.h"
 #include "hcimsgs.h"
+#include "main/shim/btm_api.h"
+#include "main/shim/controller.h"
+#include "main/shim/shim.h"
 #include "osi/include/osi.h"
+#include "stack/btm/btm_ble_int.h"
 #include "stack/gatt/connection_manager.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/l2cap_controller_interface.h"
 
-#include "bta/sys/bta_sys.h"
-#include "main/shim/btm_api.h"
-#include "main/shim/controller.h"
-#include "main/shim/shim.h"
+extern tBTM_CB btm_cb;
 
 extern void btm_inq_db_reset(void);
 extern void btm_pm_reset(void);
-
 /******************************************************************************/
 /*               L O C A L    D A T A    D E F I N I T I O N S                */
 /******************************************************************************/
@@ -94,11 +95,15 @@ void btm_dev_init() {
   btm_cb.devcb.read_link_quality_timer =
       alarm_new("btm.read_link_quality_timer");
   btm_cb.devcb.read_tx_power_timer = alarm_new("btm.read_tx_power_timer");
+}
 
-  btm_cb.btm_sco_pkt_types_supported =
-      ESCO_PKT_TYPES_MASK_HV1 + ESCO_PKT_TYPES_MASK_HV2 +
-      ESCO_PKT_TYPES_MASK_HV3 + ESCO_PKT_TYPES_MASK_EV3 +
-      ESCO_PKT_TYPES_MASK_EV4 + ESCO_PKT_TYPES_MASK_EV5;
+void btm_dev_free() {
+  alarm_free(btm_cb.devcb.read_local_name_timer);
+  alarm_free(btm_cb.devcb.read_rssi_timer);
+  alarm_free(btm_cb.devcb.read_failed_contact_counter_timer);
+  alarm_free(btm_cb.devcb.read_automatic_flush_timeout_timer);
+  alarm_free(btm_cb.devcb.read_link_quality_timer);
+  alarm_free(btm_cb.devcb.read_tx_power_timer);
 }
 
 /*******************************************************************************
@@ -199,7 +204,7 @@ void BTM_reset_complete() {
   }
 
   if (controller->supports_ble()) {
-    btm_ble_white_list_init(controller->get_ble_white_list_size());
+    btm_ble_acceptlist_init(controller->get_ble_acceptlist_size());
     l2c_link_processs_ble_num_bufs(controller->get_acl_buffer_count_ble());
   }
 
@@ -284,7 +289,7 @@ static void decode_controller_support() {
   BTM_TRACE_DEBUG("Local supported SCO packet types: 0x%04x",
                   btm_cb.btm_sco_pkt_types_supported);
 
-  BTM_acl_after_controller_started();
+  BTM_acl_after_controller_started(controller_get_interface());
   btm_sec_dev_reset();
 
   if (controller->supports_rssi_with_inquiry_results()) {

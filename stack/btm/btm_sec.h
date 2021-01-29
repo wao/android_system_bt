@@ -25,6 +25,7 @@
 #include <cstdint>
 #include "stack/btm/security_device_record.h"
 #include "stack/include/btm_api_types.h"
+#include "stack/include/hci_error_code.h"
 
 #define BTM_SEC_MAX_COLLISION_DELAY (5000)
 
@@ -497,7 +498,7 @@ bool is_state_getting_name(void* data, void* context);
  *
  ******************************************************************************/
 void btm_sec_rmt_name_request_complete(const RawAddress* p_bd_addr,
-                                       uint8_t* p_bd_name, uint8_t status);
+                                       uint8_t* p_bd_name, tHCI_STATUS status);
 
 /*******************************************************************************
  *
@@ -596,7 +597,7 @@ void btm_read_local_oob_complete(uint8_t* p);
  * Returns          void
  *
  ******************************************************************************/
-void btm_sec_auth_complete(uint16_t handle, uint8_t status);
+void btm_sec_auth_complete(uint16_t handle, tHCI_STATUS status);
 
 /*******************************************************************************
  *
@@ -608,7 +609,7 @@ void btm_sec_auth_complete(uint16_t handle, uint8_t status);
  * Returns          void
  *
  ******************************************************************************/
-void btm_sec_encrypt_change(uint16_t handle, uint8_t status,
+void btm_sec_encrypt_change(uint16_t handle, tHCI_STATUS status,
                             uint8_t encr_enable);
 
 /*******************************************************************************
@@ -621,8 +622,8 @@ void btm_sec_encrypt_change(uint16_t handle, uint8_t status,
  * Returns          void
  *
  ******************************************************************************/
-void btm_sec_connected(const RawAddress& bda, uint16_t handle, uint8_t status,
-                       uint8_t enc_mode);
+void btm_sec_connected(const RawAddress& bda, uint16_t handle,
+                       tHCI_STATUS status, uint8_t enc_mode);
 
 /*******************************************************************************
  *
@@ -633,7 +634,7 @@ void btm_sec_connected(const RawAddress& bda, uint16_t handle, uint8_t status,
  * Returns          btm status
  *
  ******************************************************************************/
-tBTM_STATUS btm_sec_disconnect(uint16_t handle, uint8_t reason);
+tBTM_STATUS btm_sec_disconnect(uint16_t handle, tHCI_STATUS reason);
 
 /*******************************************************************************
  *
@@ -645,7 +646,7 @@ tBTM_STATUS btm_sec_disconnect(uint16_t handle, uint8_t reason);
  * Returns          void
  *
  ******************************************************************************/
-void btm_sec_disconnected(uint16_t handle, uint8_t reason);
+void btm_sec_disconnected(uint16_t handle, tHCI_STATUS reason);
 
 /** This function is called when a new connection link key is generated */
 void btm_sec_link_key_notification(const RawAddress& p_bda,
@@ -763,3 +764,20 @@ void btm_sec_clear_ble_keys(tBTM_SEC_DEV_REC* p_dev_rec);
  *
  ******************************************************************************/
 bool btm_sec_is_a_bonded_dev(const RawAddress& bda);
+
+/*******************************************************************************
+ *
+ * Function         btm_sec_set_peer_sec_caps
+ *
+ * Description      This function is called to set sm4 and rmt_sec_caps fields
+ *                  based on the available peer device features.
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void btm_sec_set_peer_sec_caps(uint16_t hci_handle, bool ssp_supported,
+                               bool sc_supported,
+                               bool hci_role_switch_supported);
+
+// Return DEV_CLASS (uint8_t[3]) of bda. If record doesn't exist, create one.
+const uint8_t* btm_get_dev_class(const RawAddress& bda);

@@ -26,7 +26,7 @@ bool BTM_GetSecurityFlagsByTransport(const RawAddress& bd_addr,
 }
 
 /** stack/btu/btu_task.cc, indirect reference, gatt_utils.cc -> libosi */
-base::MessageLoop* get_main_message_loop() { return nullptr; }
+bluetooth::common::MessageLoopThread* get_main_thread() { return nullptr; }
 
 /** stack/gatt/connection_manager.cc */
 namespace connection_manager {
@@ -44,14 +44,14 @@ BT_HDR* attp_build_sr_msg(tGATT_TCB& tcb, uint8_t op_code,
   return nullptr;
 }
 tGATT_STATUS attp_send_cl_confirmation_msg(tGATT_TCB& tcb, uint16_t cid) {
-  return 0;
+  return GATT_SUCCESS;
 }
 tGATT_STATUS attp_send_cl_msg(tGATT_TCB& tcb, tGATT_CLCB* p_clcb,
                               uint8_t op_code, tGATT_CL_MSG* p_msg) {
-  return 0;
+  return GATT_SUCCESS;
 }
 tGATT_STATUS attp_send_sr_msg(tGATT_TCB& tcb, uint16_t cid, BT_HDR* p_msg) {
-  return 0;
+  return GATT_SUCCESS;
 }
 
 /** stack/gatt/gatt_attr.cc */
@@ -65,13 +65,13 @@ void gatt_update_app_use_link_flag(tGATT_IF gatt_if, tGATT_TCB* p_tcb,
                                    bool is_add, bool check_acl_link) {}
 void gatts_proc_srv_chg_ind_ack(tGATT_TCB) {}
 bool gatt_disconnect(tGATT_TCB* p_tcb) { return false; }
-tGATT_CH_STATE gatt_get_ch_state(tGATT_TCB* p_tcb) { return 0; }
+tGATT_CH_STATE gatt_get_ch_state(tGATT_TCB* p_tcb) { return GATT_CH_CLOSE; }
 void gatt_set_ch_state(tGATT_TCB* p_tcb, tGATT_CH_STATE ch_state) {}
 
 /** stack/gatt/gatt_sr.cc */
 uint32_t gatt_sr_enqueue_cmd(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code,
                              uint16_t handle) { return 0x0000; }
-void gatt_dequeue_sr_cmd(tGATT_TCB& tcb) {}
+void gatt_dequeue_sr_cmd(tGATT_TCB& tcb, uint16_t cid) {}
 
 
 /** stack/l2cap/l2c_ble.cc */

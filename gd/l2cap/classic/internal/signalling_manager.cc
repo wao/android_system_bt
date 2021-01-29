@@ -92,10 +92,16 @@ void ClassicSignallingManager::SendConnectionRequest(Psm psm, Cid local_cid) {
   dynamic_service_manager_->GetSecurityEnforcementInterface()->Enforce(
       link_->GetDevice(),
       dynamic_service_manager_->GetService(psm)->GetSecurityPolicy(),
-      handler_->BindOnceOn(this, &ClassicSignallingManager::on_security_result_for_outgoing, psm, local_cid));
+      handler_->BindOnceOn(
+          this,
+          &ClassicSignallingManager::on_security_result_for_outgoing,
+          SecurityEnforcementType::LINK_KEY,
+          psm,
+          local_cid));
 }
 
-void ClassicSignallingManager::on_security_result_for_outgoing(Psm psm, Cid local_cid, bool result) {
+void ClassicSignallingManager::on_security_result_for_outgoing(
+    SecurityEnforcementType type, Psm psm, Cid local_cid, bool result) {
   if (enqueue_buffer_.get() == nullptr) {
     LOG_ERROR("Got security result callback after deletion");
     return;
@@ -109,6 +115,12 @@ void ClassicSignallingManager::on_security_result_for_outgoing(Psm psm, Cid loca
     };
     link_->OnOutgoingConnectionRequestFail(local_cid, connection_result);
     return;
+  }
+  if (type == SecurityEnforcementType::LINK_KEY && !link_->IsAuthenticated() &&
+      dynamic_service_manager_->GetService(psm)->GetSecurityPolicy() !=
+          SecurityPolicy::_SDP_ONLY_NO_SECURITY_WHATSOEVER_PLAINTEXT_TRANSPORT_OK) {
+    link_->Encrypt();
+    // TODO(b/171253721): If we can receive ENCRYPTION_CHANGE event, we can send command after callback is received.
   }
 
   PendingCommand pending_command = {next_signal_id_, CommandCode::CONNECTION_REQUEST, psm, local_cid, {}, {}, {}};
@@ -474,7 +486,7 @@ void ClassicSignallingManager::negotiate_configuration(Cid cid, Continuation is_
   if (can_negotiate) {
     send_configuration_request(channel->GetRemoteCid(), std::move(negotiation_config));
   } else {
-    LOG_DEBUG("No suggested parameter received");
+    LOG_INFO("No suggested parameter received");
   }
 }
 
@@ -650,7 +662,7 @@ void ClassicSignallingManager::OnInformationRequest(SignalId signal_id, Informat
     case InformationRequestInfoType::EXTENDED_FEATURES_SUPPORTED: {
       auto response = InformationResponseExtendedFeaturesBuilder::Create(
           signal_id.Value(), InformationRequestResult::SUCCESS, 0, 0, 0, 1 /* ERTM */, 0 /* Streaming mode */,
-          1 /* FCS */, 0, 1 /* Fixed Channels */, 0, 0);
+          1 /* FCS */, 0, 1 /* Fixed Channels */, 0, 0, 0 /* COC */);
       enqueue_buffer_->Enqueue(std::move(response), handler_);
       break;
     }
@@ -818,6 +830,42 @@ void ClassicSignallingManager::handle_one_command(ControlView control_packet_vie
         return;
       }
       OnInformationResponse(information_response_view.GetIdentifier(), information_response_view);
+      return;
+    }
+    case CommandCode::CREDIT_BASED_CONNECTION_REQUEST: {
+      CreditBasedConnectionRequestView request_view = CreditBasedConnectionRequestView::Create(control_packet_view);
+      if (!request_view.IsValid()) {
+        return;
+      }
+      return;
+    }
+    case CommandCode::CREDIT_BASED_CONNECTION_RESPONSE: {
+      CreditBasedConnectionResponseView response_view = CreditBasedConnectionResponseView::Create(control_packet_view);
+      if (!response_view.IsValid()) {
+        return;
+      }
+      return;
+    }
+    case CommandCode::CREDIT_BASED_RECONFIGURE_REQUEST: {
+      CreditBasedReconfigureRequestView request_view = CreditBasedReconfigureRequestView::Create(control_packet_view);
+      if (!request_view.IsValid()) {
+        return;
+      }
+      return;
+    }
+    case CommandCode::CREDIT_BASED_RECONFIGURE_RESPONSE: {
+      CreditBasedReconfigureResponseView response_view =
+          CreditBasedReconfigureResponseView::Create(control_packet_view);
+      if (!response_view.IsValid()) {
+        return;
+      }
+      return;
+    }
+    case CommandCode::FLOW_CONTROL_CREDIT: {
+      FlowControlCreditView credit_view = FlowControlCreditView::Create(control_packet_view);
+      if (!credit_view.IsValid()) {
+        return;
+      }
       return;
     }
     default:

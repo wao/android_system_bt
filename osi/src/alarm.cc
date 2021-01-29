@@ -195,6 +195,7 @@ void alarm_free(alarm_t* alarm) {
 
   osi_free((void*)alarm->stats.name);
   alarm->closure.~CancelableClosureInStruct();
+  alarm->callback_mutex.reset();
   osi_free(alarm);
 }
 
@@ -535,7 +536,7 @@ done:
     timer_gettime(timer, &time_to_expire);
     if (time_to_expire.it_value.tv_sec == 0 &&
         time_to_expire.it_value.tv_nsec == 0) {
-      LOG_DEBUG(
+      LOG_INFO(
 
           "%s alarm expiration too close for posix timers, switching to guns",
           __func__);
@@ -647,21 +648,20 @@ static void callback_dispatch(UNUSED_ATTR void* context) {
 
     // Enqueue the alarm for processing
     if (alarm->for_msg_loop) {
-      if (!get_main_message_loop()) {
+      if (!get_main_thread()) {
         LOG_ERROR("%s: message loop already NULL. Alarm: %s", __func__,
                   alarm->stats.name);
         continue;
       }
 
       alarm->closure.i.Reset(Bind(alarm_ready_mloop, alarm));
-      get_main_message_loop()->task_runner()->PostTask(
-          FROM_HERE, alarm->closure.i.callback());
+      get_main_thread()->DoInThread(FROM_HERE, alarm->closure.i.callback());
     } else {
       fixed_queue_enqueue(alarm->queue, alarm);
     }
   }
 
-  LOG_DEBUG("%s Callback thread exited", __func__);
+  LOG_INFO("%s Callback thread exited", __func__);
 }
 
 static bool timer_create_internal(const clockid_t clock_id, timer_t* timer) {

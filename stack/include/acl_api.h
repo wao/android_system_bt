@@ -21,6 +21,7 @@
 #include "stack/include/acl_api_types.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_status.h"
+#include "stack/include/hci_error_code.h"
 #include "types/raw_address.h"
 
 // Note: From stack/include/btm_api.h
@@ -38,19 +39,7 @@ void BTM_block_role_switch_for(const RawAddress& peer_addr);
 void BTM_default_unblock_role_switch();
 void BTM_default_block_role_switch();
 
-void BTM_acl_after_controller_started();
-
-/*******************************************************************************
- *
- * Function         BTM_SetDefaultLinkSuperTout
- *
- * Description      Set the default value for HCI "Write Link Supervision
- *                  Timeout" command to use when an ACL link is created.
- *
- * Returns          void
- *
- ******************************************************************************/
-void BTM_SetDefaultLinkSuperTout(uint16_t timeout);
+void BTM_acl_after_controller_started(const controller_t* controller);
 
 /*******************************************************************************
  *
@@ -109,10 +98,10 @@ tBTM_STATUS BTM_GetRole(const RawAddress& remote_bd_addr, uint8_t* p_role);
 
 /*******************************************************************************
  *
- * Function         BTM_SwitchRole
+ * Function         BTM_SwitchRoleToCentral
  *
- * Description      This function is called to switch role between master and
- *                  slave.  If role is already set it will do nothing.
+ * Description      This function is called to switch role between central and
+ *                  peripheral.  If role is already set it will do nothing.
  *
  * Returns          BTM_SUCCESS if already in specified role.
  *                  BTM_CMD_STARTED if command issued to controller.
@@ -123,7 +112,7 @@ tBTM_STATUS BTM_GetRole(const RawAddress& remote_bd_addr, uint8_t* p_role);
  *                                       role switching
  *
  ******************************************************************************/
-tBTM_STATUS BTM_SwitchRole(const RawAddress& remote_bd_addr, uint8_t new_role);
+tBTM_STATUS BTM_SwitchRoleToCentral(const RawAddress& remote_bd_addr);
 
 /*******************************************************************************
  *
@@ -162,24 +151,6 @@ tBTM_STATUS BTM_ReadFailedContactCounter(const RawAddress& remote_bda,
 
 /*******************************************************************************
  *
- * Function         BTM_ReadAutomaticFlushTimeout
- *
- * Description      This function is called to read the automatic flush timeout.
- *                  The result is returned in the callback.
- *                  (tBTM_AUTOMATIC_FLUSH_TIMEOUT_RESULT)
- *
- * Returns          BTM_CMD_STARTED if command issued to controller.
- *                  BTM_NO_RESOURCES if memory couldn't be allocated to issue
- *                                   the command
- *                  BTM_UNKNOWN_ADDR if no active link with bd addr specified
- *                  BTM_BUSY if command is already in progress
- *
- ******************************************************************************/
-tBTM_STATUS BTM_ReadAutomaticFlushTimeout(const RawAddress& remote_bda,
-                                          tBTM_CMPL_CB* p_cb);
-
-/*******************************************************************************
- *
  * Function         BTM_ReadTxPower
  *
  * Description      This function is called to read the current connection
@@ -213,17 +184,13 @@ void btm_set_packet_types_from_address(const RawAddress& bda,
                                        tBT_TRANSPORT transport,
                                        uint16_t pkt_types);
 
-bool lmp_version_below(const RawAddress& bda, uint8_t version);
-
-bool acl_br_edr_is_role_master(const RawAddress& bda);
-bool acl_ble_is_role_master(const RawAddress& bda);
-
 #define BLE_RESOLVE_ADDR_MASK 0xc0
 #define BLE_RESOLVE_ADDR_MSB 0x40
 
 bool BTM_BLE_IS_RESOLVE_BDA(const RawAddress& x);
 
-bool acl_refresh_remote_address(const tBTM_SEC_DEV_REC* p_dev_rec,
+bool acl_refresh_remote_address(const RawAddress& identity_address,
+                                tBLE_ADDR_TYPE identity_address_type,
                                 const RawAddress& remote_bda, uint8_t rra_type,
                                 const RawAddress& rpa);
 
@@ -279,19 +246,12 @@ void btm_ble_refresh_local_resolvable_private_addr(
 
 void btm_cont_rswitch_from_handle(uint16_t hci_handle);
 
-uint8_t acl_link_role(const RawAddress& remote_bda, tBT_TRANSPORT transport);
 uint8_t acl_link_role_from_handle(uint16_t handle);
-
-bool acl_is_transport_le_from_handle(uint16_t handle);
-
-tBT_TRANSPORT acl_get_transport_from_handle(uint16_t handle);
 
 uint16_t acl_get_hci_handle_for_hcif(const RawAddress& bd_addr,
                                      tBT_TRANSPORT transport);
 
-uint16_t acl_get_link_supervision_timeout();
-uint8_t acl_get_disconnect_reason();
-void acl_set_disconnect_reason(uint8_t acl_disc_reason);
+void acl_set_disconnect_reason(tHCI_STATUS acl_disc_reason);
 
 bool acl_is_role_switch_allowed();
 
@@ -331,10 +291,10 @@ bool BTM_ReadPowerMode(const RawAddress& remote_bda, tBTM_PM_MODE* p_mode);
 void btm_acl_created(const RawAddress& bda, uint16_t hci_handle,
                      uint8_t link_role, tBT_TRANSPORT transport);
 
-void btm_acl_removed(const RawAddress& bda, tBT_TRANSPORT transport);
+void btm_acl_removed(uint16_t handle);
 
-void acl_disconnect(const RawAddress& bd_addr, tBT_TRANSPORT transport,
-                    uint8_t reason);
+void acl_disconnect_from_handle(uint16_t handle, tHCI_STATUS reason);
+void acl_disconnect_after_role_switch(uint16_t conn_handle, tHCI_STATUS reason);
 
 bool acl_peer_supports_sniff_subrating(const RawAddress& remote_bda);
 
@@ -351,3 +311,6 @@ extern tBTM_STATUS btm_remove_acl(const RawAddress& bd_addr,
 
 void btm_acl_device_down(void);
 void btm_acl_update_inquiry_status(uint8_t status);
+
+void ACL_RegisterClient(struct acl_client_callback_s* callbacks);
+void ACL_UnregisterClient(struct acl_client_callback_s* callbacks);

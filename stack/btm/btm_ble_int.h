@@ -30,7 +30,6 @@
 #include "bt_target.h"
 #include "btm_ble_api.h"
 #include "btm_ble_int_types.h"
-#include "btm_int.h"
 #include "btm_int_types.h"
 #include "hcidefs.h"
 #include "smp_api.h"
@@ -46,6 +45,7 @@ extern void btm_ble_stop_scan(void);
 extern void btm_clear_all_pending_le_entry(void);
 
 extern void btm_ble_init(void);
+extern void btm_ble_free();
 extern void btm_ble_connected(const RawAddress& bda, uint16_t handle,
                               uint8_t enc_mode, uint8_t role,
                               tBLE_ADDR_TYPE addr_type, bool addr_matched);
@@ -55,7 +55,7 @@ extern void btm_ble_connected_from_address_with_type(
 
 extern tBTM_STATUS btm_ble_start_adv(void);
 extern tBTM_STATUS btm_ble_stop_adv(void);
-extern tBTM_STATUS btm_ble_start_scan(void);
+extern void btm_ble_start_scan(void);
 
 /* LE security function from btm_sec.cc */
 extern void btm_ble_link_sec_check(const RawAddress& bd_addr,
@@ -88,9 +88,9 @@ extern void btm_ble_update_sec_key_size(const RawAddress& bd_addr,
                                         uint8_t enc_key_size);
 extern uint8_t btm_ble_read_sec_key_size(const RawAddress& bd_addr);
 
-/* white list function */
+/* acceptlist function */
 extern void btm_update_scanner_filter_policy(tBTM_BLE_SFP scan_policy);
-extern void btm_ble_white_list_init(uint8_t white_list_size);
+extern void btm_ble_acceptlist_init(uint8_t acceptlist_size);
 
 /* background connection function */
 extern bool btm_ble_suspend_bg_conn(void);

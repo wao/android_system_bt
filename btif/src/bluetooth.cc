@@ -35,6 +35,7 @@
 #include <hardware/bt_hearing_aid.h>
 #include <hardware/bt_hf_client.h>
 #include <hardware/bt_hh.h>
+#include <hardware/bt_le_audio.h>
 #include <hardware/bt_pan.h>
 #include <hardware/bt_rc.h>
 #include <hardware/bt_sdp.h>
@@ -78,6 +79,7 @@
 #include "stack_manager.h"
 
 using bluetooth::hearing_aid::HearingAidInterface;
+using bluetooth::le_audio::LeAudioClientInterface;
 
 /*******************************************************************************
  *  Static variables
@@ -88,6 +90,7 @@ bool restricted_mode = false;
 bool niap_mode = false;
 const int CONFIG_COMPARE_ALL_PASS = 0b11;
 int niap_config_compare_result = CONFIG_COMPARE_ALL_PASS;
+bool is_local_device_atv = false;
 
 /*******************************************************************************
  *  Externs
@@ -118,6 +121,8 @@ extern const btrc_ctrl_interface_t* btif_rc_ctrl_get_interface();
 extern const btsdp_interface_t* btif_sdp_get_interface();
 /*Hearing Aid client*/
 extern HearingAidInterface* btif_hearing_aid_get_interface();
+/* LeAudio testi client */
+extern LeAudioClientInterface* btif_le_audio_get_interface();
 
 /*******************************************************************************
  *  Functions
@@ -139,7 +144,7 @@ static bool is_profile(const char* p1, const char* p2) {
 
 static int init(bt_callbacks_t* callbacks, bool start_restricted,
                 bool is_niap_mode, int config_compare_result,
-                const char** init_flags) {
+                const char** init_flags, bool is_atv) {
   LOG_INFO("%s: start restricted = %d ; niap = %d, config compare result = %d",
            __func__, start_restricted, is_niap_mode, config_compare_result);
 
@@ -155,6 +160,7 @@ static int init(bt_callbacks_t* callbacks, bool start_restricted,
   restricted_mode = start_restricted;
   niap_mode = is_niap_mode;
   niap_config_compare_result = config_compare_result;
+  is_local_device_atv = is_atv;
 
   stack_manager_get_interface()->init_stack();
   btif_debug_init();
@@ -184,6 +190,8 @@ bool is_niap_mode() { return niap_mode; }
 int get_niap_config_compare_result() {
   return niap_mode ? niap_config_compare_result : CONFIG_COMPARE_ALL_PASS;
 }
+
+bool is_atv_device() { return is_local_device_atv; }
 
 static int get_adapter_properties(void) {
   if (!btif_is_enabled()) return BT_STATUS_NOT_READY;
@@ -426,6 +434,14 @@ static const void* get_profile_interface(const char* profile_id) {
 
   if (is_profile(profile_id, BT_KEYSTORE_ID))
     return bluetooth::bluetooth_keystore::getBluetoothKeystoreInterface();
+
+  if (is_profile(profile_id, BT_ACTIVITY_ATTRIBUTION_ID)) {
+    return NULL;
+  }
+
+  if (is_profile(profile_id, BT_PROFILE_LE_AUDIO_ID))
+    return btif_le_audio_get_interface();
+
   return NULL;
 }
 
@@ -526,6 +542,10 @@ static int get_metric_id(const RawAddress& address) {
       address);
 }
 
+static int set_dynamic_audio_buffer_size(int codec, int size) {
+  return btif_set_dynamic_audio_buffer_size(codec, size);
+}
+
 EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
     sizeof(bluetoothInterface),
     init,
@@ -563,6 +583,7 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
     get_avrcp_service,
     obfuscate_address,
     get_metric_id,
+    set_dynamic_audio_buffer_size,
 };
 
 // callback reporting helpers

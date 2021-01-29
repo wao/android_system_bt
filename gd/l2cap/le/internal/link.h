@@ -48,7 +48,7 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
        DynamicChannelServiceManagerImpl* dynamic_service_manager, FixedChannelServiceManagerImpl* fixed_service_manager,
        LinkManager* link_manager);
 
-  ~Link() override = default;
+  ~Link() = default;
 
   inline hci::AddressWithType GetDevice() const override {
     return acl_connection_->GetRemoteAddress();
@@ -79,6 +79,12 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
                           uint16_t supervision_timeout) override;
 
   void OnDataLengthChange(uint16_t tx_octets, uint16_t tx_time, uint16_t rx_octets, uint16_t rx_time) override;
+
+  void OnReadRemoteVersionInformationComplete(
+      uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) override;
+  void OnPhyUpdate(uint8_t tx_phy, uint8_t rx_phy) override;
+
+  void OnLocalAddressUpdate(hci::AddressWithType address_with_type) override;
 
   virtual void Disconnect();
 
@@ -137,6 +143,8 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
     return &link_options_;
   }
 
+  void ReadRemoteVersionInformation();
+
  private:
   os::Handler* l2cap_handler_;
   l2cap::internal::FixedChannelAllocator<FixedChannelImpl, Link> fixed_channel_allocator_{this, l2cap_handler_};
@@ -159,7 +167,7 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
 
   // Received connection update complete from ACL manager. SignalId is bound to a valid number when we need to send a
   // response to remote. If SignalId is bound to an invalid number, we don't send a response to remote, because the
-  // connection update request is not from remote LL slave.
+  // connection update request is not from remote LL peripheral.
   void on_connection_update_complete(SignalId signal_id, hci::ErrorCode error_code);
 };
 

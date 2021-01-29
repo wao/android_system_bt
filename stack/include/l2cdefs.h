@@ -39,6 +39,11 @@
 #define L2CAP_CMD_BLE_CREDIT_BASED_CONN_REQ 0x14
 #define L2CAP_CMD_BLE_CREDIT_BASED_CONN_RES 0x15
 #define L2CAP_CMD_BLE_FLOW_CTRL_CREDIT 0x16
+/* Enhanced CoC */
+#define L2CAP_CMD_CREDIT_BASED_CONN_REQ 0x17
+#define L2CAP_CMD_CREDIT_BASED_CONN_RES 0x18
+#define L2CAP_CMD_CREDIT_BASED_RECONFIG_REQ 0x19
+#define L2CAP_CMD_CREDIT_BASED_RECONFIG_RES 0x1A
 
 /* Define some packet and header lengths
 */
@@ -79,6 +84,16 @@
 /* CID, Credit */
 #define L2CAP_CMD_BLE_FLOW_CTRL_CREDIT_LEN 4
 
+/* LE PSM, MTU, MPS, Initial Credits, SCIDS[] */
+#define L2CAP_CMD_CREDIT_BASED_CONN_REQ_MIN_LEN 8
+/* MTU, MPS, Initial Credits, Result, DCIDS[] */
+#define L2CAP_CMD_CREDIT_BASED_CONN_RES_MIN_LEN 8
+
+/* MTU, MPS, DCIDS[] */
+#define L2CAP_CMD_CREDIT_BASED_RECONFIG_REQ_MIN_LEN 4
+/* Result */
+#define L2CAP_CMD_CREDIT_BASED_RECONFIG_RES_LEN 2
+
 /* Define the packet boundary flags
 */
 #define L2CAP_PKT_START_NON_FLUSHABLE 0
@@ -88,30 +103,70 @@
 
 /* Define the L2CAP connection result codes
 */
-#define L2CAP_CONN_OK 0
-#define L2CAP_CONN_PENDING 1
-#define L2CAP_CONN_NO_PSM 2
-#define L2CAP_CONN_SECURITY_BLOCK 3
-#define L2CAP_CONN_NO_RESOURCES 4
-#define L2CAP_CONN_OTHER_ERROR 5
-#define L2CAP_CONN_TIMEOUT 0xEEEE
-/* Add a couple of our own for internal use */
-#define L2CAP_CONN_NO_LINK 255
-#define L2CAP_CONN_CANCEL 256 /* L2CAP connection cancelled */
+typedef enum : uint16_t {
+  L2CAP_CONN_OK = 0,
+  L2CAP_CONN_PENDING = 1,
+  L2CAP_CONN_NO_PSM = 2,
+  L2CAP_CONN_SECURITY_BLOCK = 3,
+  L2CAP_CONN_NO_RESOURCES = 4,
+  L2CAP_CONN_OTHER_ERROR = 5,
+  L2CAP_CONN_TIMEOUT = 0xEEEE,
+  /* Add a couple of our own for internal use */
+  L2CAP_CONN_NO_LINK = 255,
+  L2CAP_CONN_CANCEL = 256, /* L2CAP connection cancelled */
+} tL2CAP_CONN;
 
 /* Define the LE L2CAP Connection Response Result codes
  */
-#define L2CAP_LE_RESULT_CONN_OK 0
-#define L2CAP_LE_RESULT_NO_PSM 2
-#define L2CAP_LE_RESULT_NO_RESOURCES 4
-#define L2CAP_LE_RESULT_INSUFFICIENT_AUTHENTICATION 5
-#define L2CAP_LE_RESULT_INSUFFICIENT_ENCRYP_KEY_SIZE 7
-#define L2CAP_LE_RESULT_INSUFFICIENT_ENCRYP 8
-/* We don't like peer device response */
-#define L2CAP_LE_RESULT_INVALID_SOURCE_CID 9
-#define L2CAP_LE_RESULT_SOURCE_CID_ALREADY_ALLOCATED 0x0A
+typedef enum : uint8_t {
+  L2CAP_LE_RESULT_CONN_OK = 0,
+  L2CAP_LE_RESULT_NO_PSM = 2,
+  L2CAP_LE_RESULT_NO_RESOURCES = 4,
+  L2CAP_LE_RESULT_INSUFFICIENT_AUTHENTICATION = 5,
+  L2CAP_LE_RESULT_INSUFFICIENT_AUTHORIZATION = 6,
+  L2CAP_LE_RESULT_INSUFFICIENT_ENCRYP_KEY_SIZE = 7,
+  L2CAP_LE_RESULT_INSUFFICIENT_ENCRYP = 8,
+  /* We don't like peer device response */
+  L2CAP_LE_RESULT_INVALID_SOURCE_CID = 9,
+  L2CAP_LE_RESULT_SOURCE_CID_ALREADY_ALLOCATED = 0x0A,
+  L2CAP_LE_RESULT_UNACCEPTABLE_PARAMETERS = 0x0B,
+  L2CAP_LE_RESULT_INVALID_PARAMETERS = 0x0C
+} tL2CAP_LE_RESULT_CODE;
 
-typedef uint8_t tL2CAP_LE_RESULT_CODE;
+inline std::string l2cap_le_result_code_text(
+    const tL2CAP_LE_RESULT_CODE& code) {
+  switch (code) {
+    case L2CAP_LE_RESULT_CONN_OK:
+      return std::string("le connection success");
+    case L2CAP_LE_RESULT_NO_PSM:
+      return std::string("le no psm service");
+    case L2CAP_LE_RESULT_NO_RESOURCES:
+      return std::string("le no resources");
+    case L2CAP_LE_RESULT_INSUFFICIENT_AUTHENTICATION:
+      return std::string("le authentication failed");
+    case L2CAP_LE_RESULT_INSUFFICIENT_AUTHORIZATION:
+      return std::string("le authorization failed");
+    case L2CAP_LE_RESULT_INSUFFICIENT_ENCRYP_KEY_SIZE:
+      return std::string("le encryption key size failed");
+    case L2CAP_LE_RESULT_INSUFFICIENT_ENCRYP:
+      return std::string("le encryption failed");
+    case L2CAP_LE_RESULT_INVALID_SOURCE_CID:
+      return std::string("le invalid source channel identifier");
+    case L2CAP_LE_RESULT_SOURCE_CID_ALREADY_ALLOCATED:
+      return std::string("le source channel identifier busy");
+    case L2CAP_LE_RESULT_UNACCEPTABLE_PARAMETERS:
+      return std::string("le unacceptable parameters");
+    case L2CAP_LE_RESULT_INVALID_PARAMETERS:
+      return std::string("invalid parameters");
+  }
+}
+
+/* Credit based reconfig results code */
+#define L2CAP_RECONFIG_SUCCEED 0
+#define L2CAP_RECONFIG_REDUCTION_MTU_NO_ALLOWED 1
+#define L2CAP_RECONFIG_REDUCTION_MPS_NO_ALLOWED 2
+#define L2CAP_RECONFIG_INVALID_DCID 3
+#define L2CAP_RECONFIG_UNACCAPTED_PARAM 4
 
 /* Define the L2CAP command reject reason codes
 */
@@ -121,14 +176,16 @@ typedef uint8_t tL2CAP_LE_RESULT_CODE;
 
 /* L2CAP Predefined CIDs
 */
-#define L2CAP_SIGNALLING_CID 1
-#define L2CAP_CONNECTIONLESS_CID 2
-#define L2CAP_AMP_CID 3
-#define L2CAP_ATT_CID 4
-#define L2CAP_BLE_SIGNALLING_CID 5
-#define L2CAP_SMP_CID 6
-#define L2CAP_SMP_BR_CID 7
-#define L2CAP_BASE_APPL_CID 0x0040
+enum : uint16_t {
+  L2CAP_SIGNALLING_CID = 1,
+  L2CAP_CONNECTIONLESS_CID = 2,
+  L2CAP_AMP_CID = 3,
+  L2CAP_ATT_CID = 4,
+  L2CAP_BLE_SIGNALLING_CID = 5,
+  L2CAP_SMP_CID = 6,
+  L2CAP_SMP_BR_CID = 7,
+  L2CAP_BASE_APPL_CID = 0x0040,
+};
 
 /* Fixed Channels mask bits */
 

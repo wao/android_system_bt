@@ -90,5 +90,23 @@ std::string StringFormat(const std::string& format, Args... args) {
   return std::string(buffer, size);
 }
 
+inline std::string StringFormatTime(const std::string& format, const struct std::tm& tm) {
+  std::ostringstream os;
+  os << std::put_time(&tm, format.c_str());
+  return os.str();
+}
+
+inline std::string StringFormatTimeWithMilliseconds(
+    const std::string& format,
+    std::chrono::time_point<std::chrono::system_clock> time_point,
+    struct tm* (*calendar_to_tm)(const time_t* timep) = localtime) {
+  std::time_t epoch_time = std::chrono::system_clock::to_time_t(time_point);
+  auto millis = time_point.time_since_epoch() / std::chrono::milliseconds(1) % 1000;
+  std::tm tm = *calendar_to_tm(&epoch_time);
+  std::ostringstream os;
+  os << std::put_time(&tm, format.c_str()) << StringFormat(".%03u", millis);
+  return os.str();
+}
+
 }  // namespace common
 }  // namespace bluetooth

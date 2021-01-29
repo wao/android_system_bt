@@ -56,9 +56,9 @@ typedef struct {
 } tA2DP_AAC_ENCODER_PARAMS;
 
 typedef struct {
-  uint32_t counter;
-  uint32_t bytes_per_tick;              // pcm bytes read each media task tick
-  uint64_t last_frame_timestamp_100ns;  // values in 1/10 microseconds
+  float counter;
+  uint32_t bytes_per_tick; /* pcm bytes read each media task tick */
+  uint64_t last_frame_us;
 } tA2DP_AAC_FEEDING_STATE;
 
 typedef struct {
@@ -218,9 +218,9 @@ static void a2dp_aac_encoder_update(uint16_t peer_mtu,
   p_feeding_params->bits_per_sample =
       a2dp_codec_config->getAudioBitsPerSample();
   p_feeding_params->channel_count = A2DP_GetTrackChannelCountAac(p_codec_info);
-  LOG_DEBUG("%s: sample_rate=%u bits_per_sample=%u channel_count=%u", __func__,
-            p_feeding_params->sample_rate, p_feeding_params->bits_per_sample,
-            p_feeding_params->channel_count);
+  LOG_INFO("%s: sample_rate=%u bits_per_sample=%u channel_count=%u", __func__,
+           p_feeding_params->sample_rate, p_feeding_params->bits_per_sample,
+           p_feeding_params->channel_count);
 
   // The codec parameters
   p_encoder_params->sample_rate =
@@ -249,10 +249,10 @@ static void a2dp_aac_encoder_update(uint16_t peer_mtu,
     a2dp_aac_encoder_cb.TxAaMtuSize = peer_mtu;
   }
 
-  LOG_DEBUG("%s: MTU=%d, peer_mtu=%d", __func__,
-            a2dp_aac_encoder_cb.TxAaMtuSize, peer_mtu);
-  LOG_DEBUG("%s: sample_rate: %d channel_mode: %d ", __func__,
-            p_encoder_params->sample_rate, p_encoder_params->channel_mode);
+  LOG_INFO("%s: MTU=%d, peer_mtu=%d", __func__, a2dp_aac_encoder_cb.TxAaMtuSize,
+           peer_mtu);
+  LOG_INFO("%s: sample_rate: %d channel_mode: %d ", __func__,
+           p_encoder_params->sample_rate, p_encoder_params->channel_mode);
 
   // Set the encoder's parameters: Audio Object Type - MANDATORY
   // A2DP_AAC_OBJECT_TYPE_MPEG2_LC -> AOT_AAC_LC
@@ -334,9 +334,8 @@ static void a2dp_aac_encoder_update(uint16_t peer_mtu,
   aac_peak_bit_rate =
       A2DP_ComputeMaxBitRateAac(p_codec_info, a2dp_aac_encoder_cb.TxAaMtuSize);
   aac_param_value = std::min(aac_param_value, aac_peak_bit_rate);
-  LOG_DEBUG("%s: MTU = %d Sampling Frequency = %d Bit Rate = %d", __func__,
-            a2dp_aac_encoder_cb.TxAaMtuSize, aac_sampling_freq,
-            aac_param_value);
+  LOG_INFO("%s: MTU = %d Sampling Frequency = %d Bit Rate = %d", __func__,
+           a2dp_aac_encoder_cb.TxAaMtuSize, aac_sampling_freq, aac_param_value);
   if (aac_param_value == -1) {
     LOG_ERROR(
         "%s: Cannot set AAC parameter AACENC_BITRATE: "
@@ -466,7 +465,7 @@ static void a2dp_aac_encoder_update(uint16_t peer_mtu,
   p_encoder_params->frame_length = aac_info.frameLength;
   p_encoder_params->input_channels_n = aac_info.inputChannels;
   p_encoder_params->max_encoded_buffer_bytes = aac_info.maxOutBufBytes;
-  LOG_DEBUG(
+  LOG_INFO(
       "%s: AAC frame_length = %u input_channels_n = %u "
       "max_encoded_buffer_bytes = %d",
       __func__, p_encoder_params->frame_length,
@@ -518,7 +517,7 @@ void a2dp_aac_feeding_reset(void) {
 }
 
 void a2dp_aac_feeding_flush(void) {
-  a2dp_aac_encoder_cb.aac_feeding_state.counter = 0;
+  a2dp_aac_encoder_cb.aac_feeding_state.counter = 0.0f;
 }
 
 uint64_t a2dp_aac_get_encoder_interval_ms(void) {
@@ -556,29 +555,16 @@ static void a2dp_aac_get_num_frame_iteration(uint8_t* num_of_iterations,
       a2dp_aac_encoder_cb.feeding_params.bits_per_sample / 8;
   LOG_VERBOSE("%s: pcm_bytes_per_frame %u", __func__, pcm_bytes_per_frame);
 
-  uint32_t hecto_ns_this_tick = a2dp_aac_encoder_interval_ms * 10000;
-  uint64_t* last_100ns =
-      &a2dp_aac_encoder_cb.aac_feeding_state.last_frame_timestamp_100ns;
-  uint64_t now_100ns = timestamp_us * 10;
-  if (*last_100ns != 0) {
-    hecto_ns_this_tick = (now_100ns - *last_100ns);
-  }
-  *last_100ns = now_100ns;
+  uint32_t us_this_tick = A2DP_AAC_ENCODER_INTERVAL_MS * 1000;
+  uint64_t now_us = timestamp_us;
+  if (a2dp_aac_encoder_cb.aac_feeding_state.last_frame_us != 0)
+    us_this_tick =
+        (now_us - a2dp_aac_encoder_cb.aac_feeding_state.last_frame_us);
+  a2dp_aac_encoder_cb.aac_feeding_state.last_frame_us = now_us;
 
-  uint32_t bytes_this_tick =
-      a2dp_aac_encoder_cb.aac_feeding_state.bytes_per_tick *
-      hecto_ns_this_tick / (a2dp_aac_encoder_interval_ms * 10000);
-  a2dp_aac_encoder_cb.aac_feeding_state.counter += bytes_this_tick;
-  // Without this erratum, there was a three microseocnd shift per tick which
-  // would cause one frame mismatched after every 180 seconds
-  uint32_t erratum_100ns =
-      ceil(1.0f * bytes_this_tick * a2dp_aac_encoder_interval_ms * 10000 /
-           a2dp_aac_encoder_cb.aac_feeding_state.bytes_per_tick);
-  if (erratum_100ns < hecto_ns_this_tick) {
-    LOG_VERBOSE("%s: hecto_ns_this_tick=%d, bytes=%d, erratum_100ns=%d",
-                __func__, hecto_ns_this_tick, bytes_this_tick, erratum_100ns);
-    *last_100ns -= hecto_ns_this_tick - erratum_100ns;
-  }
+  a2dp_aac_encoder_cb.aac_feeding_state.counter +=
+      (float)a2dp_aac_encoder_cb.aac_feeding_state.bytes_per_tick * us_this_tick /
+      (A2DP_AAC_ENCODER_INTERVAL_MS * 1000);
 
   result = a2dp_aac_encoder_cb.aac_feeding_state.counter / pcm_bytes_per_frame;
   a2dp_aac_encoder_cb.aac_feeding_state.counter -= result * pcm_bytes_per_frame;

@@ -28,16 +28,18 @@
 #include "bt_utils.h"
 #include "btif_storage.h"
 #include "btm_ble_int.h"
-#include "btm_int.h"
 #include "connection_manager.h"
 #include "device/include/interop.h"
-#include "gatt_int.h"
+#include "eatt.h"
 #include "l2c_api.h"
 #include "osi/include/osi.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/btm/btm_sec.h"
+#include "stack/gatt/gatt_int.h"
+#include "stack/include/l2cap_acl_interface.h"
 
 using base::StringPrintf;
+using bluetooth::eatt::EattExtension;
 
 /******************************************************************************/
 /*            L O C A L    F U N C T I O N     P R O T O T Y P E S            */
@@ -75,6 +77,9 @@ static const tL2CAP_APPL_INFO dyn_info = {
     gatt_l2cif_congest_cback,
     NULL,
     gatt_on_l2cap_error,
+    NULL,
+    NULL,
+    NULL
 };
 
 tGATT_CB gatt_cb;
@@ -121,6 +126,8 @@ void gatt_init(void) {
   gatt_cb.hdl_list_info = new std::list<tGATT_HDL_LIST_ELEM>();
   gatt_cb.srv_list_info = new std::list<tGATT_SRV_LIST_ELEM>();
   gatt_profile_db_init();
+
+  EattExtension::GetInstance()->Start();
 }
 
 /*******************************************************************************
@@ -154,12 +161,37 @@ void gatt_free(void) {
 
     fixed_queue_free(gatt_cb.tcb[i].sr_cmd.multi_rsp_q, NULL);
     gatt_cb.tcb[i].sr_cmd.multi_rsp_q = NULL;
+
+    if (gatt_cb.tcb[i].eatt)
+      EattExtension::GetInstance()->FreeGattResources(gatt_cb.tcb[i].peer_bda);
   }
 
   gatt_cb.hdl_list_info->clear();
   gatt_cb.hdl_list_info = nullptr;
   gatt_cb.srv_list_info->clear();
   gatt_cb.srv_list_info = nullptr;
+
+  EattExtension::GetInstance()->Stop();
+}
+
+void gatt_find_in_device_record(const RawAddress& bd_addr,
+                                tBLE_BD_ADDR* address_with_type) {
+  const tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
+  if (p_dev_rec == nullptr) {
+    return;
+  }
+
+  if (p_dev_rec->device_type & BT_DEVICE_TYPE_BLE) {
+    if (p_dev_rec->ble.identity_address_with_type.bda.IsEmpty()) {
+      *address_with_type = {.type = p_dev_rec->ble.ble_addr_type,
+                            .bda = bd_addr};
+      return;
+    }
+    *address_with_type = p_dev_rec->ble.identity_address_with_type;
+    return;
+  }
+  *address_with_type = {.type = BLE_ADDR_PUBLIC, .bda = bd_addr};
+  return;
 }
 
 /*******************************************************************************
@@ -192,7 +224,7 @@ bool gatt_connect(const RawAddress& rem_bda, tGATT_TCB* p_tcb,
   }
 
   p_tcb->att_lcid = L2CAP_ATT_CID;
-  return connection_manager::direct_connect_add(gatt_if, rem_bda);
+  return acl_create_le_connection_with_id(gatt_if, rem_bda);
 }
 
 /*******************************************************************************
@@ -218,27 +250,25 @@ bool gatt_disconnect(tGATT_TCB* p_tcb) {
     return true;
   }
 
-  bool ret = true;
   if (p_tcb->att_lcid == L2CAP_ATT_CID) {
     if (ch_state == GATT_CH_OPEN) {
-      /* only LCB exist between remote device and local */
-      ret = L2CA_RemoveFixedChnl(L2CAP_ATT_CID, p_tcb->peer_bda);
+      L2CA_RemoveFixedChnl(L2CAP_ATT_CID, p_tcb->peer_bda);
+      gatt_set_ch_state(p_tcb, GATT_CH_CLOSING);
     } else {
-      L2CA_CancelBleConnectReq(p_tcb->peer_bda);
-      gatt_cleanup_upon_disc(p_tcb->peer_bda, HCI_ERR_CONN_CAUSE_LOCAL_HOST, p_tcb->transport);
-      return true;
+      connection_manager::direct_connect_remove(CONN_MGR_ID_L2CAP,
+                                                p_tcb->peer_bda);
+      gatt_cleanup_upon_disc(p_tcb->peer_bda, GATT_CONN_TERMINATE_LOCAL_HOST,
+                             p_tcb->transport);
     }
-    gatt_set_ch_state(p_tcb, GATT_CH_CLOSING);
   } else {
     if ((ch_state == GATT_CH_OPEN) || (ch_state == GATT_CH_CFG)) {
       gatt_l2cif_disconnect(p_tcb->att_lcid);
-      return true;
     } else {
       VLOG(1) << __func__ << " gatt_disconnect channel not opened";
     }
   }
 
-  return ret;
+  return true;
 }
 
 /*******************************************************************************
@@ -317,6 +347,10 @@ void gatt_update_app_use_link_flag(tGATT_IF gatt_if, tGATT_TCB* p_tcb,
     if (p_tcb->app_hold_link.empty()) {
       // acl link is connected but no application needs to use the link
       if (p_tcb->att_lcid == L2CAP_ATT_CID && is_valid_handle) {
+
+        /* Drop EATT before closing ATT */
+        EattExtension::GetInstance()->Disconnect(p_tcb->peer_bda);
+
         /* for fixed channel, set the timeout value to
            GATT_LINK_IDLE_TIMEOUT_WHEN_NO_APP seconds */
         VLOG(1) << " start link idle timer = "
@@ -384,8 +418,10 @@ static void gatt_le_connect_cback(uint16_t chan, const RawAddress& bd_addr,
   bool check_srv_chg = false;
   tGATTS_SRV_CHG* p_srv_chg_clt = NULL;
 
-  /* ignore all fixed channel connect/disconnect on BR/EDR link for GATT */
-  if (transport == BT_TRANSPORT_BR_EDR) return;
+  if (transport == BT_TRANSPORT_BR_EDR) {
+    LOG_WARN("Ignoring fixed channel connect/disconnect on br_edr for GATT");
+    return;
+  }
 
   VLOG(1) << "GATT   ATT protocol channel with BDA: " << bd_addr << " is "
           << ((connected) ? "connected" : "disconnected");
@@ -399,8 +435,8 @@ static void gatt_le_connect_cback(uint16_t chan, const RawAddress& bd_addr,
   }
 
   if (!connected) {
-    gatt_cleanup_upon_disc(bd_addr, reason, transport);
-    VLOG(1) << "ATT disconnected";
+    gatt_cleanup_upon_disc(bd_addr, static_cast<tGATT_DISCONN_REASON>(reason),
+                           transport);
     return;
   }
 
@@ -436,6 +472,8 @@ static void gatt_le_connect_cback(uint16_t chan, const RawAddress& bd_addr,
       gatt_chk_srv_chg(p_srv_chg_clt);
     }
   }
+
+  EattExtension::GetInstance()->Connect(bd_addr);
 }
 
 /** This function is called to process the congestion callback from lcb */
@@ -459,11 +497,11 @@ static void gatt_channel_congestion(tGATT_TCB* p_tcb, bool congested) {
   }
 }
 
-void gatt_notify_phy_updated(uint8_t status, uint16_t handle, uint8_t tx_phy,
-                             uint8_t rx_phy) {
+void gatt_notify_phy_updated(tGATT_STATUS status, uint16_t handle,
+                             uint8_t tx_phy, uint8_t rx_phy) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev_by_handle(handle);
   if (!p_dev_rec) {
-    BTM_TRACE_WARNING("%s: No Device Found!", __func__);
+    LOG_WARN("No Device Found!");
     return;
   }
 
@@ -481,14 +519,11 @@ void gatt_notify_phy_updated(uint8_t status, uint16_t handle, uint8_t tx_phy,
   }
 }
 
-void gatt_notify_conn_update(uint16_t handle, uint16_t interval,
+void gatt_notify_conn_update(const RawAddress& remote, uint16_t interval,
                              uint16_t latency, uint16_t timeout,
-                             uint8_t status) {
-  tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev_by_handle(handle);
-  if (!p_dev_rec) return;
+                             tHCI_STATUS status) {
+  tGATT_TCB* p_tcb = gatt_find_tcb_by_addr(remote, BT_TRANSPORT_LE);
 
-  tGATT_TCB* p_tcb =
-      gatt_find_tcb_by_addr(p_dev_rec->ble.pseudo_addr, BT_TRANSPORT_LE);
   if (!p_tcb) return;
 
   for (int i = 0; i < GATT_MAX_APPS; i++) {
@@ -496,7 +531,8 @@ void gatt_notify_conn_update(uint16_t handle, uint16_t interval,
     if (p_reg->in_use && p_reg->app_cb.p_conn_update_cb) {
       uint16_t conn_id = GATT_CREATE_CONN_ID(p_tcb->tcb_idx, p_reg->gatt_if);
       (*p_reg->app_cb.p_conn_update_cb)(p_reg->gatt_if, conn_id, interval,
-                                        latency, timeout, status);
+                                        latency, timeout,
+                                        static_cast<tGATT_STATUS>(status));
     }
   }
 }
@@ -590,7 +626,8 @@ static void gatt_on_l2cap_error(uint16_t lcid, uint16_t result) {
   tGATT_TCB* p_tcb = gatt_find_tcb_by_cid(lcid);
   if (p_tcb == nullptr) return;
   if (gatt_get_ch_state(p_tcb) == GATT_CH_CONN) {
-    gatt_cleanup_upon_disc(p_tcb->peer_bda, result, BT_TRANSPORT_BR_EDR);
+    gatt_cleanup_upon_disc(p_tcb->peer_bda, GATT_CONN_L2C_FAILURE,
+                           BT_TRANSPORT_BR_EDR);
   } else {
     gatt_l2cif_disconnect(lcid);
   }
@@ -666,13 +703,9 @@ void gatt_l2cif_disconnect_ind_cback(uint16_t lcid, bool ack_needed) {
     if (btm_sec_is_a_bonded_dev(p_tcb->peer_bda))
       gatt_add_a_bonded_dev_for_srv_chg(p_tcb->peer_bda);
   }
-  /* if ACL link is still up, no reason is logged, l2cap is disconnect from
-   * peer */
-  uint16_t reason = L2CA_GetDisconnectReason(p_tcb->peer_bda, p_tcb->transport);
-  if (reason == 0) reason = GATT_CONN_TERMINATE_PEER_USER;
-
   /* send disconnect callback */
-  gatt_cleanup_upon_disc(p_tcb->peer_bda, reason, BT_TRANSPORT_BR_EDR);
+  gatt_cleanup_upon_disc(p_tcb->peer_bda, GATT_CONN_TERMINATE_PEER_USER,
+                         BT_TRANSPORT_BR_EDR);
 }
 
 static void gatt_l2cif_disconnect(uint16_t lcid) {
@@ -688,13 +721,8 @@ static void gatt_l2cif_disconnect(uint16_t lcid) {
       gatt_add_a_bonded_dev_for_srv_chg(p_tcb->peer_bda);
   }
 
-  /* send disconnect callback */
-  /* if ACL link is still up, no reason is logged, l2cap is disconnect from
-   * peer */
-  uint16_t reason = L2CA_GetDisconnectReason(p_tcb->peer_bda, p_tcb->transport);
-  if (reason == 0) reason = GATT_CONN_TERMINATE_LOCAL_HOST;
-
-  gatt_cleanup_upon_disc(p_tcb->peer_bda, reason, BT_TRANSPORT_BR_EDR);
+  gatt_cleanup_upon_disc(p_tcb->peer_bda, GATT_CONN_TERMINATE_LOCAL_HOST,
+                         BT_TRANSPORT_BR_EDR);
 }
 
 /** This is the L2CAP data indication callback function */
@@ -736,8 +764,9 @@ static void gatt_send_conn_cback(tGATT_TCB* p_tcb) {
 
     if (p_reg->app_cb.p_conn_cb) {
       conn_id = GATT_CREATE_CONN_ID(p_tcb->tcb_idx, p_reg->gatt_if);
-      (*p_reg->app_cb.p_conn_cb)(p_reg->gatt_if, p_tcb->peer_bda, conn_id, true,
-                                 0, p_tcb->transport);
+      (*p_reg->app_cb.p_conn_cb)(p_reg->gatt_if, p_tcb->peer_bda, conn_id,
+                                 kGattConnected, GATT_CONN_OK,
+                                 p_tcb->transport);
     }
   }
 
@@ -929,7 +958,7 @@ void gatt_set_ch_state(tGATT_TCB* p_tcb, tGATT_CH_STATE ch_state) {
   if (!p_tcb) return;
 
   VLOG(1) << __func__ << ": old=" << +p_tcb->ch_state
-          << " new=" << loghex(ch_state);
+          << " new=" << loghex(static_cast<uint8_t>(ch_state));
   p_tcb->ch_state = ch_state;
 }
 

@@ -17,6 +17,8 @@
 #pragma once
 
 #include <memory>
+
+#include "hci/address_with_type.h"
 #include "hci/hci_packets.h"
 
 namespace bluetooth {
@@ -30,6 +32,10 @@ class LeConnectionManagementCallbacks {
                                   uint16_t supervision_timeout) = 0;
   virtual void OnDataLengthChange(uint16_t tx_octets, uint16_t tx_time, uint16_t rx_octets, uint16_t rx_time) = 0;
   virtual void OnDisconnection(ErrorCode reason) = 0;
+  virtual void OnReadRemoteVersionInformationComplete(
+      uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) = 0;
+  virtual void OnPhyUpdate(uint8_t tx_phy, uint8_t rx_phy) = 0;
+  virtual void OnLocalAddressUpdate(AddressWithType address_with_type) = 0;
 };
 
 }  // namespace acl_manager

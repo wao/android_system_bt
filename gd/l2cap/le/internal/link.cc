@@ -65,8 +65,8 @@ void Link::OnDisconnection(hci::ErrorCode status) {
 }
 
 void Link::OnConnectionUpdate(uint16_t connection_interval, uint16_t connection_latency, uint16_t supervision_timeout) {
-  LOG_DEBUG("interval %hx latency %hx supervision_timeout %hx", connection_interval, connection_latency,
-            supervision_timeout);
+  LOG_INFO(
+      "interval %hx latency %hx supervision_timeout %hx", connection_interval, connection_latency, supervision_timeout);
   if (update_request_signal_id_ != kInvalidSignalId) {
     hci::ErrorCode result = hci::ErrorCode::SUCCESS;
     if (connection_interval > update_request_interval_max_ || connection_interval < update_request_interval_min_ ||
@@ -84,8 +84,21 @@ void Link::OnConnectionUpdate(uint16_t connection_interval, uint16_t connection_
 }
 
 void Link::OnDataLengthChange(uint16_t tx_octets, uint16_t tx_time, uint16_t rx_octets, uint16_t rx_time) {
-  LOG_DEBUG("tx_octets %hx tx_time %hx rx_octets %hx rx_time %hx", tx_octets, tx_time, rx_octets, rx_time);
+  LOG_INFO("tx_octets %hx tx_time %hx rx_octets %hx rx_time %hx", tx_octets, tx_time, rx_octets, rx_time);
 }
+
+void Link::OnReadRemoteVersionInformationComplete(
+    uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) {
+  LOG_INFO("lmp_version:%hhu manufacturer_name:%hu sub_version:%hu", lmp_version, manufacturer_name, sub_version);
+  link_manager_->OnReadRemoteVersionInformationComplete(GetDevice(), lmp_version, manufacturer_name, sub_version);
+}
+
+void Link::OnPhyUpdate(uint8_t tx_phy, uint8_t rx_phy) {}
+
+void Link::OnLocalAddressUpdate(hci::AddressWithType address_with_type) {
+  acl_connection_->UpdateLocalAddress(address_with_type);
+}
+
 void Link::Disconnect() {
   acl_connection_->Disconnect(hci::DisconnectReason::REMOTE_USER_TERMINATED_CONNECTION);
 }
@@ -126,8 +139,8 @@ bool Link::CheckConnectionParameters(
 
 void Link::SendConnectionParameterUpdate(uint16_t conn_interval_min, uint16_t conn_interval_max, uint16_t conn_latency,
                                          uint16_t supervision_timeout, uint16_t min_ce_length, uint16_t max_ce_length) {
-  if (acl_connection_->GetRole() == hci::Role::SLAVE) {
-    // TODO: If both LL master and slave support 4.1, use HCI command directly
+  if (acl_connection_->GetRole() == hci::Role::PERIPHERAL) {
+    // TODO: If both LL central and peripheral support 4.1, use HCI command directly
     signalling_manager_.SendConnectionParameterUpdateRequest(conn_interval_min, conn_interval_max, conn_latency,
                                                              supervision_timeout);
     return;
@@ -259,6 +272,10 @@ uint16_t Link::GetInitialCredit() const {
 
 void Link::SendLeCredit(Cid local_cid, uint16_t credit) {
   signalling_manager_.SendCredit(local_cid, credit);
+}
+
+void Link::ReadRemoteVersionInformation() {
+  acl_connection_->ReadRemoteVersionInformation();
 }
 
 void Link::on_connection_update_complete(SignalId signal_id, hci::ErrorCode error_code) {

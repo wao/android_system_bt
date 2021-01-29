@@ -83,7 +83,7 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::ConnectionM
 
   virtual void ReadRemoteSupportedFeatures();
 
-  virtual void ReadRemoteExtendedFeatures();
+  virtual void ReadRemoteExtendedFeatures(uint8_t page_number);
 
   virtual void ReadClockOffset();
 
@@ -106,6 +106,7 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::ConnectionM
   virtual void SendConnectionRequest(Psm psm, Cid local_cid);
   virtual void SendConnectionRequest(Psm psm, Cid local_cid,
                                      PendingDynamicChannelConnection pending_dynamic_channel_connection);
+  void SetChannelTxPriority(Cid local_cid, bool high_priority) override;
 
   // When a Link is established, LinkManager notifies pending dynamic channels to connect
   virtual void SetPendingDynamicChannels(std::list<Psm> psm_list,
@@ -155,6 +156,11 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::ConnectionM
   void OnChangeConnectionLinkKeyComplete() override;
   void OnReadClockOffsetComplete(uint16_t clock_offset) override;
   void OnModeChange(hci::Mode current_mode, uint16_t interval) override;
+  void OnSniffSubrating(
+      uint16_t maximum_transmit_latency,
+      uint16_t maximum_receive_latency,
+      uint16_t minimum_remote_timeout,
+      uint16_t minimum_local_timeout) override;
   void OnQosSetupComplete(hci::ServiceType service_type, uint32_t token_rate, uint32_t peak_bandwidth, uint32_t latency,
                           uint32_t delay_variation) override;
   void OnFlowSpecificationComplete(hci::FlowDirection flow_direction, hci::ServiceType service_type,
@@ -171,10 +177,25 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::ConnectionM
   void OnReadAfhChannelMapComplete(hci::AfhMode afh_mode, std::array<uint8_t, 10> afh_channel_map) override;
   void OnReadRssiComplete(uint8_t rssi) override;
   void OnReadClockComplete(uint32_t clock, uint16_t accuracy) override;
-  void OnMasterLinkKeyComplete(hci::KeyFlag key_flag) override;
+  void OnCentralLinkKeyComplete(hci::KeyFlag key_flag) override;
   void OnRoleChange(hci::Role new_role) override;
   void OnDisconnection(hci::ErrorCode reason) override;
   void OnReadRemoteVersionInformationComplete(uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version);
+  void OnReadRemoteExtendedFeaturesComplete(uint8_t page_number, uint8_t max_page_number, uint64_t features);
+
+  struct EncryptionChangeListener {
+    Cid cid;
+    Psm psm;
+  };
+  void AddEncryptionChangeListener(EncryptionChangeListener);
+
+  uint16_t GetAclHandle() const {
+    return acl_handle_;
+  }
+
+  hci::Role GetRole() const {
+    return role_;
+  }
 
  private:
   friend class DumpsysHelper;
@@ -193,7 +214,9 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::ConnectionM
   std::unordered_map<Cid, PendingDynamicChannelConnection> local_cid_to_pending_dynamic_channel_connection_map_;
   os::Alarm link_idle_disconnect_alarm_{l2cap_handler_};
   ClassicSignallingManager signalling_manager_;
+  uint16_t acl_handle_;
   Mtu remote_connectionless_mtu_ = kMinimumClassicMtu;
+  hci::Role role_ = hci::Role::CENTRAL;
   bool remote_extended_feature_received_ = false;
   bool remote_supports_ertm_ = false;
   bool remote_supports_fcs_ = false;
@@ -203,6 +226,7 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::ConnectionM
   std::list<uint16_t> pending_outgoing_configuration_request_list_;
   bool used_by_security_module_ = false;
   bool has_requested_authentication_ = false;
+  std::list<EncryptionChangeListener> encryption_change_listener_;
   DISALLOW_COPY_AND_ASSIGN(Link);
 };
 

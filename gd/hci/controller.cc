@@ -35,16 +35,18 @@ struct Controller::impl {
   void Start(hci::HciLayer* hci) {
     hci_ = hci;
     Handler* handler = module_.GetHandler();
-    if (bluetooth::common::InitFlags::GdCoreEnabled()) {
+    if (common::init_flags::gd_acl_is_enabled() || common::init_flags::gd_l2cap_is_enabled()) {
       hci_->RegisterEventHandler(
           EventCode::NUMBER_OF_COMPLETED_PACKETS, handler->BindOn(this, &Controller::impl::NumberOfCompletedPackets));
     }
 
     le_set_event_mask(kDefaultLeEventMask);
     set_event_mask(kDefaultEventMask);
-    write_simple_pairing_mode(Enable::ENABLED);
-    // TODO(b/159927452): Legacy stack set SimultaneousLeHost = 1. Revisit if this causes problem.
-    write_le_host_support(Enable::ENABLED, SimultaneousLeHost::DISABLED);
+    write_le_host_support(Enable::ENABLED);
+    // SSP is managed by security layer once enabled
+    if (!common::init_flags::gd_security_is_enabled()) {
+      write_simple_pairing_mode(Enable::ENABLED);
+    }
     hci_->EnqueueCommand(ReadLocalNameBuilder::Create(),
                          handler->BindOnceOn(this, &Controller::impl::read_local_name_complete_handler));
     hci_->EnqueueCommand(ReadLocalVersionInformationBuilder::Create(),
@@ -134,13 +136,13 @@ struct Controller::impl {
   }
 
   void Stop() {
-    if (bluetooth::common::InitFlags::GdCoreEnabled()) {
+    if (bluetooth::common::init_flags::gd_core_is_enabled()) {
       hci_->UnregisterEventHandler(EventCode::NUMBER_OF_COMPLETED_PACKETS);
     }
     hci_ = nullptr;
   }
 
-  void NumberOfCompletedPackets(EventPacketView event) {
+  void NumberOfCompletedPackets(EventView event) {
     if (acl_credits_callback_.IsEmpty()) {
       LOG_WARN("Received event when AclManager is not listening");
       return;
@@ -151,6 +153,9 @@ struct Controller::impl {
       uint16_t handle = completed_packets.connection_handle_;
       uint16_t credits = completed_packets.host_num_of_completed_packets_;
       acl_credits_callback_.Invoke(handle, credits);
+      if (!acl_monitor_credits_callback_.IsEmpty()) {
+        acl_monitor_credits_callback_.Invoke(handle, credits);
+      }
     }
   }
 
@@ -162,6 +167,26 @@ struct Controller::impl {
   void unregister_completed_acl_packets_callback() {
     ASSERT(!acl_credits_callback_.IsEmpty());
     acl_credits_callback_ = {};
+  }
+
+  void register_completed_monitor_acl_packets_callback(CompletedAclPacketsCallback callback) {
+    ASSERT(acl_monitor_credits_callback_.IsEmpty());
+    acl_monitor_credits_callback_ = callback;
+  }
+
+  void unregister_completed_monitor_acl_packets_callback() {
+    ASSERT(!acl_monitor_credits_callback_.IsEmpty());
+    acl_monitor_credits_callback_ = {};
+  }
+
+  void register_monitor_completed_acl_packets_callback(CompletedAclPacketsCallback callback) {
+    ASSERT(acl_monitor_credits_callback_.IsEmpty());
+    acl_monitor_credits_callback_ = callback;
+  }
+
+  void unregister_monitor_completed_acl_packets_callback() {
+    ASSERT(!acl_monitor_credits_callback_.IsEmpty());
+    acl_monitor_credits_callback_ = {};
   }
 
   void read_local_name_complete_handler(CommandCompleteView view) {
@@ -420,18 +445,18 @@ struct Controller::impl {
                                                 this, &Controller::impl::check_status<SetEventMaskCompleteView>));
   }
 
+  void write_le_host_support(Enable enable) {
+    std::unique_ptr<WriteLeHostSupportBuilder> packet = WriteLeHostSupportBuilder::Create(enable);
+    hci_->EnqueueCommand(
+        std::move(packet),
+        module_.GetHandler()->BindOnceOn(this, &Controller::impl::check_status<WriteLeHostSupportCompleteView>));
+  }
+
   void write_simple_pairing_mode(Enable enable) {
     std::unique_ptr<WriteSimplePairingModeBuilder> packet = WriteSimplePairingModeBuilder::Create(enable);
     hci_->EnqueueCommand(
         std::move(packet),
         module_.GetHandler()->BindOnceOn(this, &Controller::impl::check_status<WriteSimplePairingModeCompleteView>));
-  }
-
-  void write_le_host_support(Enable enable, SimultaneousLeHost simultaneous_le_host) {
-    std::unique_ptr<WriteLeHostSupportBuilder> packet = WriteLeHostSupportBuilder::Create(enable, simultaneous_le_host);
-    hci_->EnqueueCommand(
-        std::move(packet),
-        module_.GetHandler()->BindOnceOn(this, &Controller::impl::check_status<WriteLeHostSupportCompleteView>));
   }
 
   void reset() {
@@ -511,7 +536,7 @@ struct Controller::impl {
       OP_CODE_MAPPING(AUTHENTICATION_REQUESTED)
       OP_CODE_MAPPING(SET_CONNECTION_ENCRYPTION)
       OP_CODE_MAPPING(CHANGE_CONNECTION_LINK_KEY)
-      OP_CODE_MAPPING(MASTER_LINK_KEY)
+      OP_CODE_MAPPING(CENTRAL_LINK_KEY)
       OP_CODE_MAPPING(REMOTE_NAME_REQUEST)
       OP_CODE_MAPPING(REMOTE_NAME_REQUEST_CANCEL)
       OP_CODE_MAPPING(READ_REMOTE_SUPPORTED_FEATURES)
@@ -619,6 +644,7 @@ struct Controller::impl {
       OP_CODE_MAPPING(REMOTE_OOB_DATA_REQUEST_NEGATIVE_REPLY)
       OP_CODE_MAPPING(SEND_KEYPRESS_NOTIFICATION)
       OP_CODE_MAPPING(IO_CAPABILITY_REQUEST_NEGATIVE_REPLY)
+      OP_CODE_MAPPING(REMOTE_OOB_EXTENDED_DATA_REQUEST_REPLY)
       OP_CODE_MAPPING(READ_ENCRYPTION_KEY_SIZE)
       OP_CODE_MAPPING(READ_DATA_BLOCK_SIZE)
       OP_CODE_MAPPING(READ_LE_HOST_SUPPORT)
@@ -628,7 +654,7 @@ struct Controller::impl {
       OP_CODE_MAPPING(LE_READ_LOCAL_SUPPORTED_FEATURES)
       OP_CODE_MAPPING(LE_SET_RANDOM_ADDRESS)
       OP_CODE_MAPPING(LE_SET_ADVERTISING_PARAMETERS)
-      OP_CODE_MAPPING(LE_READ_ADVERTISING_CHANNEL_TX_POWER)
+      OP_CODE_MAPPING(LE_READ_ADVERTISING_PHYSICAL_CHANNEL_TX_POWER)
       OP_CODE_MAPPING(LE_SET_ADVERTISING_DATA)
       OP_CODE_MAPPING(LE_SET_SCAN_RESPONSE_DATA)
       OP_CODE_MAPPING(LE_SET_ADVERTISING_ENABLE)
@@ -779,6 +805,7 @@ struct Controller::impl {
   HciLayer* hci_;
 
   CompletedAclPacketsCallback acl_credits_callback_{};
+  CompletedAclPacketsCallback acl_monitor_credits_callback_{};
   LocalVersionInformation local_version_information_;
   std::array<uint8_t, 64> local_supported_commands_;
   uint8_t maximum_page_number_;
@@ -813,6 +840,14 @@ void Controller::RegisterCompletedAclPacketsCallback(CompletedAclPacketsCallback
 
 void Controller::UnregisterCompletedAclPacketsCallback() {
   CallOn(impl_.get(), &impl::unregister_completed_acl_packets_callback);
+}
+
+void Controller::RegisterCompletedMonitorAclPacketsCallback(CompletedAclPacketsCallback cb) {
+  CallOn(impl_.get(), &impl::register_completed_monitor_acl_packets_callback, cb);
+}
+
+void Controller::UnregisterCompletedMonitorAclPacketsCallback() {
+  CallOn(impl_.get(), &impl::unregister_completed_monitor_acl_packets_callback);
 }
 
 std::string Controller::GetLocalName() const {
@@ -876,8 +911,8 @@ LOCAL_LE_FEATURE_ACCESSOR(SupportsBleExtendedAdvertising, 12)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBlePeriodicAdvertising, 13)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBlePeriodicAdvertisingSyncTransferSender, 24)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBlePeriodicAdvertisingSyncTransferRecipient, 25)
-LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectedIsochronousStreamMaster, 28)
-LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectedIsochronousStreamSlave, 29)
+LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectedIsochronousStreamCentral, 28)
+LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectedIsochronousStreamPeripheral, 29)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleIsochronousBroadcaster, 30)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleSynchronizedReceiver, 31)
 

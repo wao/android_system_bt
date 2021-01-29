@@ -195,6 +195,10 @@ class CertL2cap(Closable, IHasBehaviors):
             self._device, 1, 1, self._acl.acl_stream, self._acl, control_channel=None)
         self._acl.acl_stream.register_callback(self._handle_control_packet)
 
+    def accept_incoming_connection(self):
+        self._acl_manager.listen_for_an_incoming_connection()
+        self._acl = self._acl_manager.complete_incoming_connection()
+
     def open_channel(self, signal_id, psm, scid, fcs=None):
         self.control_channel.send(l2cap_packets.ConnectionRequestBuilder(signal_id, psm, scid))
 
@@ -357,7 +361,7 @@ class CertL2cap(Closable, IHasBehaviors):
         if information_type == l2cap_packets.InformationRequestInfoType.EXTENDED_FEATURES_SUPPORTED:
             response = l2cap_packets.InformationResponseExtendedFeaturesBuilder(
                 sid, l2cap_packets.InformationRequestResult.SUCCESS, 0, 0, 0, self.support_ertm, 0, self.support_fcs, 0,
-                0, 0, 0)
+                0, 0, 0, 0)
             self.control_channel.send(response)
             return
         if information_type == l2cap_packets.InformationRequestInfoType.FIXED_CHANNELS_SUPPORTED:

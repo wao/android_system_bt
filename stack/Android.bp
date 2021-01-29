@@ -25,6 +25,7 @@ cc_library_static {
         "avrc",
         "l2cap",
         "avdt",
+        "eatt",
         "gatt",
         "gap",
         "pan",
@@ -54,6 +55,7 @@ cc_library_static {
         "system/bt/bta/include",
         "system/bt/bta/sys",
         "system/bt/utils/include",
+        "system/bt/gd/rust/shim",
     ],
     srcs: crypto_toolbox_srcs + [
         "a2dp/a2dp_aac.cc",
@@ -101,6 +103,7 @@ cc_library_static {
         "bnep/bnep_main.cc",
         "bnep/bnep_utils.cc",
         "btm/ble_advertiser_hci_interface.cc",
+        "acl/acl.cc",
         "acl/btm_acl.cc",
         "acl/ble_acl.cc",
         "btm/ble_scanner_hci_interface.cc",
@@ -114,6 +117,7 @@ cc_library_static {
         "btm/btm_ble_gap.cc",
         "btm/btm_ble_multi_adv.cc",
         "btm/btm_ble_privacy.cc",
+        "btm/btm_client_interface.cc",
         "btm/btm_dev.cc",
         "btm/btm_devctl.cc",
         "btm/btm_inq.cc",
@@ -125,6 +129,7 @@ cc_library_static {
         "btm/btm_scn.cc",
         "btu/btu_hcif.cc",
         "btu/btu_task.cc",
+        "eatt/eatt.cc",
         "gap/gap_ble.cc",
         "gap/gap_conn.cc",
         "gatt/att_protocol.cc",
@@ -450,9 +455,13 @@ cc_test {
     defaults: ["fluoride_defaults"],
     test_suites: ["device-tests"],
     host_supported: true,
+    test_options: {
+        unit_test: true,
+    },
     include_dirs: [
         "system/bt",
         "system/bt/stack/include",
+        "system/bt/stack/eatt",
         "system/bt/stack/l2cap",
         "system/bt/stack/btm",
         "system/bt/utils/include",
@@ -460,6 +469,8 @@ cc_test {
     srcs: [
         "test/gatt/gatt_sr_test.cc",
         "gatt/gatt_utils.cc",
+        "test/common/mock_eatt.cc",
+        "test/common/mock_gatt_layer.cc",
     ],
     shared_libs: [
         "libcutils",
@@ -471,6 +482,43 @@ cc_test {
         "libosi",
         "libbt-common",
         "libbt-protos-lite",
+        "libgmock",
+        "libosi-AllocationTestHarness",
+    ],
+    sanitize: {
+        address: true,
+        cfi: true,
+        misc_undefined: ["bounds"],
+    },
+}
+
+cc_test {
+    name: "net_test_stack_a2dp_native",
+    defaults: ["fluoride_defaults"],
+    test_suites: ["device-tests"],
+    host_supported: true,
+    test_options: {
+        unit_test: true,
+    },
+    include_dirs: [
+        "external/libldac/inc",
+        "system/bt",
+        "system/bt/stack/include",
+    ],
+    srcs: [
+        "test/a2dp/a2dp_vendor_ldac_decoder_test.cc",
+        "test/a2dp/misc_fake.cc",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "libcutils",
+        "libprotobuf-cpp-lite",
+    ],
+    static_libs: [
+        "libbt-common",
+        "libbt-protos-lite",
+        "liblog",
+        "libosi",
         "libosi-AllocationTestHarness",
     ],
     sanitize: {
@@ -489,6 +537,7 @@ cc_test {
     include_dirs: [
         "system/bt",
         "system/bt/stack/btm",
+        "system/bt/stack/eatt",
         "system/bt/stack/include",
         "system/bt/utils/include",
     ],
@@ -497,6 +546,8 @@ cc_test {
         "gatt/gatt_sr_hash.cc",
         "gatt/gatt_utils.cc",
         "test/gatt/mock_gatt_utils_ref.cc",
+        "test/common/mock_eatt.cc",
+        "test/common/mock_gatt_layer.cc",
         "test/stack_gatt_sr_hash_test.cc",
     ],
     shared_libs: [
@@ -508,6 +559,7 @@ cc_test {
         "libbt-common",
         "libbt-protos-lite",
         "liblog",
+        "libgmock",
         "libosi",
     ],
 }
@@ -517,6 +569,9 @@ cc_test {
     name: "net_test_btm_iso",
     test_suites: ["device-tests"],
     host_supported: true,
+    test_options: {
+        unit_test: true,
+    },
     defaults: ["fluoride_defaults"],
     local_include_dirs: [
         "btm",
@@ -531,6 +586,7 @@ cc_test {
         "btm/btm_iso.cc",
         "test/btm_iso_test.cc",
         "test/common/mock_controller.cc",
+        "test/common/mock_gatt_layer.cc",
         "test/common/mock_hcic_layer.cc",
     ],
     static_libs: [
@@ -545,6 +601,148 @@ cc_test {
         address: true,
         all_undefined: true,
         integer_overflow: true,
+        diag: {
+            undefined : true
+        },
+    },
+}
+
+// EATT unit tests
+cc_test {
+    name: "net_test_eatt",
+    test_suites: ["device-tests"],
+    host_supported: true,
+    test_options: {
+        unit_test: true,
+    },
+    defaults: [
+        "fluoride_defaults",
+        "clang_coverage_bin",
+    ],
+    local_include_dirs: [
+        "include",
+        "btm",
+        "eatt",
+        "gatt",
+        "l2cap",
+        "test/common",
+    ],
+    include_dirs:[
+        "system/bt",
+        "system/bt/btcore/include",
+    ],
+    srcs: [
+        "eatt/eatt.cc",
+        "test/common/mock_btm_api_layer.cc",
+	"test/common/mock_btif_storage.cc",
+        "test/common/mock_controller.cc",
+        "test/common/mock_gatt_layer.cc",
+        "test/common/mock_l2cap_layer.cc",
+        "test/gatt/mock_gatt_utils_ref.cc",
+        "test/eatt/eatt_test.cc",
+    ],
+    shared_libs: [
+        "libcutils",
+        "libcrypto",
+        "libprotobuf-cpp-lite",
+    ],
+    static_libs: [
+        "libbt-common",
+        "libbt-protos-lite",
+        "liblog",
+        "libgmock",
+        "libosi",
+    ],
+    sanitize: {
+        cfi: false,
+    },
+}
+
+cc_test {
+    name: "net_test_stack_btm",
+    test_suites: ["device-tests"],
+    host_supported: true,
+    defaults: ["fluoride_defaults"],
+    local_include_dirs: [
+        "include",
+        "btm",
+        "test/common",
+    ],
+    include_dirs: [
+        "system/bt",
+        "system/bt/vnd/ble",
+    ],
+    srcs: crypto_toolbox_srcs + [
+        "acl/acl.cc",
+        "acl/ble_acl.cc",
+        "acl/btm_acl.cc",
+        "acl/btm_ble_connection_establishment.cc",
+        "acl/btm_pm.cc",
+        "btm/ble_advertiser_hci_interface.cc",
+        "btm/btm_ble.cc",
+        "btm/btm_ble_addr.cc",
+        "btm/btm_ble_adv_filter.cc",
+        "btm/btm_ble_batchscan.cc",
+        "btm/btm_ble_bgconn.cc",
+        "btm/btm_ble_cont_energy.cc",
+        "btm/btm_ble_gap.cc",
+        "btm/btm_ble_multi_adv.cc",
+        "btm/btm_ble_privacy.cc",
+        "btm/btm_client_interface.cc",
+        "btm/btm_dev.cc",
+        "btm/btm_devctl.cc",
+        "btm/btm_inq.cc",
+        "btm/btm_iso.cc",
+        "btm/btm_main.cc",
+        "btm/btm_sco.cc",
+        "btm/btm_scn.cc",
+        "btm/btm_sec.cc",
+        "test/btm/stack_btm_test.cc",
+        "test/common/mock_bta_dm_act.cc",
+        "test/common/mock_bta_sys_conn.cc",
+        "test/common/mock_btif_dm.cc",
+        "test/common/mock_btif_storage.cc",
+        "test/common/mock_btu_hcif.cc",
+        "test/common/mock_gap_gap_ble.cc",
+        "test/common/mock_gatt_connection_manager.cc",
+        "test/common/mock_gatt_gatt_auth.cc",
+        "test/common/mock_gatt_main.cc",
+        "test/common/mock_hci_packet_parser.cc",
+        "test/common/mock_hcic_hciblecmds.cc",
+        "test/common/mock_hcic_hcicmds.cc",
+        "test/common/mock_l2cap_l2c_api.cc",
+        "test/common/mock_l2cap_l2c_ble.cc",
+        "test/common/mock_l2cap_l2c_link.cc",
+        "test/common/mock_l2cap_l2c_main.cc",
+        "test/common/mock_l2cap_l2c_utils.cc",
+        "test/common/mock_main_bte_main.cc",
+        "test/common/mock_main_shim.cc",
+        "test/common/mock_main_shim_acl_api.cc",
+        "test/common/mock_main_shim_l2c_api.cc",
+        "test/common/mock_main_shim_btm_api.cc",
+        "test/common/mock_main_shim_controller.cc",
+        "test/common/mock_main_shim_link_policy.cc",
+        "test/common/mock_smp_smp_act.cc",
+        "test/common/mock_smp_smp_api.cc",
+    ],
+    static_libs: [
+        "libbt-common",
+        "libbt-protos-lite",
+        "libgmock",
+        "liblog",
+        "libosi",
+        "libbtdevice",
+    ],
+    shared_libs: [
+        "libprotobuf-cpp-lite",
+        "libcrypto",
+    ],
+    sanitize: {
+        address: true,
+        all_undefined: true,
+        cfi: true,
+        integer_overflow: true,
+        scs: true,
         diag: {
             undefined : true
         },

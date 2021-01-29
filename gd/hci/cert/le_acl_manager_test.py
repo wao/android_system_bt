@@ -24,9 +24,10 @@ from facade import common_pb2 as common
 from hci.facade import le_acl_manager_facade_pb2 as le_acl_manager_facade
 from hci.facade import le_advertising_manager_facade_pb2 as le_advertising_facade
 from hci.facade import le_initiator_address_facade_pb2 as le_initiator_address_facade
-from hci.facade import facade_pb2 as hci_facade
+from hci.facade import hci_facade_pb2 as hci_facade
 import bluetooth_packets_python3 as bt_packets
 from bluetooth_packets_python3 import hci_packets
+from bluetooth_packets_python3 import RawBuilder
 
 
 class LeAclManagerTest(GdBaseTestClass):
@@ -37,8 +38,8 @@ class LeAclManagerTest(GdBaseTestClass):
     def setup_test(self):
         super().setup_test()
         self.dut_le_acl_manager = PyLeAclManager(self.dut)
-        self.cert_hci_le_event_stream = EventStream(self.cert.hci.FetchLeSubevents(empty_proto.Empty()))
-        self.cert_acl_data_stream = EventStream(self.cert.hci.FetchAclPackets(empty_proto.Empty()))
+        self.cert_hci_le_event_stream = EventStream(self.cert.hci.StreamLeSubevents(empty_proto.Empty()))
+        self.cert_acl_data_stream = EventStream(self.cert.hci.StreamAcl(empty_proto.Empty()))
 
     def teardown_test(self):
         safeClose(self.cert_hci_le_event_stream)
@@ -55,25 +56,21 @@ class LeAclManagerTest(GdBaseTestClass):
         self.dut.hci_le_initiator_address.SetPrivacyPolicyForInitiatorAddress(private_policy)
 
     def register_for_event(self, event_code):
-        msg = hci_facade.EventCodeMsg(code=int(event_code))
-        self.cert.hci.RegisterEventHandler(msg)
+        msg = hci_facade.EventRequest(code=int(event_code))
+        self.cert.hci.RequestEvent(msg)
 
     def register_for_le_event(self, event_code):
-        msg = hci_facade.LeSubeventCodeMsg(code=int(event_code))
-        self.cert.hci.RegisterLeEventHandler(msg)
+        msg = hci_facade.EventRequest(code=int(event_code))
+        self.cert.hci.RequestLeSubevent(msg)
 
-    def enqueue_hci_command(self, command, expect_complete):
+    def enqueue_hci_command(self, command):
         cmd_bytes = bytes(command.Serialize())
-        cmd = hci_facade.CommandMsg(command=cmd_bytes)
-        if (expect_complete):
-            self.cert.hci.EnqueueCommandWithComplete(cmd)
-        else:
-            self.cert.hci.EnqueueCommandWithStatus(cmd)
+        cmd = common.Data(payload=cmd_bytes)
+        self.cert.hci.SendCommand(cmd)
 
-    def enqueue_acl_data(self, handle, pb_flag, b_flag, acl):
-        acl_msg = hci_facade.AclMsg(
-            handle=int(handle), packet_boundary_flag=int(pb_flag), broadcast_flag=int(b_flag), data=acl)
-        self.cert.hci.SendAclData(acl_msg)
+    def enqueue_acl_data(self, handle, pb_flag, b_flag, data):
+        acl = hci_packets.AclBuilder(handle, pb_flag, b_flag, RawBuilder(data))
+        self.cert.hci.SendAcl(common.Data(payload=bytes(acl.Serialize())))
 
     def dut_connects(self, check_address):
         self.register_for_le_event(hci_packets.SubeventCode.CONNECTION_COMPLETE)
@@ -95,11 +92,10 @@ class LeAclManagerTest(GdBaseTestClass):
                 0xF8,
                 1,  #SID
                 hci_packets.Enable.DISABLED  # Scan request notification
-            ),
-            True)
+            ))
 
         self.enqueue_hci_command(
-            hci_packets.LeSetExtendedAdvertisingRandomAddressBuilder(advertising_handle, '0C:05:04:03:02:01'), True)
+            hci_packets.LeSetExtendedAdvertisingRandomAddressBuilder(advertising_handle, '0C:05:04:03:02:01'))
 
         gap_name = hci_packets.GapData()
         gap_name.data_type = hci_packets.GapDataType.COMPLETE_LOCAL_NAME
@@ -108,7 +104,7 @@ class LeAclManagerTest(GdBaseTestClass):
         self.enqueue_hci_command(
             hci_packets.LeSetExtendedAdvertisingDataBuilder(
                 advertising_handle, hci_packets.Operation.COMPLETE_ADVERTISEMENT,
-                hci_packets.FragmentPreference.CONTROLLER_SHOULD_NOT, [gap_name]), True)
+                hci_packets.FragmentPreference.CONTROLLER_SHOULD_NOT, [gap_name]))
 
         gap_short_name = hci_packets.GapData()
         gap_short_name.data_type = hci_packets.GapDataType.SHORTENED_LOCAL_NAME
@@ -117,14 +113,14 @@ class LeAclManagerTest(GdBaseTestClass):
         self.enqueue_hci_command(
             hci_packets.LeSetExtendedAdvertisingScanResponseBuilder(
                 advertising_handle, hci_packets.Operation.COMPLETE_ADVERTISEMENT,
-                hci_packets.FragmentPreference.CONTROLLER_SHOULD_NOT, [gap_short_name]), True)
+                hci_packets.FragmentPreference.CONTROLLER_SHOULD_NOT, [gap_short_name]))
 
         enabled_set = hci_packets.EnabledSet()
         enabled_set.advertising_handle = advertising_handle
         enabled_set.duration = 0
         enabled_set.max_extended_advertising_events = 0
         self.enqueue_hci_command(
-            hci_packets.LeSetExtendedAdvertisingEnableBuilder(hci_packets.Enable.ENABLED, [enabled_set]), True)
+            hci_packets.LeSetExtendedAdvertisingEnableBuilder(hci_packets.Enable.ENABLED, [enabled_set]))
 
         self.dut_le_acl = self.dut_le_acl_manager.connect_to_remote(
             remote_addr=common.BluetoothAddressWithType(
@@ -136,20 +132,20 @@ class LeAclManagerTest(GdBaseTestClass):
         address = hci_packets.Address()
 
         def get_handle(packet):
-            packet_bytes = packet.event
+            packet_bytes = packet.payload
             nonlocal handle
             nonlocal address
             if b'\x3e\x13\x01\x00' in packet_bytes:
                 cc_view = hci_packets.LeConnectionCompleteView(
                     hci_packets.LeMetaEventView(
-                        hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet_bytes)))))
+                        hci_packets.EventView(bt_packets.PacketViewLittleEndian(list(packet_bytes)))))
                 handle = cc_view.GetConnectionHandle()
                 address = cc_view.GetPeerAddress()
                 return True
             if b'\x3e\x13\x0A\x00' in packet_bytes:
                 cc_view = hci_packets.LeEnhancedConnectionCompleteView(
                     hci_packets.LeMetaEventView(
-                        hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet_bytes)))))
+                        hci_packets.EventView(bt_packets.PacketViewLittleEndian(list(packet_bytes)))))
                 handle = cc_view.GetConnectionHandle()
                 address = cc_view.GetPeerResolvablePrivateAddress()
                 return True
@@ -167,7 +163,7 @@ class LeAclManagerTest(GdBaseTestClass):
                               bytes(b'\x19\x00\x07\x00SomeAclData from the Cert'))
 
         self.dut_le_acl.send(b'\x1C\x00\x07\x00SomeMoreAclData from the DUT')
-        self.cert_acl_data_stream.assert_event_occurs(lambda packet: b'SomeMoreAclData' in packet.data)
+        self.cert_acl_data_stream.assert_event_occurs(lambda packet: b'SomeMoreAclData' in packet.payload)
         assertThat(self.dut_le_acl).emits(lambda packet: b'SomeAclData' in packet.payload)
 
     def test_dut_connects(self):
@@ -224,8 +220,8 @@ class LeAclManagerTest(GdBaseTestClass):
             advertisement=[gap_data],
             interval_min=512,
             interval_max=768,
-            event_type=le_advertising_facade.AdvertisingEventType.ADV_IND,
-            address_type=common.RANDOM_DEVICE_ADDRESS,
+            advertising_type=le_advertising_facade.AdvertisingEventType.ADV_IND,
+            own_address_type=common.USE_RANDOM_DEVICE_ADDRESS,
             peer_address_type=common.PUBLIC_DEVICE_OR_IDENTITY_ADDRESS,
             peer_address=common.BluetoothAddress(address=bytes(b'A6:A5:A4:A3:A2:A1')),
             channel_map=7,
@@ -235,7 +231,7 @@ class LeAclManagerTest(GdBaseTestClass):
         self.dut.hci_le_advertising_manager.CreateAdvertiser(request)
 
         # Cert Connects
-        self.enqueue_hci_command(hci_packets.LeSetRandomAddressBuilder('0C:05:04:03:02:01'), True)
+        self.enqueue_hci_command(hci_packets.LeSetRandomAddressBuilder('0C:05:04:03:02:01'))
         phy_scan_params = hci_packets.LeCreateConnPhyScanParameters()
         phy_scan_params.scan_interval = 0x60
         phy_scan_params.scan_window = 0x30
@@ -249,24 +245,24 @@ class LeAclManagerTest(GdBaseTestClass):
             hci_packets.LeExtendedCreateConnectionBuilder(hci_packets.InitiatorFilterPolicy.USE_PEER_ADDRESS,
                                                           hci_packets.OwnAddressType.RANDOM_DEVICE_ADDRESS,
                                                           hci_packets.AddressType.RANDOM_DEVICE_ADDRESS,
-                                                          self.dut_address.decode(), 1, [phy_scan_params]), False)
+                                                          self.dut_address.decode(), 1, [phy_scan_params]))
 
         # Cert gets ConnectionComplete with a handle and sends ACL data
         handle = 0xfff
 
         def get_handle(packet):
-            packet_bytes = packet.event
+            packet_bytes = packet.payload
             nonlocal handle
             if b'\x3e\x13\x01\x00' in packet_bytes:
                 cc_view = hci_packets.LeConnectionCompleteView(
                     hci_packets.LeMetaEventView(
-                        hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet_bytes)))))
+                        hci_packets.EventView(bt_packets.PacketViewLittleEndian(list(packet_bytes)))))
                 handle = cc_view.GetConnectionHandle()
                 return True
             if b'\x3e\x13\x0A\x00' in packet_bytes:
                 cc_view = hci_packets.LeEnhancedConnectionCompleteView(
                     hci_packets.LeMetaEventView(
-                        hci_packets.EventPacketView(bt_packets.PacketViewLittleEndian(list(packet_bytes)))))
+                        hci_packets.EventView(bt_packets.PacketViewLittleEndian(list(packet_bytes)))))
                 handle = cc_view.GetConnectionHandle()
                 return True
             return False
