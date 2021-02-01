@@ -24,13 +24,20 @@
 #ifndef BTA_AV_INT_H
 #define BTA_AV_INT_H
 
-#include "avdt_api.h"
-#include "bta_api.h"
-#include "bta_av_api.h"
-#include "bta_av_co.h"
-#include "bta_sys.h"
+#include <cstdint>
+#include <string>
+
+#include "bta/av/bta_av_int.h"
+#include "bta/include/bta_av_api.h"
+#include "bta/include/bta_av_co.h"
+#include "bta/sys/bta_sys.h"
 #include "osi/include/list.h"
-#include "stack/include/a2dp_api.h"
+#include "stack/include/avdt_api.h"
+#include "stack/include/bt_types.h"
+
+#define CASE_RETURN_TEXT(code) \
+  case code:                   \
+    return #code
 
 /*****************************************************************************
  *  Constants
@@ -226,13 +233,25 @@ typedef struct {
   uint16_t service_uuid;
 } tBTA_AV_API_REG;
 
-enum {
+typedef enum : uint8_t {
   BTA_AV_RS_NONE, /* straight API call */
   BTA_AV_RS_OK,   /* the role switch result - successful */
   BTA_AV_RS_FAIL, /* the role switch result - failed */
   BTA_AV_RS_DONE  /* the role switch is done - continue */
-};
-typedef uint8_t tBTA_AV_RS_RES;
+} tBTA_AV_RS_RES;
+
+inline std::string bta_av_role_switch_result_text(
+    const tBTA_AV_RS_RES& result) {
+  switch (result) {
+    CASE_RETURN_TEXT(BTA_AV_RS_NONE);
+    CASE_RETURN_TEXT(BTA_AV_RS_OK);
+    CASE_RETURN_TEXT(BTA_AV_RS_FAIL);
+    CASE_RETURN_TEXT(BTA_AV_RS_DONE);
+    default:
+      return std::string("UNKNOWN");
+  }
+}
+
 /* data type for BTA_AV_API_OPEN_EVT */
 typedef struct {
   BT_HDR hdr;
@@ -384,16 +403,19 @@ typedef struct {
       p_app_sink_data_cback; /* Sink application callback for media packets */
 } tBTA_AV_SEP;
 
-/* initiator/acceptor role for adaption */
-#define BTA_AV_ROLE_AD_INT 0x00 /* initiator */
-#define BTA_AV_ROLE_AD_ACP 0x01 /* acceptor */
+enum : uint8_t {
+  /* initiator/acceptor role for adaption */
+  BTA_AV_ROLE_AD_INT = 0x00, /* initiator */
+  BTA_AV_ROLE_AD_ACP = 0x01, /* acceptor */
 
-/* initiator/acceptor signaling roles */
-#define BTA_AV_ROLE_START_ACP 0x00
-#define BTA_AV_ROLE_START_INT 0x10 /* do not change this value */
+  /* initiator/acceptor signaling roles */
+  BTA_AV_ROLE_START_ACP = 0x00,
+  BTA_AV_ROLE_START_INT = 0x10, /* do not change this value */
 
-#define BTA_AV_ROLE_SUSPEND 0x20     /* suspending on start */
-#define BTA_AV_ROLE_SUSPEND_OPT 0x40 /* Suspend on Start option is set */
+  BTA_AV_ROLE_SUSPEND = 0x20,     /* suspending on start */
+  BTA_AV_ROLE_SUSPEND_OPT = 0x40, /* Suspend on Start option is set */
+};
+typedef uint8_t tBTA_AV_ROLE;
 
 /* union of all event datatypes */
 union tBTA_AV_DATA {

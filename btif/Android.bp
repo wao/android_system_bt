@@ -72,6 +72,7 @@ cc_library_static {
         "src/btif_hf_client.cc",
         "src/btif_hh.cc",
         "src/btif_hd.cc",
+        "src/btif_le_audio.cc",
         "src/btif_pan.cc",
         "src/btif_profile_queue.cc",
         "src/btif_rc.cc",
@@ -115,7 +116,6 @@ cc_library_static {
     cflags: [
         "-DBUILDCFG",
     ],
-
 }
 
 // btif unit tests for target
@@ -200,6 +200,9 @@ cc_test {
     defaults: ["fluoride_defaults"],
     test_suites: ["device-tests"],
     host_supported: true,
+    test_options: {
+        unit_test: true,
+    },
     include_dirs: btifCommonIncludes,
     srcs: [
         "test/btif_rc_test.cc",
@@ -233,6 +236,9 @@ cc_test {
     defaults: ["fluoride_defaults"],
     test_suites: ["device-tests"],
     host_supported: true,
+    test_options: {
+        unit_test: true,
+    },
     include_dirs: btifCommonIncludes,
     srcs: [
         "src/btif_config_cache.cc",

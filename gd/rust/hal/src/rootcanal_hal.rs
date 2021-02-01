@@ -2,10 +2,12 @@
 //! This connects to "rootcanal" which provides a simulated
 //! Bluetooth chip as well as a simulated environment.
 
-use crate::{Hal, HalExports, Result, H4_HEADER_SIZE};
-use bt_packet::{HciCommand, HciEvent, HciPacketHeaderSize, HciPacketType, RawPacket};
+use crate::internal::{InnerHal, RawHal};
+use crate::{Result, H4_HEADER_SIZE};
+use bt_packets::hci::{AclPacket, CommandPacket, EventPacket, Packet};
 use bytes::{BufMut, Bytes, BytesMut};
-use gddi::{module, provides};
+use gddi::{module, provides, Stoppable};
+use num_derive::{FromPrimitive, ToPrimitive};
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -13,31 +15,46 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::runtime::Runtime;
 use tokio::select;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+
+#[derive(FromPrimitive, ToPrimitive)]
+enum HciPacketType {
+    Command = 0x01,
+    Acl = 0x02,
+    Sco = 0x03,
+    Event = 0x04,
+}
+
+#[derive(FromPrimitive, ToPrimitive)]
+enum HciPacketHeaderSize {
+    Event = 2,
+    Sco = 3,
+    Acl = 4,
+}
 
 module! {
     rootcanal_hal_module,
     providers {
-        HalExports => provide_rootcanal_hal,
+        RawHal => provide_rootcanal_hal,
     }
 }
 
 #[provides]
-async fn provide_rootcanal_hal(config: RootcanalConfig, rt: Arc<Runtime>) -> HalExports {
-    let (hal_exports, hal) = Hal::new();
+async fn provide_rootcanal_hal(config: RootcanalConfig, rt: Arc<Runtime>) -> RawHal {
+    let (raw_hal, inner_hal) = InnerHal::new();
     let (reader, writer) = TcpStream::connect(&config.to_socket_addr().unwrap())
         .await
         .expect("unable to create stream to rootcanal")
         .into_split();
 
-    rt.spawn(dispatch_incoming(hal.evt_tx, hal.acl_tx, reader));
-    rt.spawn(dispatch_outgoing(hal.cmd_rx, hal.acl_rx, writer));
+    rt.spawn(dispatch_incoming(inner_hal.evt_tx, inner_hal.acl_tx, reader));
+    rt.spawn(dispatch_outgoing(inner_hal.cmd_rx, inner_hal.acl_rx, writer));
 
-    hal_exports
+    raw_hal
 }
 
 /// Rootcanal configuration
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Stoppable)]
 pub struct RootcanalConfig {
     address: String,
     port: u16,
@@ -46,10 +63,7 @@ pub struct RootcanalConfig {
 impl RootcanalConfig {
     /// Create a rootcanal config
     pub fn new(address: &str, port: u16) -> Self {
-        Self {
-            address: String::from(address),
-            port,
-        }
+        Self { address: String::from(address), port }
     }
 
     fn to_socket_addr(&self) -> Result<SocketAddr> {
@@ -59,8 +73,8 @@ impl RootcanalConfig {
 
 /// Send HCI events received from the HAL to the HCI layer
 async fn dispatch_incoming<R>(
-    evt_tx: mpsc::UnboundedSender<HciEvent>,
-    acl_tx: mpsc::UnboundedSender<RawPacket>,
+    evt_tx: UnboundedSender<EventPacket>,
+    acl_tx: UnboundedSender<AclPacket>,
     reader: R,
 ) -> Result<()>
 where
@@ -79,7 +93,7 @@ where
             payload.resize(len, 0);
             reader.read_exact(&mut payload).await?;
             buffer.unsplit(payload);
-            evt_tx.send(buffer.freeze()).unwrap();
+            evt_tx.send(EventPacket::parse(&buffer.freeze()).unwrap()).unwrap();
         } else if buffer[0] == HciPacketType::Acl as u8 {
             buffer.resize(HciPacketHeaderSize::Acl as usize, 0);
             reader.read_exact(&mut buffer).await?;
@@ -88,15 +102,15 @@ where
             payload.resize(len, 0);
             reader.read_exact(&mut payload).await?;
             buffer.unsplit(payload);
-            acl_tx.send(buffer.freeze()).unwrap();
+            acl_tx.send(AclPacket::parse(&buffer.freeze()).unwrap()).unwrap();
         }
     }
 }
 
 /// Send commands received from the HCI later to rootcanal
 async fn dispatch_outgoing<W>(
-    mut cmd_rx: mpsc::UnboundedReceiver<HciCommand>,
-    mut acl_rx: mpsc::UnboundedReceiver<RawPacket>,
+    mut cmd_rx: UnboundedReceiver<CommandPacket>,
+    mut acl_rx: UnboundedReceiver<AclPacket>,
     mut writer: W,
 ) -> Result<()>
 where
@@ -104,8 +118,8 @@ where
 {
     loop {
         select! {
-            Some(cmd) = cmd_rx.recv() => write_with_type(&mut writer, HciPacketType::Command, cmd).await?,
-            Some(acl) = acl_rx.recv() => write_with_type(&mut writer, HciPacketType::Acl, acl).await?,
+            Some(cmd) = cmd_rx.recv() => write_with_type(&mut writer, HciPacketType::Command, cmd.to_bytes()).await?,
+            Some(acl) = acl_rx.recv() => write_with_type(&mut writer, HciPacketType::Acl, acl.to_bytes()).await?,
             else => break,
         }
     }

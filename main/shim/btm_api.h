@@ -637,18 +637,6 @@ bool BTM_UseLeLink(const RawAddress& bd_addr);
 
 /*******************************************************************************
  *
- * Function         BTM_SetBleDataLength
- *
- * Description      Set the maximum BLE transmission packet size
- *
- * Returns          BTM_SUCCESS if success; otherwise failed.
- *
- ******************************************************************************/
-tBTM_STATUS BTM_SetBleDataLength(const RawAddress& bd_addr,
-                                 uint16_t tx_pdu_length);
-
-/*******************************************************************************
- *
  * Function         BTM_BleReadPhy
  *
  * Description      To read the current PHYs for specified LE connection
@@ -839,8 +827,6 @@ void BTM_BleEnableDisableFilterFeature(uint8_t enable,
  *
  ******************************************************************************/
 uint8_t BTM_BleMaxMultiAdvInstanceCount();
-
-void BTM_db_reset(void);
 
 void BTM_reset_complete();
 
@@ -1725,80 +1711,6 @@ bool BTM_PeerSupportsSecureConnections(const RawAddress& bd_addr);
  *
  ******************************************************************************/
 char* BTM_SecReadDevName(const RawAddress& bd_addr);
-
-/*****************************************************************************
- *  POWER MANAGEMENT FUNCTIONS
- ****************************************************************************/
-/*******************************************************************************
- *
- * Function         BTM_PmRegister
- *
- * Description      register or deregister with power manager
- *
- * Returns          BTM_SUCCESS if successful,
- *                  BTM_NO_RESOURCES if no room to hold registration
- *                  BTM_ILLEGAL_VALUE
- *
- ******************************************************************************/
-tBTM_STATUS BTM_PmRegister(uint8_t mask, uint8_t* p_pm_id,
-                           tBTM_PM_STATUS_CBACK* p_cb);
-
-/*******************************************************************************
- *
- * Function         BTM_SetPowerMode
- *
- * Description      store the mode in control block or
- *                  alter ACL connection behavior.
- *
- * Returns          BTM_SUCCESS if successful,
- *                  BTM_UNKNOWN_ADDR if bd addr is not active or bad
- *
- ******************************************************************************/
-tBTM_STATUS BTM_SetPowerMode(uint8_t pm_id, const RawAddress& remote_bda,
-                             const tBTM_PM_PWR_MD* p_mode);
-
-/*******************************************************************************
- *
- * Function         BTM_ReadPowerMode
- *
- * Description      This returns the current mode for a specific
- *                  ACL connection.
- *
- * Input Param      remote_bda - device address of desired ACL connection
- *
- * Output Param     p_mode - address where the current mode is copied into.
- *                          BTM_ACL_MODE_NORMAL
- *                          BTM_ACL_MODE_HOLD
- *                          BTM_ACL_MODE_SNIFF
- *                          BTM_ACL_MODE_PARK
- *                          (valid only if return code is BTM_SUCCESS)
- *
- * Returns          BTM_SUCCESS if successful,
- *                  BTM_UNKNOWN_ADDR if bd addr is not active or bad
- *
- ******************************************************************************/
-bool BTM_ReadPowerMode(const RawAddress& remote_bda, tBTM_PM_MODE* p_mode);
-
-/*******************************************************************************
- *
- * Function         BTM_SetSsrParams
- *
- * Description      This sends the given SSR parameters for the given ACL
- *                  connection if it is in ACTIVE mode.
- *
- * Input Param      remote_bda - device address of desired ACL connection
- *                  max_lat    - maximum latency (in 0.625ms)(0-0xFFFE)
- *                  min_rmt_to - minimum remote timeout
- *                  min_loc_to - minimum local timeout
- *
- *
- * Returns          BTM_SUCCESS if the HCI command is issued successful,
- *                  BTM_UNKNOWN_ADDR if bd addr is not active or bad
- *                  BTM_CMD_STORED if the command is stored
- *
- ******************************************************************************/
-tBTM_STATUS BTM_SetSsrParams(const RawAddress& remote_bda, uint16_t max_lat,
-                             uint16_t min_rmt_to, uint16_t min_loc_to);
 
 /*******************************************************************************
  *

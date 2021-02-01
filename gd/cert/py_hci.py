@@ -23,7 +23,8 @@ from cert.closable import safeClose
 from cert.captures import HciCaptures
 from bluetooth_packets_python3 import hci_packets
 from cert.truth import assertThat
-from hci.facade import facade_pb2 as hci_facade
+from hci.facade import hci_facade_pb2 as hci_facade
+from facade import common_pb2 as common
 from cert.matchers import HciMatchers
 from bluetooth_packets_python3.hci_packets import FilterDuplicates
 from bluetooth_packets_python3.hci_packets import LeSetExtendedAdvertisingLegacyParametersBuilder
@@ -44,6 +45,8 @@ from bluetooth_packets_python3.hci_packets import LeSetExtendedAdvertisingEnable
 from bluetooth_packets_python3.hci_packets import LeSetExtendedScanEnableBuilder
 from bluetooth_packets_python3.hci_packets import EnabledSet
 from bluetooth_packets_python3.hci_packets import OpCode
+from bluetooth_packets_python3.hci_packets import AclBuilder
+from bluetooth_packets_python3 import RawBuilder
 
 
 class PyHciAclConnection(IEventStream):
@@ -55,9 +58,8 @@ class PyHciAclConnection(IEventStream):
         self.our_acl_stream = FilteringEventStream(acl_stream, None)
 
     def send(self, pb_flag, b_flag, data):
-        acl_msg = hci_facade.AclPacket(
-            handle=self.handle, packet_boundary_flag=int(pb_flag), broadcast_flag=int(b_flag), data=data)
-        self.device.hci.SendAcl(acl_msg)
+        acl = AclBuilder(self.handle, pb_flag, b_flag, RawBuilder(data))
+        self.device.hci.SendAcl(common.Data(payload=bytes(acl.Serialize())))
 
     def send_first(self, data):
         self.send(hci_packets.PacketBoundaryFlag.FIRST_AUTOMATICALLY_FLUSHABLE,
@@ -81,7 +83,7 @@ class PyHciAdvertisement(object):
         data = GapData()
         data.data_type = GapDataType.COMPLETE_LOCAL_NAME
         data.data = list(bytes(complete_name))
-        self.py_hci.send_command_with_complete(
+        self.py_hci.send_command(
             LeSetExtendedAdvertisingDataBuilder(self.handle, Operation.COMPLETE_ADVERTISEMENT,
                                                 FragmentPreference.CONTROLLER_SHOULD_NOT, [data]))
 
@@ -89,7 +91,7 @@ class PyHciAdvertisement(object):
         data = GapData()
         data.data_type = GapDataType.SHORTENED_LOCAL_NAME
         data.data = list(bytes(shortened_name))
-        self.py_hci.send_command_with_complete(
+        self.py_hci.send_command(
             LeSetExtendedAdvertisingScanResponseBuilder(self.handle, Operation.COMPLETE_ADVERTISEMENT,
                                                         FragmentPreference.CONTROLLER_SHOULD_NOT, [data]))
 
@@ -98,7 +100,7 @@ class PyHciAdvertisement(object):
         enabled_set.advertising_handle = self.handle
         enabled_set.duration = 0
         enabled_set.max_extended_advertising_events = 0
-        self.py_hci.send_command_with_complete(LeSetExtendedAdvertisingEnableBuilder(Enable.ENABLED, [enabled_set]))
+        self.py_hci.send_command(LeSetExtendedAdvertisingEnableBuilder(Enable.ENABLED, [enabled_set]))
         assertThat(self.py_hci.get_event_stream()).emits(
             HciMatchers.CommandComplete(OpCode.LE_SET_EXTENDED_ADVERTISING_ENABLE))
 
@@ -148,24 +150,20 @@ class PyHci(Closable):
         for event_code in event_codes:
             self.device.hci.RequestLeSubevent(hci_facade.EventRequest(code=int(event_code)))
 
-    def send_command_with_complete(self, command):
-        self.device.hci.SendCommandWithComplete(hci_facade.Command(payload=bytes(command.Serialize())))
-
-    def send_command_with_status(self, command):
-        self.device.hci.SendCommandWithStatus(hci_facade.Command(payload=bytes(command.Serialize())))
+    def send_command(self, command):
+        self.device.hci.SendCommand(common.Data(payload=bytes(command.Serialize())))
 
     def enable_inquiry_and_page_scan(self):
-        self.send_command_with_complete(
-            hci_packets.WriteScanEnableBuilder(hci_packets.ScanEnable.INQUIRY_AND_PAGE_SCAN))
+        self.send_command(hci_packets.WriteScanEnableBuilder(hci_packets.ScanEnable.INQUIRY_AND_PAGE_SCAN))
 
     def read_own_address(self):
-        self.send_command_with_complete(hci_packets.ReadBdAddrBuilder())
+        self.send_command(hci_packets.ReadBdAddrBuilder())
         read_bd_addr = HciCaptures.ReadBdAddrCompleteCapture()
         assertThat(self.event_stream).emits(read_bd_addr)
         return read_bd_addr.get().GetBdAddr()
 
     def initiate_connection(self, remote_addr):
-        self.send_command_with_status(
+        self.send_command(
             hci_packets.CreateConnectionBuilder(
                 remote_addr if isinstance(remote_addr, str) else remote_addr.decode('utf-8'),
                 0xcc18,  # Packet Type
@@ -178,7 +176,7 @@ class PyHci(Closable):
         connection_request = HciCaptures.ConnectionRequestCapture()
         assertThat(self.event_stream).emits(connection_request)
 
-        self.send_command_with_status(
+        self.send_command(
             hci_packets.AcceptConnectionRequestBuilder(connection_request.get().GetBdAddr(),
                                                        hci_packets.AcceptConnectionRequestRole.REMAIN_PERIPHERAL))
         return self.complete_connection()
@@ -207,10 +205,10 @@ class PyHci(Closable):
                              sid=1,
                              scan_request_notification=Enable.DISABLED):
 
-        self.send_command_with_complete(
+        self.send_command(
             LeSetExtendedAdvertisingLegacyParametersBuilder(handle, properties, min_interval, max_interval, channel_map,
                                                             own_address_type, peer_address_type, peer_address,
                                                             filter_policy, tx_power, sid, scan_request_notification))
 
-        self.send_command_with_complete(LeSetExtendedAdvertisingRandomAddressBuilder(handle, own_address))
+        self.send_command(LeSetExtendedAdvertisingRandomAddressBuilder(handle, own_address))
         return PyHciAdvertisement(handle, self)

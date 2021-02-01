@@ -1,9 +1,21 @@
 rust_library {
     name: "libgddi",
+    defaults: ["gd_rust_defaults"],
     crate_name: "gddi",
     srcs: ["src/lib.rs"],
-    host_supported: true,
     edition: "2018",
     proc_macros: ["libgddi_macros"],
     rustlibs: ["libtokio"],
+}
+
+rust_proc_macro {
+    name: "libgddi_macros",
+    crate_name: "gddi_macros",
+    srcs: ["macros/lib.rs"],
+    edition: "2018",
+    rustlibs: [
+        "libproc_macro2",
+        "libquote",
+        "libsyn",
+    ],
 }

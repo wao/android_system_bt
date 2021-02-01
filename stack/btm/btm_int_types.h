@@ -32,6 +32,7 @@
 #include "stack/btm/neighbor_inquiry.h"
 #include "stack/btm/security_device_record.h"
 #include "stack/include/btm_ble_api_types.h"
+#include "stack/include/security_client_callbacks.h"
 
 #define BTM_SEC_IS_SM4(sm) ((bool)(BTM_SM4_TRUE == ((sm)&BTM_SM4_TRUE)))
 #define BTM_SEC_IS_SM4_LEGACY(sm) ((bool)(BTM_SM4_KNOWN == ((sm)&BTM_SM4_TRUE)))
@@ -66,32 +67,14 @@ class TimestampedStringCircularBuffer
 };
 
 /*
- * Define device configuration structure
-*/
+ * Local device configuration
+ */
 typedef struct {
   tBTM_LOC_BD_NAME bd_name;  /* local Bluetooth device name */
   bool pin_type;             /* true if PIN type is fixed */
   uint8_t pin_code_len;      /* Bonding information */
   PIN_CODE pin_code;         /* PIN CODE if pin type is fixed */
-  bool connectable;          /* If true page scan should be enabled */
-  uint8_t def_inq_scan_mode; /* ??? limited/general/none */
 } tBTM_CFG;
-
-enum {
-  BTM_PM_ST_ACTIVE = BTM_PM_STS_ACTIVE,
-  BTM_PM_ST_HOLD = BTM_PM_STS_HOLD,
-  BTM_PM_ST_SNIFF = BTM_PM_STS_SNIFF,
-  BTM_PM_ST_PARK = BTM_PM_STS_PARK,
-  BTM_PM_ST_PENDING = BTM_PM_STS_PENDING,
-  BTM_PM_ST_INVALID = 0xFF
-};
-
-#define BTM_PM_REC_NOT_USED 0
-typedef struct {
-  tBTM_PM_STATUS_CBACK*
-      cback;    /* to notify the registered party of mode change event */
-  uint8_t mask; /* registered request mask. 0, if this entry is not used */
-} tBTM_PM_RCB;
 
 /* Pairing State */
 enum {
@@ -206,17 +189,30 @@ typedef struct {
 
   tBTM_IO_CAP loc_io_caps;    /* IO capability of the local device */
   tBTM_AUTH_REQ loc_auth_req; /* the auth_req flag  */
+
+  void Init() {
+    read_local_name_timer = alarm_new("btm.read_local_name_timer");
+    read_rssi_timer = alarm_new("btm.read_rssi_timer");
+    read_failed_contact_counter_timer =
+        alarm_new("btm.read_failed_contact_counter_timer");
+    read_automatic_flush_timeout_timer =
+        alarm_new("btm.read_automatic_flush_timeout_timer");
+    read_link_quality_timer = alarm_new("btm.read_link_quality_timer");
+    read_tx_power_timer = alarm_new("btm.read_tx_power_timer");
+  }
+
+  void Free() {
+    alarm_free(read_local_name_timer);
+    alarm_free(read_rssi_timer);
+    alarm_free(read_failed_contact_counter_timer);
+    alarm_free(read_automatic_flush_timeout_timer);
+    alarm_free(read_link_quality_timer);
+    alarm_free(read_tx_power_timer);
+  }
 } tBTM_DEVCB;
 
 typedef struct {
   tBTM_CFG cfg; /* Device configuration */
-
-  /****************************************************
-  **      Power Management
-  ****************************************************/
-  tBTM_PM_RCB pm_reg_db[BTM_MAX_PM_RECORDS + 1]; /* per application/module */
-
-  uint8_t pm_pend_id{0}; /* the id pf the module, which has a pending PM cmd */
 
   /*****************************************************
   **      Device control
@@ -313,13 +309,16 @@ typedef struct {
   // BQR Receiver
   tBTM_BT_QUALITY_REPORT_RECEIVER* p_bqr_report_receiver{nullptr};
 
+#define BTM_CODEC_TYPE_MAX_RECORDS 32
+  tBTM_BT_DYNAMIC_AUDIO_BUFFER_CB
+      dynamic_audio_buffer_cb[BTM_CODEC_TYPE_MAX_RECORDS];
+
   tACL_CB acl_cb_;
 
   std::shared_ptr<TimestampedStringCircularBuffer> history_{nullptr};
 
   void Init(uint8_t initial_security_mode) {
     memset(&cfg, 0, sizeof(cfg));
-    memset(pm_reg_db, 0, sizeof(pm_reg_db));
     memset(&devcb, 0, sizeof(devcb));
     memset(&ble_ctr_cb, 0, sizeof(ble_ctr_cb));
     memset(&enc_rand, 0, sizeof(enc_rand));
@@ -349,9 +348,24 @@ typedef struct {
     security_mode = initial_security_mode;
     pairing_bda = RawAddress::kAny;
     sec_dev_rec = list_new(osi_free);
+
+    /* Initialize BTM component structures */
+    btm_inq_vars.Init(); /* Inquiry Database and Structures */
+    acl_cb_.Init();      /* ACL Database and Structures */
+    sco_cb.Init();       /* SCO Database and Structures (If included) */
+    devcb.Init();
+
+    history_ = std::make_shared<TimestampedStringCircularBuffer>(40);
+    CHECK(history_ != nullptr);
+    history_->Push(std::string("Initialized btm history"));
   }
 
   void Free() {
+    history_.reset();
+
+    devcb.Free();
+    btm_inq_vars.Free();
+
     fixed_queue_free(page_queue, nullptr);
     page_queue = nullptr;
 

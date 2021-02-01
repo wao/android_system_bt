@@ -59,6 +59,7 @@ class MockLeAclConnection : public LeAclConnection {
   MOCK_METHOD(AddressWithType, GetRemoteAddress, (), (const, override));
   MOCK_METHOD(void, Disconnect, (DisconnectReason reason), (override));
   MOCK_METHOD(void, RegisterCallbacks, (LeConnectionManagementCallbacks * callbacks, os::Handler* handler), (override));
+  MOCK_METHOD(bool, ReadRemoteVersionInformation, (), (override));
 
   QueueUpEnd* GetAclQueueEnd() const override {
     return acl_queue_.GetUpEnd();
@@ -78,7 +79,6 @@ class MockAclManager : public AclManager {
       SetPrivacyPolicyForInitiatorAddress,
       (LeAddressManager::AddressPolicy address_policy,
        AddressWithType fixed_address,
-       crypto_toolbox::Octet16 rotation_irk,
        std::chrono::milliseconds minimum_rotation_time,
        std::chrono::milliseconds maximum_rotation_time),
       (override));

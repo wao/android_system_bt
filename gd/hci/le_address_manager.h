@@ -37,7 +37,7 @@ class LeAddressManagerCallback {
 class LeAddressManager {
  public:
   LeAddressManager(
-      common::Callback<void(std::unique_ptr<CommandPacketBuilder>)> enqueue_command,
+      common::Callback<void(std::unique_ptr<CommandBuilder>)> enqueue_command,
       os::Handler* handler,
       Address public_address,
       uint8_t connect_list_size,
@@ -66,6 +66,7 @@ class LeAddressManager {
       crypto_toolbox::Octet16 rotation_irk,
       std::chrono::milliseconds minimum_rotation_time,
       std::chrono::milliseconds maximum_rotation_time);
+  AddressPolicy GetAddressPolicy();
   void AckPause(LeAddressManagerCallback* callback);
   void AckResume(LeAddressManagerCallback* callback);
   virtual AddressPolicy Register(LeAddressManagerCallback* callback);
@@ -86,23 +87,9 @@ class LeAddressManager {
   void ClearConnectList();
   void ClearResolvingList();
   void OnCommandComplete(CommandCompleteView view);
+  std::chrono::milliseconds GetNextPrivateAddressIntervalMs();
 
  private:
-  void pause_registered_clients();
-  void ack_pause(LeAddressManagerCallback* callback);
-  void resume_registered_clients();
-  void ack_resume(LeAddressManagerCallback* callback);
-  void register_client(LeAddressManagerCallback* callback);
-  void unregister_client(LeAddressManagerCallback* callback);
-  void prepare_to_rotate();
-  void rotate_random_address();
-  void schedule_rotate_random_address();
-  void set_random_address();
-  hci::Address generate_rpa();
-  hci::Address generate_nrpa();
-  std::chrono::milliseconds get_next_private_address_interval_ms();
-  void handle_next_command();
-
   enum ClientState {
     WAITING_FOR_PAUSE,
     PAUSED,
@@ -122,15 +109,31 @@ class LeAddressManager {
 
   struct Command {
     CommandType command_type;
-    std::unique_ptr<CommandPacketBuilder> command_packet;
+    std::unique_ptr<CommandBuilder> command_packet;
   };
 
-  common::Callback<void(std::unique_ptr<CommandPacketBuilder>)> enqueue_command_;
+  void pause_registered_clients();
+  void push_command(Command command);
+  void ack_pause(LeAddressManagerCallback* callback);
+  void resume_registered_clients();
+  void ack_resume(LeAddressManagerCallback* callback);
+  void register_client(LeAddressManagerCallback* callback);
+  void unregister_client(LeAddressManagerCallback* callback);
+  void prepare_to_rotate();
+  void rotate_random_address();
+  void schedule_rotate_random_address();
+  void set_random_address();
+  hci::Address generate_rpa();
+  hci::Address generate_nrpa();
+  void handle_next_command();
+
+  common::Callback<void(std::unique_ptr<CommandBuilder>)> enqueue_command_;
   os::Handler* handler_;
   std::map<LeAddressManagerCallback*, ClientState> registered_clients_;
 
   AddressPolicy address_policy_ = AddressPolicy::POLICY_NOT_SET;
   AddressWithType le_address_;
+  AddressWithType cached_address_;
   Address public_address_;
   std::unique_ptr<os::Alarm> address_rotation_alarm_;
   crypto_toolbox::Octet16 rotation_irk_;

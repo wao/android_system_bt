@@ -139,7 +139,6 @@
 #define HCI_FLUSH (0x0008 | HCI_GRP_HOST_CONT_BASEBAND_CMDS)
 #define HCI_READ_PIN_TYPE (0x0009 | HCI_GRP_HOST_CONT_BASEBAND_CMDS)
 #define HCI_WRITE_PIN_TYPE (0x000A | HCI_GRP_HOST_CONT_BASEBAND_CMDS)
-#define HCI_CREATE_NEW_UNIT_KEY (0x000B | HCI_GRP_HOST_CONT_BASEBAND_CMDS)
 #define HCI_GET_MWS_TRANS_LAYER_CFG (0x000C | HCI_GRP_HOST_CONT_BASEBAND_CMDS)
 #define HCI_READ_STORED_LINK_KEY (0x000D | HCI_GRP_HOST_CONT_BASEBAND_CMDS)
 #define HCI_WRITE_STORED_LINK_KEY (0x0011 | HCI_GRP_HOST_CONT_BASEBAND_CMDS)
@@ -427,6 +426,7 @@
 #define HCI_LE_ISO_READ_TEST_CNTRS (0x0072 | HCI_GRP_BLE_CMDS)
 #define HCI_LE_ISO_TEST_END (0x0073 | HCI_GRP_BLE_CMDS)
 #define HCI_LE_SET_HOST_FEATURE (0x0074 | HCI_GRP_BLE_CMDS)
+#define HCI_LE_READ_ISO_LINK_QUALITY (0x0075 | HCI_GRP_BLE_CMDS)
 
 /* Multi adv opcode */
 #define HCI_BLE_MULTI_ADV (0x0154 | HCI_GRP_VENDOR_SPECIFIC)
@@ -436,9 +436,6 @@
 
 /* ADV filter opcode */
 #define HCI_BLE_ADV_FILTER (0x0157 | HCI_GRP_VENDOR_SPECIFIC)
-
-/* Tracking opcode */
-#define HCI_BLE_TRACK_ADV (0x0158 | HCI_GRP_VENDOR_SPECIFIC)
 
 /* Energy info opcode */
 #define HCI_BLE_ENERGY_INFO (0x0159 | HCI_GRP_VENDOR_SPECIFIC)
@@ -451,6 +448,11 @@
 
 /* Bluetooth Quality Report opcode */
 #define HCI_CONTROLLER_BQR (0x015E | HCI_GRP_VENDOR_SPECIFIC)
+
+/* Bluetooth Dynamic Audio Buffer opcode */
+#define HCI_CONTROLLER_DAB (0x015F | HCI_GRP_VENDOR_SPECIFIC)
+#define HCI_CONTROLLER_DAB_GET_BUFFER_TIME 0x01
+#define HCI_CONTROLLER_DAB_SET_BUFFER_TIME 0x02
 
 /* subcode for multi adv feature */
 #define BTM_BLE_MULTI_ADV_SET_PARAM 0x01
@@ -713,10 +715,27 @@ inline std::string RoleText(hci_role_t role) {
 }
 
 /* HCI mode defenitions */
-#define HCI_MODE_ACTIVE 0x00
-#define HCI_MODE_HOLD 0x01
-#define HCI_MODE_SNIFF 0x02
-#define HCI_MODE_PARK 0x03
+typedef enum : uint8_t {
+  HCI_MODE_ACTIVE = 0x00,
+  HCI_MODE_HOLD = 0x01,
+  HCI_MODE_SNIFF = 0x02,
+  HCI_MODE_PARK = 0x03,
+} tHCI_MODE;
+
+inline std::string hci_mode_text(const tHCI_MODE& mode) {
+  switch (mode) {
+    case HCI_MODE_ACTIVE:
+      return std::string("active");
+    case HCI_MODE_HOLD:
+      return std::string("hold");
+    case HCI_MODE_SNIFF:
+      return std::string("sniff");
+    case HCI_MODE_PARK:
+      return std::string("park");
+    default:
+      return std::string("UNKNOWN");
+  }
+}
 
 /* Page scan period modes */
 #define HCI_PAGE_SCAN_REP_MODE_R1 0x01
@@ -789,7 +808,11 @@ inline std::string RoleText(hci_role_t role) {
 #define HCI_DEF_INQUIRYSCAN_WINDOW 0x12   /* 11.25 ms */
 
 /* Encryption modes */
-#define HCI_ENCRYPT_MODE_DISABLED 0x00
+typedef enum : uint8_t {
+  HCI_ENCRYPT_MODE_DISABLED = 0x00,
+  HCI_ENCRYPT_MODE_ON = 0x01,
+  HCI_ENCRYPT_MODE_ON_BR_EDR_AES_CCM = 0x02,
+} tHCI_ENCRYPT_MODE;
 
 /* Voice settings */
 #define HCI_INP_CODING_LINEAR 0x0000 /* 0000000000 */
@@ -952,7 +975,7 @@ typedef struct {
 #define HCI_3_SLOT_EDR_ACL_SUPPORTED(x) ((x)[4] & 0x80)
 
 #define HCI_5_SLOT_EDR_ACL_SUPPORTED(x) ((x)[5] & 0x01)
-#define HCI_SNIFF_SUB_RATE_SUPPORTED(x) ((x)[5] & 0x02)
+#define HCI_SNIFF_SUB_RATE_SUPPORTED(x) (static_cast<bool>((x)[5] & 0x02))
 #define HCI_ATOMIC_ENCRYPT_SUPPORTED(x) ((x)[5] & 0x04)
 #define HCI_LMP_AFH_CAP_MASTR_SUPPORTED(x) ((x)[5] & 0x08)
 #define HCI_LMP_AFH_CLASS_MASTR_SUPPORTED(x) ((x)[5] & 0x10)
@@ -1065,7 +1088,6 @@ typedef struct {
 #define HCI_FLUSH_SUPPORTED(x) ((x)[6] & 0x02)
 #define HCI_READ_PIN_TYPE_SUPPORTED(x) ((x)[6] & 0x04)
 #define HCI_WRITE_PIN_TYPE_SUPPORTED(x) ((x)[6] & 0x08)
-#define HCI_CREATE_NEW_UNIT_KEY_SUPPORTED(x) ((x)[6] & 0x10)
 #define HCI_READ_STORED_LINK_KEY_SUPPORTED(x) ((x)[6] & 0x20)
 #define HCI_WRITE_STORED_LINK_KEY_SUPPORTED(x) ((x)[6] & 0x40)
 #define HCI_DELETE_STORED_LINK_KEY_SUPPORTED(x) ((x)[6] & 0x80)

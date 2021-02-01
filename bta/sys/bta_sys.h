@@ -27,6 +27,7 @@
 #include "bt_common.h"
 #include "bt_target.h"
 #include "osi/include/alarm.h"
+#include "stack/include/hci_error_code.h"
 
 #include <base/logging.h>
 #include <base/threading/thread.h>
@@ -92,6 +93,8 @@ inline std::string BtaIdSysText(tBTA_SYS_ID sys_id) {
   switch (sys_id) {
     case BTA_ID_DM_SEARCH:
       return std::string("Scanner");
+    case BTA_ID_AG:
+      return std::string("Audio gateway");
     case BTA_ID_PAN:
       return std::string("PAN Personal area network");
     case BTA_ID_AV:
@@ -107,18 +110,42 @@ inline std::string BtaIdSysText(tBTA_SYS_ID sys_id) {
   }
 }
 
-#define BTA_SYS_CONN_OPEN 0x00
-#define BTA_SYS_CONN_CLOSE 0x01
-#define BTA_SYS_APP_OPEN 0x02
-#define BTA_SYS_APP_CLOSE 0x03
-#define BTA_SYS_SCO_OPEN 0x04
-#define BTA_SYS_SCO_CLOSE 0x05
-#define BTA_SYS_CONN_IDLE 0x06
-#define BTA_SYS_CONN_BUSY 0x07
+typedef enum : uint8_t {
+  BTA_SYS_CONN_OPEN = 0x00,
+  BTA_SYS_CONN_CLOSE = 0x01,
+  BTA_SYS_APP_OPEN = 0x02,
+  BTA_SYS_APP_CLOSE = 0x03,
+  BTA_SYS_SCO_OPEN = 0x04,
+  BTA_SYS_SCO_CLOSE = 0x05,
+  BTA_SYS_CONN_IDLE = 0x06,
+  BTA_SYS_CONN_BUSY = 0x07,
+  BTA_SYS_ROLE_CHANGE = 0x14, /* role change */
+} tBTA_SYS_CONN_STATUS;
 
-#define BTA_SYS_ROLE_CHANGE 0x14  /* role change */
-
-typedef uint8_t tBTA_SYS_CONN_STATUS;
+inline std::string bta_sys_conn_status_text(tBTA_SYS_CONN_STATUS status) {
+  switch (status) {
+    case BTA_SYS_CONN_OPEN:
+      return std::string("BTA_SYS_CONN_OPEN");
+    case BTA_SYS_CONN_CLOSE:
+      return std::string("BTA_SYS_CONN_CLOSE");
+    case BTA_SYS_APP_OPEN:
+      return std::string("BTA_SYS_APP_OPEN");
+    case BTA_SYS_APP_CLOSE:
+      return std::string("BTA_SYS_APP_CLOSE");
+    case BTA_SYS_SCO_OPEN:
+      return std::string("BTA_SYS_SCO_OPEN");
+    case BTA_SYS_SCO_CLOSE:
+      return std::string("BTA_SYS_SCO_CLOSE");
+    case BTA_SYS_CONN_IDLE:
+      return std::string("BTA_SYS_CONN_IDLE");
+    case BTA_SYS_CONN_BUSY:
+      return std::string("BTA_SYS_CONN_BUSY");
+    case BTA_SYS_ROLE_CHANGE:
+      return std::string("BTA_SYS_ROLE_CHANGE");
+    default:
+      return std::string("UNKNOWN");
+  }
+}
 
 /* conn callback for role / low power manager*/
 typedef void(tBTA_SYS_CONN_CBACK)(tBTA_SYS_CONN_STATUS status, uint8_t id,
@@ -200,15 +227,13 @@ extern void bta_sys_idle(uint8_t id, uint8_t app_id,
 extern void bta_sys_busy(uint8_t id, uint8_t app_id,
                          const RawAddress& peer_addr);
 
-#if (BTM_SSR_INCLUDED == TRUE)
 extern void bta_sys_ssr_cfg_register(tBTA_SYS_SSR_CFG_CBACK* p_cback);
 extern void bta_sys_chg_ssr_config(uint8_t id, uint8_t app_id,
                                    uint16_t max_latency, uint16_t min_tout);
-#endif
 
 extern void bta_sys_role_chg_register(tBTA_SYS_CONN_CBACK* p_cback);
 extern void bta_sys_notify_role_chg(const RawAddress& peer_addr,
-                                    uint8_t new_role, uint8_t hci_status);
+                                    uint8_t new_role, tHCI_STATUS hci_status);
 extern void bta_sys_collision_register(uint8_t bta_id,
                                        tBTA_SYS_CONN_CBACK* p_cback);
 extern void bta_sys_notify_collision(const RawAddress& peer_addr);

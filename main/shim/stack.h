@@ -20,12 +20,14 @@
 
 #include "main/shim/acl.h"
 #include "main/shim/btm.h"
+#include "main/shim/link_policy_interface.h"
 
 #include "gd/module.h"
 #include "gd/os/handler.h"
 #include "gd/os/thread.h"
 #include "gd/os/utils.h"
 #include "gd/stack_manager.h"
+#include "src/stack.rs.h"
 
 // The shim layer implementation on the Gd stack side.
 namespace bluetooth {
@@ -49,8 +51,15 @@ class Stack {
 
   StackManager* GetStackManager();
   legacy::Acl* GetAcl();
+  LinkPolicyInterface* LinkPolicy();
+
   Btm* GetBtm();
   os::Handler* GetHandler();
+
+  ::rust::Box<rust::Hci>* GetRustHci() { return rust_hci_; }
+  ::rust::Box<rust::Controller>* GetRustController() {
+    return rust_controller_;
+  }
 
   DISALLOW_COPY_AND_ASSIGN(Stack);
 
@@ -62,6 +71,9 @@ class Stack {
   os::Handler* stack_handler_ = nullptr;
   legacy::Acl* acl_ = nullptr;
   Btm* btm_ = nullptr;
+  ::rust::Box<rust::Stack>* rust_stack_ = nullptr;
+  ::rust::Box<rust::Hci>* rust_hci_ = nullptr;
+  ::rust::Box<rust::Controller>* rust_controller_ = nullptr;
 
   void Start(ModuleList* modules);
 };

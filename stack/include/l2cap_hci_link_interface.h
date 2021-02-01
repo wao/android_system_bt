@@ -21,9 +21,6 @@
 
 // This header contains functions for HCI-LinkManagement to invoke
 
-extern void l2c_link_hci_conn_comp(uint8_t status, uint16_t handle,
-                                   const RawAddress& p_bda);
-
 extern bool l2c_link_hci_disc_comp(uint16_t handle, uint8_t reason);
 
 extern void l2c_link_role_changed(const RawAddress* bd_addr, uint8_t new_role,
@@ -51,13 +48,11 @@ extern void l2cble_notify_le_connection(const RawAddress& bda);
 
 void l2cble_use_preferred_conn_params(const RawAddress& bda);
 
-#if (BLE_LLT_INCLUDED == TRUE)
 extern void l2cble_process_rc_param_request_evt(uint16_t handle,
                                                 uint16_t int_min,
                                                 uint16_t int_max,
                                                 uint16_t latency,
                                                 uint16_t timeout);
-#endif
 
 // Invoked when HCI mode is changed to HCI_MODE_ACTIVE or HCI_MODE_SNIFF
 extern void l2c_OnHciModeChangeSendPendingPackets(RawAddress remote);

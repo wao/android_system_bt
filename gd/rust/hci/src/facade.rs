@@ -1,156 +1,135 @@
 //! HCI layer facade
 
-use crate::HciExports;
-use bt_hci_proto::empty::Empty;
-use bt_hci_proto::facade::*;
-use bt_hci_proto::facade_grpc::{create_hci_layer_facade, HciLayerFacade};
-use futures::prelude::*;
-use futures::sink::SinkExt;
-use gddi::{module, provides};
+use crate::{EventRegistry, RawCommandSender};
+use bt_common::GrpcFacade;
+use bt_facade_helpers::RxAdapter;
+use bt_facade_proto::common::Data;
+use bt_facade_proto::empty::Empty;
+use bt_facade_proto::hci_facade::EventRequest;
+use bt_facade_proto::hci_facade_grpc::{create_hci_facade, HciFacade};
+use bt_hal::AclHal;
+use bt_packets::hci::{
+    AclPacket, CommandPacket, EventCode, EventPacket, LeMetaEventPacket, SubeventCode,
+};
+use gddi::{module, provides, Stoppable};
 use grpcio::*;
-use std::sync::Arc;
-use tokio::runtime::Runtime;
-use log::error;
+use num_traits::FromPrimitive;
+use tokio::sync::mpsc::{channel, Sender};
 
 module! {
     facade_module,
     providers {
-        HciLayerFacadeService => provide_facade,
+        HciFacadeService => provide_facade,
     }
 }
 
 #[provides]
-async fn provide_facade(hci_exports: HciExports, rt: Arc<Runtime>) -> HciLayerFacadeService {
-    HciLayerFacadeService { hci_exports, rt }
+async fn provide_facade(
+    commands: RawCommandSender,
+    events: EventRegistry,
+    acl: AclHal,
+) -> HciFacadeService {
+    let (evt_tx, evt_rx) = channel::<EventPacket>(10);
+    let (le_evt_tx, le_evt_rx) = channel::<LeMetaEventPacket>(10);
+    HciFacadeService {
+        commands,
+        events,
+        evt_tx,
+        evt_rx: RxAdapter::new(evt_rx),
+        le_evt_tx,
+        le_evt_rx: RxAdapter::new(le_evt_rx),
+        acl_tx: acl.tx,
+        acl_rx: RxAdapter::from_arc(acl.rx),
+    }
 }
 
 /// HCI layer facade service
-#[derive(Clone)]
-pub struct HciLayerFacadeService {
-    hci_exports: HciExports,
-    rt: Arc<Runtime>,
+#[allow(missing_docs)]
+#[derive(Clone, Stoppable)]
+pub struct HciFacadeService {
+    pub commands: RawCommandSender,
+    events: EventRegistry,
+    evt_tx: Sender<EventPacket>,
+    pub evt_rx: RxAdapter<EventPacket>,
+    le_evt_tx: Sender<LeMetaEventPacket>,
+    pub le_evt_rx: RxAdapter<LeMetaEventPacket>,
+    pub acl_tx: Sender<AclPacket>,
+    pub acl_rx: RxAdapter<AclPacket>,
 }
 
-impl HciLayerFacadeService {
-    /// Convert to a grpc service
-    pub fn create_grpc(self) -> grpcio::Service {
-        create_hci_layer_facade(self)
+impl HciFacadeService {
+    /// Register for the event & plug in the channel to get them back on
+    pub async fn register_event(&mut self, code: u32) {
+        self.events.register(EventCode::from_u32(code).unwrap(), self.evt_tx.clone()).await;
+    }
+
+    /// Register for the le event & plug in the channel to get them back on
+    pub async fn register_le_event(&mut self, code: u32) {
+        self.events
+            .register_le(SubeventCode::from_u32(code).unwrap(), self.le_evt_tx.clone())
+            .await;
     }
 }
 
-impl HciLayerFacade for HciLayerFacadeService {
-    fn send_command_with_complete(
-        &mut self,
-        ctx: RpcContext<'_>,
-        mut cmd: Command,
-        sink: UnarySink<Empty>,
-    ) {
-        self.rt.block_on(
-            self.hci_exports
-                .enqueue_command_with_complete(cmd.take_payload().into()),
-        );
+impl GrpcFacade for HciFacadeService {
+    fn into_grpc(self) -> grpcio::Service {
+        create_hci_facade(self)
+    }
+}
 
-        let f = sink
-            .success(Empty::default())
-            .map_err(|e: grpcio::Error| {
-                error!(
-                    "failed to handle enqueue_command_with_complete request: {:?}",
-                    e
-                )
-            })
-            .map(|_| ());
-
-        ctx.spawn(f);
+impl HciFacade for HciFacadeService {
+    fn send_command(&mut self, ctx: RpcContext<'_>, mut data: Data, sink: UnarySink<Empty>) {
+        let packet = CommandPacket::parse(&data.take_payload()).unwrap();
+        let mut commands = self.commands.clone();
+        ctx.spawn(async move {
+            commands.send(packet).await.unwrap();
+            sink.success(Empty::default()).await.unwrap();
+        });
     }
 
-    fn send_command_with_status(
-        &mut self,
-        ctx: RpcContext<'_>,
-        mut cmd: Command,
-        sink: UnarySink<Empty>,
-    ) {
-        self.rt.block_on(
-            self.hci_exports
-                .enqueue_command_with_complete(cmd.take_payload().into()),
-        );
-
-        let f = sink
-            .success(Empty::default())
-            .map_err(|e: grpcio::Error| {
-                error!(
-                    "failed to handle enqueue_command_with_status request: {:?}",
-                    e
-                )
-            })
-            .map(|_| ());
-
-        ctx.spawn(f);
-    }
-
-    fn request_event(&mut self, ctx: RpcContext<'_>, code: EventRequest, sink: UnarySink<Empty>) {
-        self.rt.block_on(
-            self.hci_exports
-                .register_event_handler(code.get_code() as u8),
-        );
-
-        let f = sink
-            .success(Empty::default())
-            .map_err(|e: grpcio::Error| {
-                error!(
-                    "failed to handle enqueue_command_with_status request: {:?}",
-                    e
-                )
-            })
-            .map(|_| ());
-
-        ctx.spawn(f);
+    fn request_event(&mut self, ctx: RpcContext<'_>, req: EventRequest, sink: UnarySink<Empty>) {
+        let mut clone = self.clone();
+        ctx.spawn(async move {
+            clone.register_event(req.get_code()).await;
+            sink.success(Empty::default()).await.unwrap();
+        });
     }
 
     fn request_le_subevent(
         &mut self,
-        _ctx: RpcContext<'_>,
-        _code: EventRequest,
-        _sink: UnarySink<Empty>,
+        ctx: RpcContext<'_>,
+        req: EventRequest,
+        sink: UnarySink<Empty>,
     ) {
-        unimplemented!()
-    }
-
-    fn send_acl(&mut self, _ctx: RpcContext<'_>, _data: AclPacket, _sink: UnarySink<Empty>) {
-        unimplemented!()
-    }
-
-    fn stream_events(
-        &mut self,
-        _ctx: RpcContext<'_>,
-        _req: Empty,
-        mut resp: ServerStreamingSink<Event>,
-    ) {
-        let evt_rx = self.hci_exports.evt_rx.clone();
-
-        self.rt.spawn(async move {
-            while let Some(event) = evt_rx.lock().await.recv().await {
-                let mut evt = Event::default();
-                evt.set_payload(event.to_vec());
-                resp.send((evt, WriteFlags::default())).await.unwrap();
-            }
+        let mut clone = self.clone();
+        ctx.spawn(async move {
+            clone.register_le_event(req.get_code()).await;
+            sink.success(Empty::default()).await.unwrap();
         });
+    }
+
+    fn send_acl(&mut self, ctx: RpcContext<'_>, mut packet: Data, sink: UnarySink<Empty>) {
+        let acl_tx = self.acl_tx.clone();
+        ctx.spawn(async move {
+            acl_tx.send(AclPacket::parse(&packet.take_payload()).unwrap()).await.unwrap();
+            sink.success(Empty::default()).await.unwrap();
+        });
+    }
+
+    fn stream_events(&mut self, ctx: RpcContext<'_>, _req: Empty, sink: ServerStreamingSink<Data>) {
+        self.evt_rx.stream_grpc(ctx, sink);
     }
 
     fn stream_le_subevents(
         &mut self,
-        _ctx: RpcContext<'_>,
+        ctx: RpcContext<'_>,
         _req: Empty,
-        mut _resp: ServerStreamingSink<LeSubevent>,
+        sink: ServerStreamingSink<Data>,
     ) {
-        unimplemented!()
+        self.le_evt_rx.stream_grpc(ctx, sink);
     }
 
-    fn stream_acl(
-        &mut self,
-        _ctx: RpcContext<'_>,
-        _req: Empty,
-        mut _resp: ServerStreamingSink<AclPacket>,
-    ) {
-        unimplemented!()
+    fn stream_acl(&mut self, ctx: RpcContext<'_>, _req: Empty, sink: ServerStreamingSink<Data>) {
+        self.acl_rx.stream_grpc(ctx, sink);
     }
 }

@@ -69,15 +69,16 @@ static void bta_gattc_conn_update_cback(tGATT_IF gatt_if, uint16_t conn_id,
                                         uint16_t interval, uint16_t latency,
                                         uint16_t timeout, tGATT_STATUS status);
 
-static tGATT_CBACK bta_gattc_cl_cback = {bta_gattc_conn_cback,
-                                         bta_gattc_cmpl_cback,
-                                         bta_gattc_disc_res_cback,
-                                         bta_gattc_disc_cmpl_cback,
-                                         NULL,
-                                         bta_gattc_enc_cmpl_cback,
-                                         bta_gattc_cong_cback,
-                                         bta_gattc_phy_update_cback,
-                                         bta_gattc_conn_update_cback};
+static tGATT_CBACK bta_gattc_cl_cback = {
+    .p_conn_cb = bta_gattc_conn_cback,
+    .p_cmpl_cb = bta_gattc_cmpl_cback,
+    .p_disc_res_cb = bta_gattc_disc_res_cback,
+    .p_disc_cmpl_cb = bta_gattc_disc_cmpl_cback,
+    .p_req_cb = nullptr,
+    .p_enc_cmpl_cb = bta_gattc_enc_cmpl_cback,
+    .p_congestion_cb = bta_gattc_cong_cback,
+    .p_phy_update_cb = bta_gattc_phy_update_cback,
+    .p_conn_update_cb = bta_gattc_conn_update_cback};
 
 /* opcode(tGATTC_OPTYPE) order has to be comply with internal event order */
 static uint16_t bta_gattc_opcode_to_int_evt[] = {
@@ -487,6 +488,12 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb, tBTA_GATTC_DATA* p_data) {
     /* a pending service handle change indication */
     if (p_clcb->p_srcb->srvc_hdl_chg) {
       p_clcb->p_srcb->srvc_hdl_chg = false;
+
+      /* set true to read database hash before service discovery */
+      if (bta_gattc_is_robust_caching_enabled()) {
+        p_clcb->p_srcb->srvc_hdl_db_hash = true;
+      }
+
       /* start discovery */
       bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_DISCOVER_EVT, NULL);
     }
@@ -529,7 +536,7 @@ void bta_gattc_close(tBTA_GATTC_CLCB* p_clcb, tBTA_GATTC_DATA* p_data) {
 
   cb_data.close.client_if = p_clcb->p_rcb->client_if;
   cb_data.close.conn_id = p_clcb->bta_conn_id;
-  cb_data.close.reason = p_clcb->reason;
+  cb_data.close.reason = 0;
   cb_data.close.remote_bda = p_clcb->bda;
   cb_data.close.status = GATT_SUCCESS;
 
@@ -595,6 +602,8 @@ void bta_gattc_set_discover_st(tBTA_GATTC_SERV* p_srcb) {
     if (bta_gattc_cb.clcb[i].p_srcb == p_srcb) {
       bta_gattc_cb.clcb[i].status = GATT_SUCCESS;
       bta_gattc_cb.clcb[i].state = BTA_GATTC_DISCOVER_ST;
+      bta_gattc_cb.clcb[i].request_during_discovery =
+          BTA_GATTC_DISCOVER_REQ_NONE;
     }
   }
 }
@@ -625,6 +634,20 @@ void bta_gattc_cfg_mtu(tBTA_GATTC_CLCB* p_clcb, tBTA_GATTC_DATA* p_data) {
   }
 }
 
+void bta_gattc_start_discover_internal(tBTA_GATTC_CLCB* p_clcb) {
+  if (p_clcb->transport == BT_TRANSPORT_LE)
+    L2CA_EnableUpdateBleConnParams(p_clcb->p_srcb->server_bda, false);
+
+  bta_gattc_init_cache(p_clcb->p_srcb);
+  p_clcb->status = bta_gattc_discover_pri_service(
+      p_clcb->bta_conn_id, p_clcb->p_srcb, GATT_DISC_SRVC_ALL);
+  if (p_clcb->status != GATT_SUCCESS) {
+    LOG(ERROR) << "discovery on server failed";
+    bta_gattc_reset_discover_st(p_clcb->p_srcb, p_clcb->status);
+  } else
+    p_clcb->disc_active = true;
+}
+
 /** Start a discovery on server */
 void bta_gattc_start_discover(tBTA_GATTC_CLCB* p_clcb,
                               UNUSED_ATTR tBTA_GATTC_DATA* p_data) {
@@ -640,25 +663,24 @@ void bta_gattc_start_discover(tBTA_GATTC_CLCB* p_clcb,
     p_clcb->auto_update = BTA_GATTC_NO_SCHEDULE;
 
     if (p_clcb->p_srcb != NULL) {
+      /* set all srcb related clcb into discovery ST */
+      bta_gattc_set_discover_st(p_clcb->p_srcb);
+
       /* clear the service change mask */
       p_clcb->p_srcb->srvc_hdl_chg = false;
       p_clcb->p_srcb->update_count = 0;
       p_clcb->p_srcb->state = BTA_GATTC_SERV_DISC_ACT;
 
-      if (p_clcb->transport == BT_TRANSPORT_LE)
-        L2CA_EnableUpdateBleConnParams(p_clcb->p_srcb->server_bda, false);
+      /* read db hash if db hash characteristic exists */
+      if (bta_gattc_is_robust_caching_enabled() &&
+          p_clcb->p_srcb->srvc_hdl_db_hash && bta_gattc_read_db_hash(p_clcb)) {
+        LOG(INFO) << __func__
+                  << ": pending service discovery, read db hash first";
+        p_clcb->p_srcb->srvc_hdl_db_hash = false;
+        return;
+      }
 
-      /* set all srcb related clcb into discovery ST */
-      bta_gattc_set_discover_st(p_clcb->p_srcb);
-
-      bta_gattc_init_cache(p_clcb->p_srcb);
-      p_clcb->status = bta_gattc_discover_pri_service(
-          p_clcb->bta_conn_id, p_clcb->p_srcb, GATT_DISC_SRVC_ALL);
-      if (p_clcb->status != GATT_SUCCESS) {
-        LOG(ERROR) << "discovery on server failed";
-        bta_gattc_reset_discover_st(p_clcb->p_srcb, p_clcb->status);
-      } else
-        p_clcb->disc_active = true;
+      bta_gattc_start_discover_internal(p_clcb);
     } else {
       LOG(ERROR) << "unknown device, can not start discovery";
     }
@@ -890,6 +912,8 @@ void bta_gattc_exec_cmpl(tBTA_GATTC_CLCB* p_clcb, tBTA_GATTC_OP_CMPL* p_data) {
 /** configure MTU operation complete */
 void bta_gattc_cfg_mtu_cmpl(tBTA_GATTC_CLCB* p_clcb,
                             tBTA_GATTC_OP_CMPL* p_data) {
+  GATT_CONFIGURE_MTU_OP_CB cb = p_clcb->p_q_cmd->api_mtu.mtu_cb;
+  void* my_cb_data = p_clcb->p_q_cmd->api_mtu.mtu_cb_data;
   tBTA_GATTC cb_data;
 
   osi_free_and_reset((void**)&p_clcb->p_q_cmd);
@@ -902,6 +926,10 @@ void bta_gattc_cfg_mtu_cmpl(tBTA_GATTC_CLCB* p_clcb,
   cb_data.cfg_mtu.conn_id = p_clcb->bta_conn_id;
   cb_data.cfg_mtu.status = p_data->status;
   cb_data.cfg_mtu.mtu = p_clcb->p_srcb->mtu;
+
+  if (cb) {
+    cb(p_clcb->bta_conn_id, p_data->status, my_cb_data);
+  }
 
   (*p_clcb->p_rcb->p_cback)(BTA_GATTC_CFG_MTU_EVT, &cb_data);
 }
@@ -961,8 +989,26 @@ void bta_gattc_op_cmpl(tBTA_GATTC_CLCB* p_clcb, tBTA_GATTC_DATA* p_data) {
   else if (op == GATTC_OPTYPE_CONFIG)
     bta_gattc_cfg_mtu_cmpl(p_clcb, &p_data->op_cmpl);
 
+  // If receive DATABASE_OUT_OF_SYNC error code, bta_gattc should start service
+  // discovery immediately
+  if (bta_gattc_is_robust_caching_enabled() &&
+      p_data->op_cmpl.status == GATT_DATABASE_OUT_OF_SYNC) {
+    LOG(INFO) << __func__ << ": DATABASE_OUT_OF_SYNC, re-discover service";
+    p_clcb->auto_update = BTA_GATTC_REQ_WAITING;
+    /* request read db hash first */
+    p_clcb->p_srcb->srvc_hdl_db_hash = true;
+    bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_DISCOVER_EVT, NULL);
+    return;
+  }
+
   if (p_clcb->auto_update == BTA_GATTC_DISC_WAITING) {
     p_clcb->auto_update = BTA_GATTC_REQ_WAITING;
+
+    /* request read db hash first */
+    if (bta_gattc_is_robust_caching_enabled()) {
+      p_clcb->p_srcb->srvc_hdl_db_hash = true;
+    }
+
     bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_DISCOVER_EVT, NULL);
   }
 }
@@ -1029,12 +1075,12 @@ static void bta_gattc_conn_cback(tGATT_IF gattc_if, const RawAddress& bdaddr,
   if (connected) {
     LOG_INFO("Connected att_id:%hhu transport:%s reason:%s", gattc_if,
              BtTransportText(transport).c_str(),
-             hci_error_code_text(reason).c_str());
+             gatt_disconnection_reason_text(reason).c_str());
     btif_debug_conn_state(bdaddr, BTIF_DEBUG_CONNECTED, GATT_CONN_UNKNOWN);
   } else {
     LOG_INFO("Disconnected att_id:%hhu transport:%s reason:%s", gattc_if,
              BtTransportText(transport).c_str(),
-             hci_error_code_text(reason).c_str());
+             gatt_disconnection_reason_text(reason).c_str());
     btif_debug_conn_state(bdaddr, BTIF_DEBUG_DISCONNECTED, GATT_CONN_UNKNOWN);
   }
 
@@ -1160,7 +1206,13 @@ bool bta_gattc_process_srvc_chg_ind(uint16_t conn_id, tBTA_GATTC_RCB* p_clrcb,
     GATTC_SendHandleValueConfirm(conn_id, p_notify->cid);
 
     /* if connection available, refresh cache by doing discovery now */
-    if (p_clcb) bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_DISCOVER_EVT, NULL);
+    if (p_clcb) {
+      /* request read db hash first */
+      if (bta_gattc_is_robust_caching_enabled()) {
+        p_srcb->srvc_hdl_db_hash = true;
+      }
+      bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_DISCOVER_EVT, NULL);
+    }
   }
 
   /* notify applicationf or service change */

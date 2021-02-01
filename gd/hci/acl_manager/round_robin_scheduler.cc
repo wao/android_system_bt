@@ -21,8 +21,8 @@ namespace bluetooth {
 namespace hci {
 namespace acl_manager {
 
-RoundRobinScheduler::RoundRobinScheduler(os::Handler* handler, Controller* controller,
-                                         common::BidiQueueEnd<AclPacketBuilder, AclPacketView>* hci_queue_end)
+RoundRobinScheduler::RoundRobinScheduler(
+    os::Handler* handler, Controller* controller, common::BidiQueueEnd<AclBuilder, AclView>* hci_queue_end)
     : handler_(handler), controller_(controller), hci_queue_end_(hci_queue_end) {
   max_acl_packet_credits_ = controller_->GetNumAclPacketBuffers();
   acl_packet_credits_ = max_acl_packet_credits_;
@@ -65,6 +65,15 @@ void RoundRobinScheduler::Unregister(uint16_t handle) {
   }
   acl_queue_handlers_.erase(handle);
   starting_point_ = acl_queue_handlers_.begin();
+}
+
+void RoundRobinScheduler::SetLinkPriority(uint16_t handle, bool high_priority) {
+  auto acl_queue_handler = acl_queue_handlers_.find(handle);
+  if (acl_queue_handler == acl_queue_handlers_.end()) {
+    LOG_WARN("handle %d is invalid", handle);
+    return;
+  }
+  acl_queue_handler->second.high_priority_ = high_priority;
 }
 
 uint16_t RoundRobinScheduler::GetCredits() {
@@ -118,18 +127,22 @@ void RoundRobinScheduler::buffer_packet(std::map<uint16_t, acl_queue_handler>::i
 
   ConnectionType connection_type = acl_queue_handler->second.connection_type_;
   size_t mtu = connection_type == ConnectionType::CLASSIC ? hci_mtu_ : le_hci_mtu_;
-  PacketBoundaryFlag packet_boundary_flag =
-      (connection_type == ConnectionType::CLASSIC ? PacketBoundaryFlag::FIRST_AUTOMATICALLY_FLUSHABLE
-                                                  : PacketBoundaryFlag::FIRST_NON_AUTOMATICALLY_FLUSHABLE);
+  // TODO(b/178752129): Make A2DP and Hearing Aid audio packets flushable
+  PacketBoundaryFlag packet_boundary_flag = PacketBoundaryFlag::FIRST_NON_AUTOMATICALLY_FLUSHABLE;
+  int acl_priority = acl_queue_handler->second.high_priority_ ? 1 : 0;
   if (packet->size() <= mtu) {
-    fragments_to_send_.push(std::make_pair(
-        connection_type, AclPacketBuilder::Create(handle, packet_boundary_flag, broadcast_flag, std::move(packet))));
+    fragments_to_send_.push(
+        std::make_pair(
+            connection_type, AclBuilder::Create(handle, packet_boundary_flag, broadcast_flag, std::move(packet))),
+        acl_priority);
   } else {
     auto fragments = AclFragmenter(mtu, std::move(packet)).GetFragments();
     for (size_t i = 0; i < fragments.size(); i++) {
-      fragments_to_send_.push(std::make_pair(
-          connection_type,
-          AclPacketBuilder::Create(handle, packet_boundary_flag, broadcast_flag, std::move(fragments[i]))));
+      fragments_to_send_.push(
+          std::make_pair(
+              connection_type,
+              AclBuilder::Create(handle, packet_boundary_flag, broadcast_flag, std::move(fragments[i]))),
+          acl_priority);
       packet_boundary_flag = PacketBoundaryFlag::CONTINUING_FRAGMENT;
     }
   }
@@ -158,7 +171,7 @@ void RoundRobinScheduler::send_next_fragment() {
 }
 
 // Invoked from some external Queue Reactable context 1
-std::unique_ptr<AclPacketBuilder> RoundRobinScheduler::handle_enqueue_next_fragment() {
+std::unique_ptr<AclBuilder> RoundRobinScheduler::handle_enqueue_next_fragment() {
   ConnectionType connection_type = fragments_to_send_.front().first;
   if (connection_type == ConnectionType::CLASSIC) {
     ASSERT(acl_packet_credits_ > 0);
@@ -183,7 +196,7 @@ std::unique_ptr<AclPacketBuilder> RoundRobinScheduler::handle_enqueue_next_fragm
       hci_queue_end_->UnregisterEnqueue();
     }
   }
-  return std::unique_ptr<AclPacketBuilder>(raw_pointer);
+  return std::unique_ptr<AclBuilder>(raw_pointer);
 }
 
 void RoundRobinScheduler::incoming_acl_credits(uint16_t handle, uint16_t credits) {

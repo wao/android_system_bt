@@ -48,7 +48,7 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
        DynamicChannelServiceManagerImpl* dynamic_service_manager, FixedChannelServiceManagerImpl* fixed_service_manager,
        LinkManager* link_manager);
 
-  ~Link() override = default;
+  ~Link() = default;
 
   inline hci::AddressWithType GetDevice() const override {
     return acl_connection_->GetRemoteAddress();
@@ -82,6 +82,9 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
 
   void OnReadRemoteVersionInformationComplete(
       uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) override;
+  void OnPhyUpdate(uint8_t tx_phy, uint8_t rx_phy) override;
+
+  void OnLocalAddressUpdate(hci::AddressWithType address_with_type) override;
 
   virtual void Disconnect();
 
@@ -139,6 +142,8 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
   LinkOptions* GetLinkOptions() {
     return &link_options_;
   }
+
+  void ReadRemoteVersionInformation();
 
  private:
   os::Handler* l2cap_handler_;

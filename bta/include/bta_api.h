@@ -25,14 +25,19 @@
 #ifndef BTA_API_H
 #define BTA_API_H
 
-#include <hardware/bt_common_types.h>
-#include <memory>
-#include "bt_target.h"
-#include "bt_types.h"
-#include "btm_api.h"
-#include "btm_ble_api.h"
+#include <cstdint>
+#include <vector>
+
+#include "bt_target.h"  // Must be first to define build configuration
+
+#include "stack/include/bt_types.h"
+#include "stack/include/btm_api_types.h"
+#include "stack/include/btm_ble_api_types.h"
+#include "stack/include/sdp_api.h"
 #include "types/ble_address_with_type.h"
+#include "types/bluetooth/uuid.h"
 #include "types/bt_transport.h"
+#include "types/raw_address.h"
 
 /*****************************************************************************
  *  Constants and data types
@@ -419,7 +424,8 @@ typedef struct {
 typedef struct {
   RawAddress bd_addr; /* BD address peer device. */
   BD_NAME bd_name;  /* Name of peer device. */
-  bluetooth::Uuid service; /* GATT based Services UUID found on peer device. */
+  std::vector<bluetooth::Uuid>*
+      services; /* GATT based Services UUID found on peer device. */
 } tBTA_DM_DISC_BLE_RES;
 
 /* Union of all search callback structures */
@@ -457,40 +463,41 @@ typedef void(tBTA_BLE_ENERGY_INFO_CBACK)(tBTM_BLE_TX_TIME_MS tx_time,
 /* Maximum service name length */
 #define BTA_SERVICE_NAME_LEN 35
 
-/* power mode actions  */
-#define BTA_DM_PM_NO_ACTION 0x00 /* no change to the current pm setting */
-#define BTA_DM_PM_PARK 0x10      /* prefers park mode */
-#define BTA_DM_PM_SNIFF 0x20     /* prefers sniff mode */
-#define BTA_DM_PM_SNIFF1 0x21    /* prefers sniff1 mode */
-#define BTA_DM_PM_SNIFF2 0x22    /* prefers sniff2 mode */
-#define BTA_DM_PM_SNIFF3 0x23    /* prefers sniff3 mode */
-#define BTA_DM_PM_SNIFF4 0x24    /* prefers sniff4 mode */
-#define BTA_DM_PM_SNIFF5 0x25    /* prefers sniff5 mode */
-#define BTA_DM_PM_SNIFF6 0x26    /* prefers sniff6 mode */
-#define BTA_DM_PM_SNIFF7 0x27    /* prefers sniff7 mode */
-#define BTA_DM_PM_SNIFF_USER0 \
-  0x28 /* prefers user-defined sniff0 mode (testtool only) */
-#define BTA_DM_PM_SNIFF_USER1 \
-  0x29 /* prefers user-defined sniff1 mode (testtool only) */
-#define BTA_DM_PM_ACTIVE 0x40  /* prefers active mode */
-#define BTA_DM_PM_RETRY 0x80   /* retry power mode based on current settings */
-#define BTA_DM_PM_SUSPEND 0x04 /* prefers suspend mode */
-#define BTA_DM_PM_NO_PREF                                                   \
-  0x01 /* service has no prefernce on power mode setting. eg. connection to \
-          service got closed */
-
+typedef enum : uint8_t {
+  /* power mode actions  */
+  BTA_DM_PM_NO_ACTION = 0x00, /* no change to the current pm setting */
+  BTA_DM_PM_PARK = 0x10,      /* prefers park mode */
+  BTA_DM_PM_SNIFF = 0x20,     /* prefers sniff mode */
+  BTA_DM_PM_SNIFF1 = 0x21,    /* prefers sniff1 mode */
+  BTA_DM_PM_SNIFF2 = 0x22,    /* prefers sniff2 mode */
+  BTA_DM_PM_SNIFF3 = 0x23,    /* prefers sniff3 mode */
+  BTA_DM_PM_SNIFF4 = 0x24,    /* prefers sniff4 mode */
+  BTA_DM_PM_SNIFF5 = 0x25,    /* prefers sniff5 mode */
+  BTA_DM_PM_SNIFF6 = 0x26,    /* prefers sniff6 mode */
+  BTA_DM_PM_SNIFF7 = 0x27,    /* prefers sniff7 mode */
+  BTA_DM_PM_SNIFF_USER0 =
+      0x28, /* prefers user-defined sniff0 mode (testtool only) */
+  BTA_DM_PM_SNIFF_USER1 =
+      0x29, /* prefers user-defined sniff1 mode (testtool only) */
+  BTA_DM_PM_ACTIVE = 0x40,  /* prefers active mode */
+  BTA_DM_PM_RETRY = 0x80,   /* retry power mode based on current settings */
+  BTA_DM_PM_SUSPEND = 0x04, /* prefers suspend mode */
+  BTA_DM_PM_NO_PREF = 0x01, /* service has no preference on power mode setting.
+                               eg. connection to \ service got closed */
+  BTA_DM_PM_SNIFF_MASK = 0x0f,  // Masks the sniff submode
+} tBTA_DM_PM_ACTION_BITMASK;
 typedef uint8_t tBTA_DM_PM_ACTION;
 
 /* index to bta_dm_ssr_spec */
-#define BTA_DM_PM_SSR0 0
-#define BTA_DM_PM_SSR1                      \
-  1 /* BTA_DM_PM_SSR1 will be dedicated for \
-    HH SSR setting entry, no other profile can use it */
-#define BTA_DM_PM_SSR2 2
-#define BTA_DM_PM_SSR3 3
-#define BTA_DM_PM_SSR4 4
-#define BTA_DM_PM_SSR5 5
-#define BTA_DM_PM_SSR6 6
+enum {
+  BTA_DM_PM_SSR0 = 0,
+  /* BTA_DM_PM_SSR1 will be dedicated for \
+     HH SSR setting entry, no other profile can use it */
+  BTA_DM_PM_SSR1 = 1,
+  BTA_DM_PM_SSR2 = 2,
+  BTA_DM_PM_SSR3 = 3,
+  BTA_DM_PM_SSR4 = 4,
+};
 
 #define BTA_DM_PM_NUM_EVTS 9
 
@@ -840,6 +847,34 @@ extern void BTA_GetEirService(uint8_t* p_eir, size_t eir_len,
 
 /*******************************************************************************
  *
+ * Function         BTA_AddEirUuid
+ *
+ * Description      Request to add a new service class UUID to the local
+ *                  device's EIR data.
+ *
+ * Parameters       uuid16 - The service class UUID you wish to add
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+extern void BTA_AddEirUuid(uint16_t uuid16);
+
+/*******************************************************************************
+ *
+ * Function         BTA_RemoveEirUuid
+ *
+ * Description      Request to remove a service class UID from the local
+ *                  device's EIR data.
+ *
+ * Parameters       uuid16 - The service class UUID you wish to remove
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+extern void BTA_RemoveEirUuid(uint16_t uuid16);
+
+/*******************************************************************************
+ *
  * Function         BTA_DmGetConnectionState
  *
  * Description      Returns whether the remote device is currently connected.
@@ -1095,8 +1130,7 @@ extern void BTA_DmBleUpdateConnectionParams(const RawAddress& bd_addr,
  * Returns          void
  *
  ******************************************************************************/
-extern void BTA_DmBleSetDataLength(const RawAddress& remote_device,
-                                   uint16_t tx_data_length);
+extern void BTA_DmBleRequestMaxTxDataLength(const RawAddress& remote_device);
 
 /*******************************************************************************
  *

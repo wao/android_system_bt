@@ -36,14 +36,14 @@ class LeAclConnection : public AclConnection {
       AddressWithType local_address,
       AddressWithType remote_address,
       Role role);
-  ~LeAclConnection() override;
+  ~LeAclConnection();
 
   virtual AddressWithType GetLocalAddress() const {
     return local_address_;
   }
 
-  virtual void SetLocalAddress(AddressWithType local_address) {
-    local_address_ = local_address;
+  virtual void UpdateLocalAddress(AddressWithType address) {
+    local_address_ = address;
   }
 
   virtual AddressWithType GetRemoteAddress() const {

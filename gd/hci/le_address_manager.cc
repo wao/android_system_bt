@@ -25,7 +25,7 @@ namespace hci {
 static constexpr uint8_t BLE_ADDR_MASK = 0xc0u;
 
 LeAddressManager::LeAddressManager(
-    common::Callback<void(std::unique_ptr<CommandPacketBuilder>)> enqueue_command,
+    common::Callback<void(std::unique_ptr<CommandBuilder>)> enqueue_command,
     os::Handler* handler,
     Address public_address,
     uint8_t connect_list_size,
@@ -132,6 +132,9 @@ void LeAddressManager::SetPrivacyPolicyForInitiatorAddressForTest(
       LOG_ALWAYS_FATAL("invalid parameters");
   }
 }
+LeAddressManager::AddressPolicy LeAddressManager::GetAddressPolicy() {
+  return address_policy_;
+}
 
 LeAddressManager::AddressPolicy LeAddressManager::Register(LeAddressManagerCallback* callback) {
   handler_->BindOnceOn(this, &LeAddressManager::register_client, callback).Invoke();
@@ -147,7 +150,7 @@ void LeAddressManager::register_client(LeAddressManagerCallback* callback) {
   } else if (
       address_policy_ == AddressPolicy::USE_RESOLVABLE_ADDRESS ||
       address_policy_ == AddressPolicy::USE_NON_RESOLVABLE_ADDRESS) {
-    if (bluetooth::common::InitFlags::GdAclEnabled()) {
+    if (bluetooth::common::init_flags::gd_acl_is_enabled()) {
       if (registered_clients_.size() == 1) {
         schedule_rotate_random_address();
       }
@@ -199,6 +202,11 @@ void LeAddressManager::pause_registered_clients() {
   }
 }
 
+void LeAddressManager::push_command(Command command) {
+  pause_registered_clients();
+  cached_commands_.push(std::move(command));
+}
+
 void LeAddressManager::ack_pause(LeAddressManagerCallback* callback) {
   ASSERT(registered_clients_.find(callback) != registered_clients_.end());
   registered_clients_.find(callback)->second = ClientState::PAUSED;
@@ -241,7 +249,7 @@ void LeAddressManager::prepare_to_rotate() {
 void LeAddressManager::schedule_rotate_random_address() {
   address_rotation_alarm_->Schedule(
       common::BindOnce(&LeAddressManager::prepare_to_rotate, common::Unretained(this)),
-      get_next_private_address_interval_ms());
+      GetNextPrivateAddressIntervalMs());
 }
 
 void LeAddressManager::set_random_address() {
@@ -259,7 +267,7 @@ void LeAddressManager::set_random_address() {
   }
   auto packet = hci::LeSetRandomAddressBuilder::Create(address);
   enqueue_command_.Run(std::move(packet));
-  le_address_ = AddressWithType(address, AddressType::RANDOM_DEVICE_ADDRESS);
+  cached_address_ = AddressWithType(address, AddressType::RANDOM_DEVICE_ADDRESS);
 }
 
 void LeAddressManager::rotate_random_address() {
@@ -326,7 +334,7 @@ hci::Address LeAddressManager::generate_nrpa() {
   return address;
 }
 
-std::chrono::milliseconds LeAddressManager::get_next_private_address_interval_ms() {
+std::chrono::milliseconds LeAddressManager::GetNextPrivateAddressIntervalMs() {
   auto interval_random_part_max_ms = maximum_rotation_time_ - minimum_rotation_time_;
   auto random_ms = std::chrono::milliseconds(os::GenerateRandom()) % (interval_random_part_max_ms);
   return minimum_rotation_time_ + random_ms;
@@ -364,8 +372,7 @@ void LeAddressManager::AddDeviceToConnectList(
     ConnectListAddressType connect_list_address_type, bluetooth::hci::Address address) {
   auto packet_builder = hci::LeAddDeviceToConnectListBuilder::Create(connect_list_address_type, address);
   Command command = {CommandType::ADD_DEVICE_TO_CONNECT_LIST, std::move(packet_builder)};
-  handler_->BindOnceOn(this, &LeAddressManager::pause_registered_clients).Invoke();
-  cached_commands_.push(std::move(command));
+  handler_->BindOnceOn(this, &LeAddressManager::push_command, std::move(command)).Invoke();
 }
 
 void LeAddressManager::AddDeviceToResolvingList(
@@ -376,16 +383,14 @@ void LeAddressManager::AddDeviceToResolvingList(
   auto packet_builder = hci::LeAddDeviceToResolvingListBuilder::Create(
       peer_identity_address_type, peer_identity_address, peer_irk, local_irk);
   Command command = {CommandType::ADD_DEVICE_TO_RESOLVING_LIST, std::move(packet_builder)};
-  handler_->BindOnceOn(this, &LeAddressManager::pause_registered_clients).Invoke();
-  cached_commands_.push(std::move(command));
+  handler_->BindOnceOn(this, &LeAddressManager::push_command, std::move(command)).Invoke();
 }
 
 void LeAddressManager::RemoveDeviceFromConnectList(
     ConnectListAddressType connect_list_address_type, bluetooth::hci::Address address) {
   auto packet_builder = hci::LeRemoveDeviceFromConnectListBuilder::Create(connect_list_address_type, address);
   Command command = {CommandType::REMOVE_DEVICE_FROM_CONNECT_LIST, std::move(packet_builder)};
-  handler_->BindOnceOn(this, &LeAddressManager::pause_registered_clients).Invoke();
-  cached_commands_.push(std::move(command));
+  handler_->BindOnceOn(this, &LeAddressManager::push_command, std::move(command)).Invoke();
 }
 
 void LeAddressManager::RemoveDeviceFromResolvingList(
@@ -393,22 +398,19 @@ void LeAddressManager::RemoveDeviceFromResolvingList(
   auto packet_builder =
       hci::LeRemoveDeviceFromResolvingListBuilder::Create(peer_identity_address_type, peer_identity_address);
   Command command = {CommandType::REMOVE_DEVICE_FROM_RESOLVING_LIST, std::move(packet_builder)};
-  handler_->BindOnceOn(this, &LeAddressManager::pause_registered_clients).Invoke();
-  cached_commands_.push(std::move(command));
+  handler_->BindOnceOn(this, &LeAddressManager::push_command, std::move(command)).Invoke();
 }
 
 void LeAddressManager::ClearConnectList() {
   auto packet_builder = hci::LeClearConnectListBuilder::Create();
   Command command = {CommandType::CLEAR_CONNECT_LIST, std::move(packet_builder)};
-  handler_->BindOnceOn(this, &LeAddressManager::pause_registered_clients).Invoke();
-  cached_commands_.push(std::move(command));
+  handler_->BindOnceOn(this, &LeAddressManager::push_command, std::move(command)).Invoke();
 }
 
 void LeAddressManager::ClearResolvingList() {
   auto packet_builder = hci::LeClearResolvingListBuilder::Create();
   Command command = {CommandType::CLEAR_RESOLVING_LIST, std::move(packet_builder)};
-  handler_->BindOnceOn(this, &LeAddressManager::pause_registered_clients).Invoke();
-  cached_commands_.push(std::move(command));
+  handler_->BindOnceOn(this, &LeAddressManager::push_command, std::move(command)).Invoke();
 }
 
 void LeAddressManager::OnCommandComplete(bluetooth::hci::CommandCompleteView view) {
@@ -420,10 +422,21 @@ void LeAddressManager::OnCommandComplete(bluetooth::hci::CommandCompleteView vie
   LOG_INFO("Received command complete with op_code %s", op_code.c_str());
 
   // The command was sent before any client registered, we can make sure all the clients paused when command complete.
-  if (view.GetCommandOpCode() == OpCode::LE_SET_RANDOM_ADDRESS &&
-      address_policy_ == AddressPolicy::USE_STATIC_ADDRESS) {
-    LOG_INFO("Received LE_SET_RANDOM_ADDRESS complete and Address policy is USE_STATIC_ADDRESS, return");
-    return;
+  if (view.GetCommandOpCode() == OpCode::LE_SET_RANDOM_ADDRESS) {
+    if (address_policy_ == AddressPolicy::USE_STATIC_ADDRESS) {
+      LOG_INFO("Received LE_SET_RANDOM_ADDRESS complete and Address policy is USE_STATIC_ADDRESS, return");
+      return;
+    }
+    auto complete_view = LeSetRandomAddressCompleteView::Create(view);
+    if (!complete_view.IsValid()) {
+      LOG_ERROR("Received LE_SET_RANDOM_ADDRESS complete with invalid packet");
+    } else if (complete_view.IsValid() && complete_view.GetStatus() != ErrorCode::SUCCESS) {
+      LOG_ERROR(
+          "Received LE_SET_RANDOM_ADDRESS complete with status %s", ErrorCodeText(complete_view.GetStatus()).c_str());
+    } else {
+      LOG_INFO("update random address : %s", cached_address_.GetAddress().ToString().c_str());
+      le_address_ = cached_address_;
+    }
   }
 
   if (cached_commands_.empty()) {

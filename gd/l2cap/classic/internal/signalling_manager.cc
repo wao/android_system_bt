@@ -662,7 +662,7 @@ void ClassicSignallingManager::OnInformationRequest(SignalId signal_id, Informat
     case InformationRequestInfoType::EXTENDED_FEATURES_SUPPORTED: {
       auto response = InformationResponseExtendedFeaturesBuilder::Create(
           signal_id.Value(), InformationRequestResult::SUCCESS, 0, 0, 0, 1 /* ERTM */, 0 /* Streaming mode */,
-          1 /* FCS */, 0, 1 /* Fixed Channels */, 0, 0);
+          1 /* FCS */, 0, 1 /* Fixed Channels */, 0, 0, 0 /* COC */);
       enqueue_buffer_->Enqueue(std::move(response), handler_);
       break;
     }
@@ -830,6 +830,42 @@ void ClassicSignallingManager::handle_one_command(ControlView control_packet_vie
         return;
       }
       OnInformationResponse(information_response_view.GetIdentifier(), information_response_view);
+      return;
+    }
+    case CommandCode::CREDIT_BASED_CONNECTION_REQUEST: {
+      CreditBasedConnectionRequestView request_view = CreditBasedConnectionRequestView::Create(control_packet_view);
+      if (!request_view.IsValid()) {
+        return;
+      }
+      return;
+    }
+    case CommandCode::CREDIT_BASED_CONNECTION_RESPONSE: {
+      CreditBasedConnectionResponseView response_view = CreditBasedConnectionResponseView::Create(control_packet_view);
+      if (!response_view.IsValid()) {
+        return;
+      }
+      return;
+    }
+    case CommandCode::CREDIT_BASED_RECONFIGURE_REQUEST: {
+      CreditBasedReconfigureRequestView request_view = CreditBasedReconfigureRequestView::Create(control_packet_view);
+      if (!request_view.IsValid()) {
+        return;
+      }
+      return;
+    }
+    case CommandCode::CREDIT_BASED_RECONFIGURE_RESPONSE: {
+      CreditBasedReconfigureResponseView response_view =
+          CreditBasedReconfigureResponseView::Create(control_packet_view);
+      if (!response_view.IsValid()) {
+        return;
+      }
+      return;
+    }
+    case CommandCode::FLOW_CONTROL_CREDIT: {
+      FlowControlCreditView credit_view = FlowControlCreditView::Create(control_packet_view);
+      if (!credit_view.IsValid()) {
+        return;
+      }
       return;
     }
     default:

@@ -238,9 +238,7 @@ enum : uint16_t {
   BT_PSM_SDP = 0x0001,
   BT_PSM_RFCOMM = 0x0003,
   BT_PSM_TCS = 0x0005,
-  TCS_PSM_INTERCOM = 5,
   BT_PSM_CTP = 0x0007,
-  TCS_PSM_CORDLESS = 7,
   BT_PSM_BNEP = 0x000F,
   BT_PSM_HIDC = 0x0011,
   HID_PSM_CONTROL = 0x0011,
@@ -644,20 +642,6 @@ typedef uint8_t INQ_LAP[LAP_LEN]; /* IAC as passed to Inquiry (LAP) */
 
 #define COF_LEN 12
 typedef uint8_t COF[COF_LEN]; /* ciphering offset number */
-
-typedef struct {
-  uint8_t qos_flags;          /* TBD */
-  uint8_t service_type;       /* see below */
-  uint32_t token_rate;        /* bytes/second */
-  uint32_t token_bucket_size; /* bytes */
-  uint32_t peak_bandwidth;    /* bytes/second */
-  uint32_t latency;           /* microseconds */
-  uint32_t delay_variation;   /* microseconds */
-} FLOW_SPEC;
-
-/* Values for service_type */
-#define SVC_TYPE_BEST_EFFORT 1
-#define SVC_TYPE_GUARANTEED 2
 
 #define BT_1SEC_TIMEOUT_MS (1 * 1000) /* 1 second */
 

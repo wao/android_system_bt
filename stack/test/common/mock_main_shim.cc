@@ -48,6 +48,10 @@ bool bluetooth::shim::is_gd_advertising_enabled() {
   mock_function_count_map[__func__]++;
   return false;
 }
+bool bluetooth::shim::is_gd_scanning_enabled() {
+  mock_function_count_map[__func__]++;
+  return false;
+}
 bool bluetooth::shim::is_gd_controller_enabled() {
   mock_function_count_map[__func__]++;
   return false;
@@ -69,6 +73,10 @@ bool bluetooth::shim::is_gd_shim_enabled() {
   return false;
 }
 bool bluetooth::shim::is_gd_stack_started_up() {
+  mock_function_count_map[__func__]++;
+  return false;
+}
+bool bluetooth::shim::is_gd_link_policy_enabled() {
   mock_function_count_map[__func__]++;
   return false;
 }

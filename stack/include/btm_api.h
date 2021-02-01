@@ -29,9 +29,13 @@
 #include "stack/btm/neighbor_inquiry.h"
 #include "stack/include/btm_api_types.h"
 #include "stack/include/btm_status.h"
+#include "stack/include/sco_client_callbacks.h"
 #include "stack/include/sdp_api.h"
 #include "types/bt_transport.h"
 #include "types/raw_address.h"
+
+void btm_init();
+void btm_free();
 
 /*****************************************************************************
  *  DEVICE CONTROL and COMMON
@@ -44,8 +48,6 @@
 /*****************************************************************************
  *  DEVICE CONTROL and COMMON FUNCTIONS
  ****************************************************************************/
-
-void BTM_db_reset(void);
 
 void BTM_reset_complete();
 
@@ -693,6 +695,12 @@ char* BTM_SecReadDevName(const RawAddress& bd_addr);
 tBTM_STATUS BTM_PmRegister(uint8_t mask, uint8_t* p_pm_id,
                            tBTM_PM_STATUS_CBACK* p_cb);
 
+// Notified by ACL that a new link is connected
+void BTM_PM_OnConnected(uint16_t handle, const RawAddress& remote_bda);
+
+// Notified by ACL that a link is disconnected
+void BTM_PM_OnDisconnected(uint16_t handle);
+
 /*******************************************************************************
  *
  * Function         BTM_SetPowerMode
@@ -706,6 +714,7 @@ tBTM_STATUS BTM_PmRegister(uint8_t mask, uint8_t* p_pm_id,
  ******************************************************************************/
 tBTM_STATUS BTM_SetPowerMode(uint8_t pm_id, const RawAddress& remote_bda,
                              const tBTM_PM_PWR_MD* p_mode);
+bool BTM_SetLinkPolicyActiveMode(const RawAddress& remote_bda);
 
 /*******************************************************************************
  *
@@ -942,5 +951,16 @@ uint16_t BTM_GetMaxPacketSize(const RawAddress& addr);
 
 extern tBTM_STATUS BTM_BT_Quality_Report_VSE_Register(
     bool is_register, tBTM_BT_QUALITY_REPORT_RECEIVER* p_bqr_report_receiver);
+
+void BTM_LogHistory(const std::string& tag, const RawAddress& addr,
+                    const std::string& msg);
+void BTM_LogHistory(const std::string& tag, const RawAddress& addr,
+                    const std::string& msg, const std::string& extra);
+void BTM_LogHistory(const std::string& tag, const tBLE_BD_ADDR& addr,
+                    const std::string& msg);
+void BTM_LogHistory(const std::string& tag, const tBLE_BD_ADDR& addr,
+                    const std::string& msg, const std::string& extra);
+
+uint8_t btm_ble_read_sec_key_size(const RawAddress& bd_addr);
 
 #endif /* BTM_API_H */

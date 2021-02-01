@@ -30,7 +30,6 @@
 #include "bt_target.h"
 #include "btm_ble_api.h"
 #include "btm_ble_int_types.h"
-#include "btm_int.h"
 #include "btm_int_types.h"
 #include "hcidefs.h"
 #include "smp_api.h"
@@ -46,6 +45,7 @@ extern void btm_ble_stop_scan(void);
 extern void btm_clear_all_pending_le_entry(void);
 
 extern void btm_ble_init(void);
+extern void btm_ble_free();
 extern void btm_ble_connected(const RawAddress& bda, uint16_t handle,
                               uint8_t enc_mode, uint8_t role,
                               tBLE_ADDR_TYPE addr_type, bool addr_matched);

@@ -106,7 +106,7 @@ void SecurityManagerImpl::Init() {
   auto maximum_rotation_time = std::chrono::minutes(15);
 
   acl_manager_->SetPrivacyPolicyForInitiatorAddress(
-      address_policy, address_with_type, local_identity_resolving_key_, minimum_rotation_time, maximum_rotation_time);
+      address_policy, address_with_type, minimum_rotation_time, maximum_rotation_time);
 }
 
 void SecurityManagerImpl::CreateBond(hci::AddressWithType device) {
@@ -174,8 +174,8 @@ void SecurityManagerImpl::RemoveBond(hci::AddressWithType device) {
   CancelBond(device);
   security_manager_channel_->Disconnect(device.GetAddress());
   security_database_.Remove(device);
-  security_manager_channel_->SendCommand(
-      hci::DeleteStoredLinkKeyBuilder::Create(device.GetAddress(), hci::DeleteStoredLinkKeyDeleteAllFlag::ALL));
+  security_manager_channel_->SendCommand(hci::DeleteStoredLinkKeyBuilder::Create(
+      device.GetAddress(), hci::DeleteStoredLinkKeyDeleteAllFlag::SPECIFIED_BD_ADDR));
   NotifyDeviceUnbonded(device);
 }
 
@@ -256,7 +256,8 @@ void SecurityManagerImpl::HandleEvent(T packet) {
     auto bd_addr = packet.GetBdAddr();
     auto event_code = packet.GetEventCode();
 
-    if (event_code != hci::EventCode::LINK_KEY_REQUEST) {
+    if (event_code != hci::EventCode::LINK_KEY_REQUEST && event_code != hci::EventCode::PIN_CODE_REQUEST &&
+        event_code != hci::EventCode::IO_CAPABILITY_RESPONSE) {
       LOG_ERROR("No classic pairing handler for device '%s' ready for command %s ", bd_addr.ToString().c_str(),
                 hci::EventCodeText(event_code).c_str());
       return;
@@ -279,8 +280,8 @@ void SecurityManagerImpl::HandleEvent(T packet) {
   entry->second->OnReceive(packet);
 }
 
-void SecurityManagerImpl::OnHciEventReceived(hci::EventPacketView packet) {
-  auto event = hci::EventPacketView::Create(packet);
+void SecurityManagerImpl::OnHciEventReceived(hci::EventView packet) {
+  auto event = hci::EventView::Create(packet);
   ASSERT_LOG(event.IsValid(), "Received invalid packet");
   const hci::EventCode code = event.GetEventCode();
   switch (code) {
@@ -758,6 +759,11 @@ void SecurityManagerImpl::SetLeMaximumEncryptionKeySize(uint8_t maximum_encrypti
 
 void SecurityManagerImpl::SetLeOobDataPresent(OobDataFlag data_present) {
   this->local_le_oob_data_present_ = data_present;
+}
+
+void SecurityManagerImpl::GetOutOfBandData(channel::SecurityCommandStatusCallback callback) {
+  this->security_manager_channel_->SendCommand(
+      hci::ReadLocalOobDataBuilder::Create(), std::forward<channel::SecurityCommandStatusCallback>(callback));
 }
 
 void SecurityManagerImpl::GetLeOutOfBandData(

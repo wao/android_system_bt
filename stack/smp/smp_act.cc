@@ -27,7 +27,6 @@
 #include "main/shim/shim.h"
 #include "osi/include/log.h"
 #include "stack/btm/btm_dev.h"
-#include "stack/btm/btm_int.h"
 #include "stack/btm/btm_sec.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/l2c_api.h"
@@ -35,6 +34,8 @@
 #include "stack/smp/p_256_ecc_pp.h"
 #include "stack/smp/smp_int.h"
 #include "types/raw_address.h"
+
+extern tBTM_CB btm_cb;
 
 #define SMP_KEY_DIST_TYPE_MAX 4
 
@@ -1258,7 +1259,17 @@ void smp_key_distribution(tSMP_CB* p_cb, tSMP_INT_DATA* p_data) {
     /* state check to prevent re-entrant */
     if (smp_get_state() == SMP_STATE_BOND_PENDING) {
       if (p_cb->derive_lk) {
-        smp_derive_link_key_from_long_term_key(p_cb, NULL);
+        tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(p_cb->pairing_bda);
+        if (!(p_dev_rec->sec_flags & BTM_SEC_LE_LINK_KEY_AUTHED) &&
+            (p_dev_rec->sec_flags & BTM_SEC_LINK_KEY_AUTHED)) {
+          SMP_TRACE_DEBUG(
+              "%s BR key is higher security than existing LE keys, don't "
+              "derive LK from LTK",
+              __func__);
+          android_errorWriteLog(0x534e4554, "158854097");
+        } else {
+          smp_derive_link_key_from_long_term_key(p_cb, NULL);
+        }
         p_cb->derive_lk = false;
       }
 
@@ -1290,7 +1301,7 @@ void smp_key_distribution(tSMP_CB* p_cb, tSMP_INT_DATA* p_data) {
  *
  ******************************************************************************/
 void smp_decide_association_model(tSMP_CB* p_cb, tSMP_INT_DATA* p_data) {
-  uint8_t int_evt = 0;
+  tSMP_EVENT int_evt = SMP_NOP_EVT;
   tSMP_INT_DATA smp_int_data;
 
   SMP_TRACE_DEBUG("%s Association Model = %d", __func__,

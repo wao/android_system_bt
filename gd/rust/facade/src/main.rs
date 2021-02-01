@@ -12,12 +12,13 @@ use futures::channel::mpsc;
 use futures::executor::block_on;
 use futures::stream::StreamExt;
 use grpcio::*;
+use log::debug;
 use nix::sys::signal;
-use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::runtime::Runtime;
-use log::debug;
 
 fn main() {
     let sigint = install_sigint();
@@ -35,39 +36,30 @@ async fn async_main(rt: Arc<Runtime>, mut sigint: mpsc::UnboundedReceiver<()>) {
                 .default_value("8897")
                 .takes_value(true),
         )
-        .arg(
-            Arg::with_name("grpc-port")
-                .long("grpc-port")
-                .default_value("8899")
-                .takes_value(true),
-        )
+        .arg(Arg::with_name("grpc-port").long("grpc-port").default_value("8899").takes_value(true))
         .arg(
             Arg::with_name("signal-port")
                 .long("signal-port")
                 .default_value("8895")
                 .takes_value(true),
         )
-        .arg(
-            Arg::with_name("rootcanal-port")
-                .long("rootcanal-port")
-                .takes_value(true),
-        )
+        .arg(Arg::with_name("rootcanal-port").long("rootcanal-port").takes_value(true))
         .arg(Arg::with_name("btsnoop").long("btsnoop").takes_value(true))
-        .arg(
-            Arg::with_name("btconfig")
-                .long("btconfig")
-                .takes_value(true),
-        )
+        .arg(Arg::with_name("btconfig").long("btconfig").takes_value(true))
         .get_matches();
 
     let root_server_port = value_t!(matches, "root-server-port", u16).unwrap();
     let grpc_port = value_t!(matches, "grpc-port", u16).unwrap();
     let signal_port = value_t!(matches, "signal-port", u16).unwrap();
     let rootcanal_port = value_t!(matches, "rootcanal-port", u16).ok();
-
     let env = Arc::new(Environment::new(2));
     let mut server = ServerBuilder::new(env)
-        .register_service(RootFacadeService::create(rt, grpc_port, rootcanal_port))
+        .register_service(RootFacadeService::create(
+            rt,
+            grpc_port,
+            rootcanal_port,
+            matches.value_of("btsnoop").map(String::from),
+        ))
         .bind("0.0.0.0", root_server_port)
         .build()
         .unwrap();
@@ -80,8 +72,8 @@ async fn async_main(rt: Arc<Runtime>, mut sigint: mpsc::UnboundedReceiver<()>) {
 
 async fn indicate_started(signal_port: u16) {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), signal_port);
-    let stream = TcpStream::connect(address).await.unwrap();
-    stream.shutdown(Shutdown::Both).unwrap();
+    let mut stream = TcpStream::connect(address).await.unwrap();
+    stream.shutdown().await.unwrap();
 }
 
 // TODO: remove as this is a temporary nix-based hack to catch SIGINT

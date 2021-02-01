@@ -29,6 +29,7 @@
 #include "hci/hci_layer.h"
 #include "hci_acl_manager_generated.h"
 #include "security/security_module.h"
+#include "storage/storage_module.h"
 
 namespace bluetooth {
 namespace hci {
@@ -61,8 +62,10 @@ struct AclManager::impl {
     hci_queue_end_ = hci_layer_->GetAclQueueEnd();
     hci_queue_end_->RegisterDequeue(
         handler_, common::Bind(&impl::dequeue_and_route_acl_packet_to_connection, common::Unretained(this)));
-    classic_impl_ = new classic_impl(hci_layer_, controller_, handler_, round_robin_scheduler_);
-    le_impl_ = new le_impl(hci_layer_, controller_, handler_, round_robin_scheduler_);
+    bool crash_on_unknown_handle = false;
+    classic_impl_ =
+        new classic_impl(hci_layer_, controller_, handler_, round_robin_scheduler_, crash_on_unknown_handle);
+    le_impl_ = new le_impl(hci_layer_, controller_, handler_, round_robin_scheduler_, crash_on_unknown_handle);
   }
 
   void Stop() {
@@ -114,7 +117,7 @@ struct AclManager::impl {
   Controller* controller_ = nullptr;
   HciLayer* hci_layer_ = nullptr;
   RoundRobinScheduler* round_robin_scheduler_ = nullptr;
-  common::BidiQueueEnd<AclPacketBuilder, AclPacketView>* hci_queue_end_ = nullptr;
+  common::BidiQueueEnd<AclBuilder, AclView>* hci_queue_end_ = nullptr;
   std::atomic_bool enqueue_registered_ = false;
   uint16_t default_link_policy_settings_ = 0xffff;
 };
@@ -152,9 +155,13 @@ void AclManager::SetLeSuggestedDefaultDataParameters(uint16_t octets, uint16_t t
 void AclManager::SetPrivacyPolicyForInitiatorAddress(
     LeAddressManager::AddressPolicy address_policy,
     AddressWithType fixed_address,
-    crypto_toolbox::Octet16 rotation_irk,
     std::chrono::milliseconds minimum_rotation_time,
     std::chrono::milliseconds maximum_rotation_time) {
+  crypto_toolbox::Octet16 rotation_irk{};
+  auto irk = GetDependency<storage::StorageModule>()->GetAdapterConfig().GetLeIdentityResolvingKey();
+  if (irk.has_value()) {
+    rotation_irk = irk->bytes;
+  }
   CallOn(
       pimpl_->le_impl_,
       &le_impl::set_privacy_policy_for_initiator_address,
@@ -227,6 +234,12 @@ void AclManager::WriteDefaultLinkPolicySettings(uint16_t default_link_policy_set
   CallOn(pimpl_->classic_impl_, &classic_impl::write_default_link_policy_settings, default_link_policy_settings);
 }
 
+void AclManager::OnAdvertisingSetTerminated(ErrorCode status, uint16_t conn_handle, hci::AddressWithType adv_address) {
+  if (status == ErrorCode::SUCCESS) {
+    CallOn(pimpl_->le_impl_, &le_impl::UpdateLocalAddress, conn_handle, adv_address);
+  }
+}
+
 void AclManager::SetSecurityModule(security::SecurityModule* security_module) {
   CallOn(pimpl_->classic_impl_, &classic_impl::set_security_module, security_module);
 }
@@ -243,9 +256,18 @@ uint16_t AclManager::HACK_GetLeHandle(Address address) {
   return pimpl_->le_impl_->HACK_get_handle(address);
 }
 
+void AclManager::HACK_SetScoDisconnectCallback(std::function<void(uint16_t, uint8_t)> callback) {
+  pimpl_->classic_impl_->HACK_SetScoDisconnectCallback(callback);
+}
+
+void AclManager::HACK_SetAclTxPriority(uint8_t handle, bool high_priority) {
+  CallOn(pimpl_->round_robin_scheduler_, &RoundRobinScheduler::SetLinkPriority, handle, high_priority);
+}
+
 void AclManager::ListDependencies(ModuleList* list) {
   list->add<HciLayer>();
   list->add<Controller>();
+  list->add<storage::StorageModule>();
 }
 
 void AclManager::Start() {

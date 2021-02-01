@@ -18,9 +18,12 @@
 
 #pragma once
 
+#include <base/strings/stringprintf.h>
 #include <cstdint>
+#include <string>
 
 #include "gd/crypto_toolbox/crypto_toolbox.h"
+#include "main/shim/dumpsys.h"
 #include "osi/include/alarm.h"
 #include "stack/include/btm_api_types.h"
 #include "types/raw_address.h"
@@ -133,6 +136,10 @@ enum : uint16_t {
   BTM_SEC_16_DIGIT_PIN_AUTHED = 0x4000,
 };
 
+#define CASE_RETURN_TEXT(code) \
+  case code:                   \
+    return #code
+
 typedef enum : uint8_t {
   BTM_SEC_STATE_IDLE = 0,
   BTM_SEC_STATE_AUTHENTICATING = 1,
@@ -149,11 +156,42 @@ typedef enum : uint8_t {
   BTM_SEC_STATE_DISCONNECTING_BOTH = 9,
 } tSECURITY_STATE;
 
+static inline std::string security_state_text(const tSECURITY_STATE& state) {
+  switch (state) {
+    CASE_RETURN_TEXT(BTM_SEC_STATE_IDLE);
+    CASE_RETURN_TEXT(BTM_SEC_STATE_AUTHENTICATING);
+    CASE_RETURN_TEXT(BTM_SEC_STATE_ENCRYPTING);
+    CASE_RETURN_TEXT(BTM_SEC_STATE_GETTING_NAME);
+    CASE_RETURN_TEXT(BTM_SEC_STATE_AUTHORIZING);
+    CASE_RETURN_TEXT(BTM_SEC_STATE_SWITCHING_ROLE);
+    CASE_RETURN_TEXT(BTM_SEC_STATE_DISCONNECTING);
+    CASE_RETURN_TEXT(BTM_SEC_STATE_DELAY_FOR_ENC);
+    CASE_RETURN_TEXT(BTM_SEC_STATE_DISCONNECTING_BLE);
+    CASE_RETURN_TEXT(BTM_SEC_STATE_DISCONNECTING_BOTH);
+    default:
+      return std::string("UNKNOWN[%hhu]", state);
+  }
+}
+
+typedef enum : uint8_t {
+  BTM_SM4_UNKNOWN = 0x00,
+  BTM_SM4_KNOWN = 0x10,
+  BTM_SM4_TRUE = 0x11,
+  BTM_SM4_REQ_PEND = 0x08, /* set this bit when getting remote features */
+  BTM_SM4_UPGRADE = 0x04,  /* set this bit when upgrading link key */
+  BTM_SM4_RETRY = 0x02,    /* set this bit to retry on HCI_ERR_KEY_MISSING or \
+                              HCI_ERR_LMP_ERR_TRANS_COLLISION */
+  BTM_SM4_DD_ACP =
+      0x20, /* set this bit to indicate peer initiated dedicated bonding */
+  BTM_SM4_CONN_PEND = 0x40, /* set this bit to indicate accepting acl conn; to
+                             be cleared on \ btm_acl_created */
+} tBTM_SM4_BIT;
+
 /*
  * Define structure for Security Device Record.
  * A record exists for each device authenticated with this device
  */
-typedef struct {
+struct tBTM_SEC_DEV_REC {
   /* Peering bond type */
   typedef enum : uint8_t {
     BOND_TYPE_UNKNOWN = 0,
@@ -171,6 +209,10 @@ typedef struct {
   DEV_CLASS dev_class;     /* DEV_CLASS of the device            */
   LinkKey link_key;        /* Device link key                    */
 
+ public:
+  RawAddress RemoteAddress() const { return bd_addr; }
+  uint16_t get_br_edr_hci_handle() const { return hci_handle; }
+
  private:
   friend bool BTM_SecAddDevice(const RawAddress& bd_addr, DEV_CLASS dev_class,
                                BD_NAME bd_name, uint8_t* features,
@@ -180,8 +222,8 @@ typedef struct {
                                uint8_t pin_len, uint8_t* p_pin);
   friend void btm_sec_auth_complete(uint16_t handle, tHCI_STATUS status);
   friend void btm_sec_connected(const RawAddress& bda, uint16_t handle,
-                                uint8_t status, uint8_t enc_mode);
-  friend void btm_sec_encrypt_change(uint16_t handle, uint8_t status,
+                                tHCI_STATUS status, uint8_t enc_mode);
+  friend void btm_sec_encrypt_change(uint16_t handle, tHCI_STATUS status,
                                      uint8_t encr_enable);
   friend void btm_sec_link_key_notification(const RawAddress& p_bda,
                                             const Octet16& link_key,
@@ -292,30 +334,45 @@ typedef struct {
     return sec_state == BTM_SEC_STATE_DISCONNECTING_BOTH;
   }
 
+ private:
   bool is_originator;         /* true if device is originating connection */
+  friend tBTM_STATUS BTM_SetEncryption(const RawAddress& bd_addr,
+                                       tBT_TRANSPORT transport,
+                                       tBTM_SEC_CALLBACK* p_callback,
+                                       void* p_ref_data,
+                                       tBTM_BLE_SEC_ACT sec_act);
+  friend tBTM_STATUS btm_sec_l2cap_access_req_by_requirement(
+      const RawAddress& bd_addr, uint16_t security_required, bool is_originator,
+      tBTM_SEC_CALLBACK* p_callback, void* p_ref_data);
+  friend tBTM_STATUS btm_sec_mx_access_request(const RawAddress& bd_addr,
+                                               bool is_originator,
+                                               uint16_t security_required,
+                                               tBTM_SEC_CALLBACK* p_callback,
+                                               void* p_ref_data);
+
+ public:
+  bool IsLocallyInitiated() const { return is_originator; }
+
   bool role_central;          /* true if current mode is central     */
   uint16_t security_required; /* Security required for connection   */
   bool link_key_not_sent; /* link key notification has not been sent waiting for
                              name */
   uint8_t link_key_type;  /* Type of key used in pairing   */
 
-#define BTM_SM4_UNKNOWN 0x00
-#define BTM_SM4_KNOWN 0x10
-#define BTM_SM4_TRUE 0x11
-#define BTM_SM4_REQ_PEND 0x08 /* set this bit when getting remote features */
-#define BTM_SM4_UPGRADE 0x04  /* set this bit when upgrading link key */
-#define BTM_SM4_RETRY                                     \
-  0x02 /* set this bit to retry on HCI_ERR_KEY_MISSING or \
-          HCI_ERR_LMP_ERR_TRANS_COLLISION */
-#define BTM_SM4_DD_ACP \
-  0x20 /* set this bit to indicate peer initiated dedicated bonding */
-#define BTM_SM4_CONN_PEND                                               \
-  0x40 /* set this bit to indicate accepting acl conn; to be cleared on \
-          btm_acl_created */
   uint8_t sm4;                /* BTM_SM4_TRUE, if the peer supports SM4 */
   tBTM_IO_CAP rmt_io_caps;    /* IO capability of the peer device */
   tBTM_AUTH_REQ rmt_auth_req; /* the auth_req flag as in the IO caps rsp evt */
+
   bool remote_supports_secure_connections;
+  friend void btm_sec_set_peer_sec_caps(uint16_t hci_handle, bool ssp_supported,
+                                        bool sc_supported,
+                                        bool hci_role_switch_supported);
+
+ public:
+  bool SupportsSecureConnections() const {
+    return remote_supports_secure_connections;
+  }
+
   bool remote_features_needed; /* set to true if the local device is in */
   /* "Secure Connections Only" mode and it receives */
   /* HCI_IO_CAPABILITY_REQUEST_EVT from the peer before */
@@ -355,4 +412,10 @@ typedef struct {
   tBTM_SEC_BLE ble;
   tBTM_LE_CONN_PRAMS conn_params;
 
-} tBTM_SEC_DEV_REC;
+  std::string ToString() const {
+    return base::StringPrintf(
+        "%s %6s name:\"%s\" supports_SC:%s", PRIVATE_ADDRESS(bd_addr),
+        DeviceTypeText(device_type).c_str(), sec_bd_name,
+        logbool(remote_supports_secure_connections).c_str());
+  }
+};

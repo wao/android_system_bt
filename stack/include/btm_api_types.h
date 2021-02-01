@@ -19,7 +19,9 @@
 #ifndef BTM_API_TYPES_H
 #define BTM_API_TYPES_H
 
+#include <base/strings/stringprintf.h>
 #include <cstdint>
+#include <string>
 
 #include "device/include/esco_parameters.h"
 #include "internal_include/bt_target.h"
@@ -419,7 +421,7 @@ typedef struct {
 } tBTM_CHG_ESCO_PARAMS;
 
 /* Returned by BTM_ReadEScoLinkParms() */
-typedef struct {
+struct tBTM_ESCO_DATA {
   uint16_t rx_pkt_len;
   uint16_t tx_pkt_len;
   RawAddress bd_addr;
@@ -427,7 +429,7 @@ typedef struct {
   uint8_t tx_interval;
   uint8_t retrans_window;
   uint8_t air_mode;
-} tBTM_ESCO_DATA;
+};
 
 typedef struct {
   uint16_t sco_inx;
@@ -469,6 +471,19 @@ typedef enum : uint8_t {
   BTM_SEC_MODE_SC = 6,
 } tSECURITY_MODE;
 
+inline std::string security_mode_text(const tSECURITY_MODE& security_mode) {
+  switch (security_mode) {
+    case BTM_SEC_MODE_SERVICE:
+      return std::string("service");
+    case BTM_SEC_MODE_SP:
+      return std::string("simple pairing");
+    case BTM_SEC_MODE_SC:
+      return std::string("secure connections only");
+    default:
+      return std::string("UNKNOWN[%hhu]", security_mode);
+  }
+}
+
 enum : uint16_t {
   /* Nothing required */
   BTM_SEC_NONE = 0x0000,
@@ -486,9 +501,9 @@ enum : uint16_t {
   BTM_SEC_FORCE_CENTRAL = 0x0100,
   /* Need to switch connection to be central */
   BTM_SEC_ATTEMPT_CENTRAL = 0x0200,
-  /* Need to switch connection to be slave */
+  /* Need to switch connection to be peripheral */
   BTM_SEC_FORCE_PERIPHERAL = 0x0400,
-  /* Try to switch connection to be slave */
+  /* Try to switch connection to be peripheral */
   BTM_SEC_ATTEMPT_PERIPHERAL = 0x0800,
   /* inbound Do man in the middle protection */
   BTM_SEC_IN_MITM = 0x1000,
@@ -608,42 +623,62 @@ enum {
 };
 typedef uint8_t tBTM_SP_EVT;
 
-#define BTM_IO_CAP_OUT 0    /* DisplayOnly */
-#define BTM_IO_CAP_IO 1     /* DisplayYesNo */
-#define BTM_IO_CAP_IN 2     /* KeyboardOnly */
-#define BTM_IO_CAP_NONE 3   /* NoInputNoOutput */
-#define BTM_IO_CAP_KBDISP 4 /* Keyboard display */
-#define BTM_IO_CAP_MAX 5
-#define BTM_IO_CAP_UNKNOWN 0xFF /* Unknown value */
-
+enum : uint8_t {
+  BTM_IO_CAP_OUT = 0,    /* DisplayOnly */
+  BTM_IO_CAP_IO = 1,     /* DisplayYesNo */
+  BTM_IO_CAP_IN = 2,     /* KeyboardOnly */
+  BTM_IO_CAP_NONE = 3,   /* NoInputNoOutput */
+  BTM_IO_CAP_KBDISP = 4, /* Keyboard display */
+  BTM_IO_CAP_MAX = 5,
+  BTM_IO_CAP_UNKNOWN = 0xFF /* Unknown value */
+};
 typedef uint8_t tBTM_IO_CAP;
+
+inline std::string io_capabilities_text(const tBTM_IO_CAP& io_caps) {
+  switch (io_caps) {
+    case BTM_IO_CAP_OUT:
+      return std::string("Display only");
+    case BTM_IO_CAP_IO:
+      return std::string("Display yes-no");
+    case BTM_IO_CAP_IN:
+      return std::string("Keyboard Only");
+    case BTM_IO_CAP_NONE:
+      return std::string("No input or output");
+    case BTM_IO_CAP_KBDISP:
+      return std::string("Keyboard-Display");
+    default:
+      return base::StringPrintf("UNKNOWN[%hhu]", io_caps);
+  }
+}
 
 #define BTM_MAX_PASSKEY_VAL (999999)
 
-/* MITM Protection Not Required - Single Profile/non-bonding Numeric comparison
- * with automatic accept allowed */
-// NO_BONDING
-#define BTM_AUTH_SP_NO 0
-/* MITM Protection Required - Single Profile/non-bonding. Use IO Capabilities to
- * determine authentication procedure */
-// NO_BONDING_MITM_PROTECTION
-#define BTM_AUTH_SP_YES 1
-/* MITM Protection Not Required - All Profiles/dedicated bonding Numeric
- * comparison with automatic accept allowed */
-// DEDICATED_BONDING
-#define BTM_AUTH_AP_NO 2
-/* MITM Protection Required - All Profiles/dedicated bonding Use IO Capabilities
- * to determine authentication procedure */
-// DEDICATED_BONDING_MITM_PROTECTION
-#define BTM_AUTH_AP_YES 3
-/* MITM Protection Not Required - Single Profiles/general bonding Numeric
- * comparison with automatic accept allowed */
-// GENERAL_BONDING
-#define BTM_AUTH_SPGB_NO 4
-/* MITM Protection Required - Single Profiles/general bonding Use IO
- * Capabilities to determine authentication procedure */
-// GENERAL_BONDING_MITM_PROTECTION
-#define BTM_AUTH_SPGB_YES 5
+typedef enum : uint8_t {
+  /* MITM Protection Not Required - Single Profile/non-bonding Numeric
+   * comparison with automatic accept allowed */
+  // NO_BONDING
+  BTM_AUTH_SP_NO = 0,
+  /* MITM Protection Required - Single Profile/non-bonding. Use IO Capabilities
+   * to determine authentication procedure */
+  // NO_BONDING_MITM_PROTECTION
+  BTM_AUTH_SP_YES = 1,
+  /* MITM Protection Not Required - All Profiles/dedicated bonding Numeric
+   * comparison with automatic accept allowed */
+  // DEDICATED_BONDING
+  BTM_AUTH_AP_NO = 2,
+  /* MITM Protection Required - All Profiles/dedicated bonding Use IO
+   * Capabilities to determine authentication procedure */
+  // DEDICATED_BONDING_MITM_PROTECTION
+  BTM_AUTH_AP_YES = 3,
+  /* MITM Protection Not Required - Single Profiles/general bonding Numeric
+   * comparison with automatic accept allowed */
+  // GENERAL_BONDING
+  BTM_AUTH_SPGB_NO = 4,
+  /* MITM Protection Required - Single Profiles/general bonding Use IO
+   * Capabilities to determine authentication procedure */
+  // GENERAL_BONDING_MITM_PROTECTION
+  BTM_AUTH_SPGB_YES = 5,
+} tBTM_AUTH;
 
 /* this bit is ORed with BTM_AUTH_SP_* when IO exchange for dedicated bonding */
 #define BTM_AUTH_DD_BOND 2
@@ -786,21 +821,22 @@ typedef void(tBTM_BOND_CANCEL_CMPL_CALLBACK)(tBTM_STATUS result);
 #define BTM_LE_CONSENT_REQ_EVT SMP_CONSENT_REQ_EVT
 typedef uint8_t tBTM_LE_EVT;
 
-#define BTM_LE_KEY_NONE 0
-/* encryption information of peer device */
-#define BTM_LE_KEY_PENC SMP_SEC_KEY_TYPE_ENC
-/* identity key of the peer device */
-#define BTM_LE_KEY_PID SMP_SEC_KEY_TYPE_ID
-/* peer SRK */
-#define BTM_LE_KEY_PCSRK SMP_SEC_KEY_TYPE_CSRK
-#define BTM_LE_KEY_PLK SMP_SEC_KEY_TYPE_LK
-#define BTM_LE_KEY_LLK (SMP_SEC_KEY_TYPE_LK << 4)
-/* central role security information:div */
-#define BTM_LE_KEY_LENC (SMP_SEC_KEY_TYPE_ENC << 4)
-/* central device ID key */
-#define BTM_LE_KEY_LID (SMP_SEC_KEY_TYPE_ID << 4)
-/* local CSRK has been deliver to peer */
-#define BTM_LE_KEY_LCSRK (SMP_SEC_KEY_TYPE_CSRK << 4)
+enum : uint8_t {
+  BTM_LE_KEY_NONE = 0,
+  BTM_LE_KEY_PENC = SMP_SEC_KEY_TYPE_ENC,
+  /* identity key of the peer device */
+  BTM_LE_KEY_PID = SMP_SEC_KEY_TYPE_ID,
+  /* peer SRK */
+  BTM_LE_KEY_PCSRK = SMP_SEC_KEY_TYPE_CSRK,
+  BTM_LE_KEY_PLK = SMP_SEC_KEY_TYPE_LK,
+  BTM_LE_KEY_LLK = (SMP_SEC_KEY_TYPE_LK << 4),
+  /* master role security information:div */
+  BTM_LE_KEY_LENC = (SMP_SEC_KEY_TYPE_ENC << 4),
+  /* master device ID key */
+  BTM_LE_KEY_LID = (SMP_SEC_KEY_TYPE_ID << 4),
+  /* local CSRK has been deliver to peer */
+  BTM_LE_KEY_LCSRK = (SMP_SEC_KEY_TYPE_CSRK << 4),
+};
 typedef uint8_t tBTM_LE_KEY_TYPE;
 
 #define BTM_LE_AUTH_REQ_NO_BOND SMP_AUTH_NO_BOND /* 0 */
@@ -844,116 +880,6 @@ typedef struct {
   bool smp_over_br;
 } tBTM_LE_COMPLT;
 
-/* BLE encryption keys */
-typedef struct {
-  Octet16 ltk;
-  BT_OCTET8 rand;
-  uint16_t ediv;
-  uint8_t sec_level;
-  uint8_t key_size;
-} tBTM_LE_PENC_KEYS;
-
-/* BLE CSRK keys */
-typedef struct {
-  uint32_t counter;
-  Octet16 csrk;
-  uint8_t sec_level;
-} tBTM_LE_PCSRK_KEYS;
-
-/* BLE Encryption reproduction keys */
-typedef struct {
-  Octet16 ltk;
-  uint16_t div;
-  uint8_t key_size;
-  uint8_t sec_level;
-} tBTM_LE_LENC_KEYS;
-
-/* BLE SRK keys */
-typedef struct {
-  uint32_t counter;
-  uint16_t div;
-  uint8_t sec_level;
-  Octet16 csrk;
-} tBTM_LE_LCSRK_KEYS;
-
-typedef struct {
-  Octet16 irk;
-  tBLE_ADDR_TYPE identity_addr_type;
-  RawAddress identity_addr;
-} tBTM_LE_PID_KEYS;
-
-typedef union {
-  tBTM_LE_PENC_KEYS penc_key;   /* received peer encryption key */
-  tBTM_LE_PCSRK_KEYS pcsrk_key; /* received peer device SRK */
-  tBTM_LE_PID_KEYS pid_key;     /* peer device ID key */
-  tBTM_LE_LENC_KEYS lenc_key;   /* local encryption reproduction keys
-                                 * LTK = = d1(ER,DIV,0) */
-  tBTM_LE_LCSRK_KEYS lcsrk_key; /* local device CSRK = d1(ER,DIV,1)*/
-} tBTM_LE_KEY_VALUE;
-
-typedef struct {
-  tBTM_LE_KEY_TYPE key_type;
-  tBTM_LE_KEY_VALUE* p_key_value;
-} tBTM_LE_KEY;
-
-typedef union {
-  tBTM_LE_IO_REQ io_req; /* BTM_LE_IO_REQ_EVT      */
-  uint32_t key_notif;    /* BTM_LE_KEY_NOTIF_EVT   */
-                         /* BTM_LE_NC_REQ_EVT */
-                         /* no callback data for
-                          * BTM_LE_KEY_REQ_EVT
-                          * and BTM_LE_OOB_REQ_EVT  */
-  tBTM_LE_COMPLT complt; /* BTM_LE_COMPLT_EVT      */
-  tSMP_OOB_DATA_TYPE req_oob_type;
-  tBTM_LE_KEY key;
-} tBTM_LE_EVT_DATA;
-
-/* Simple Pairing Events.  Called by the stack when Simple Pairing related
- * events occur.
-*/
-typedef uint8_t(tBTM_LE_CALLBACK)(tBTM_LE_EVT event, const RawAddress& bda,
-                                  tBTM_LE_EVT_DATA* p_data);
-
-#define BTM_BLE_KEY_TYPE_ID 1
-#define BTM_BLE_KEY_TYPE_ER 2
-#define BTM_BLE_KEY_TYPE_COUNTER 3  // tobe obsolete
-
-typedef struct {
-  Octet16 ir;
-  Octet16 irk;
-  Octet16 dhk;
-
-} tBTM_BLE_LOCAL_ID_KEYS;
-
-typedef union {
-  tBTM_BLE_LOCAL_ID_KEYS id_keys;
-  Octet16 er;
-} tBTM_BLE_LOCAL_KEYS;
-
-/* New LE identity key for local device.
-*/
-typedef void(tBTM_LE_KEY_CALLBACK)(uint8_t key_type,
-                                   tBTM_BLE_LOCAL_KEYS* p_key);
-
-/***************************
- *  Security Manager Types
- ***************************/
-/* Structure that applications use to register with BTM_SecRegister */
-typedef struct {
-  tBTM_PIN_CALLBACK* p_pin_callback;
-  tBTM_LINK_KEY_CALLBACK* p_link_key_callback;
-  tBTM_AUTH_COMPLETE_CALLBACK* p_auth_complete_callback;
-  tBTM_BOND_CANCEL_CMPL_CALLBACK* p_bond_cancel_cmpl_callback;
-  tBTM_SP_CALLBACK* p_sp_callback;
-  tBTM_LE_CALLBACK* p_le_callback;
-  tBTM_LE_KEY_CALLBACK* p_le_key_callback;
-} tBTM_APPL_INFO;
-
-/* Callback function for when a link supervision timeout event occurs.
- * This asynchronous event is enabled/disabled by calling BTM_RegForLstoEvt().
-*/
-typedef void(tBTM_LSTO_CBACK)(const RawAddress& remote_bda, uint16_t timeout);
-
 /*****************************************************************************
  *  POWER MANAGEMENT
  ****************************************************************************/
@@ -972,15 +898,66 @@ enum : uint8_t {
 };
 typedef uint8_t tBTM_PM_STATUS;
 
+inline std::string power_mode_status_text(tBTM_PM_STATUS status) {
+  switch (status) {
+    case BTM_PM_STS_ACTIVE:
+      return std::string("active");
+    case BTM_PM_STS_HOLD:
+      return std::string("hold");
+    case BTM_PM_STS_SNIFF:
+      return std::string("sniff");
+    case BTM_PM_STS_PARK:
+      return std::string("park");
+    case BTM_PM_STS_SSR:
+      return std::string("sniff_subrating");
+    case BTM_PM_STS_PENDING:
+      return std::string("pending");
+    case BTM_PM_STS_ERROR:
+      return std::string("error");
+    default:
+      return std::string("UNKNOWN");
+  }
+}
+
 /* BTM Power manager modes */
 enum : uint8_t {
   BTM_PM_MD_ACTIVE = HCI_MODE_ACTIVE,  // 0x00
   BTM_PM_MD_HOLD = HCI_MODE_HOLD,      // 0x01
   BTM_PM_MD_SNIFF = HCI_MODE_SNIFF,    // 0x02
   BTM_PM_MD_PARK = HCI_MODE_PARK,      // 0x03
-  BTM_PM_MD_FORCE = 0x10 /* OR this to force ACL link to a certain mode */
+  BTM_PM_MD_FORCE = 0x10, /* OR this to force ACL link to a certain mode */
+  BTM_PM_MD_UNKNOWN = 0xEF,
 };
 typedef uint8_t tBTM_PM_MODE;
+#define HCI_TO_BTM_POWER_MODE(mode) (static_cast<tBTM_PM_MODE>(mode))
+
+inline bool is_legal_power_mode(tBTM_PM_MODE mode) {
+  switch (mode & ~BTM_PM_MD_FORCE) {
+    case BTM_PM_MD_ACTIVE:
+    case BTM_PM_MD_HOLD:
+    case BTM_PM_MD_SNIFF:
+    case BTM_PM_MD_PARK:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline std::string power_mode_text(tBTM_PM_MODE mode) {
+  std::string s = base::StringPrintf((mode & BTM_PM_MD_FORCE) ? "" : "forced:");
+  switch (mode & ~BTM_PM_MD_FORCE) {
+    case BTM_PM_MD_ACTIVE:
+      return s + std::string("active");
+    case BTM_PM_MD_HOLD:
+      return s + std::string("hold");
+    case BTM_PM_MD_SNIFF:
+      return s + std::string("sniff");
+    case BTM_PM_MD_PARK:
+      return s + std::string("park");
+    default:
+      return s + std::string("UNKNOWN");
+  }
+}
 
 #define BTM_PM_SET_ONLY_ID 0x80
 
@@ -988,8 +965,6 @@ typedef uint8_t tBTM_PM_MODE;
 typedef enum : uint8_t {
   /* The module wants to set the desired power mode */
   BTM_PM_REG_SET = (1u << 0),
-  /* The module wants to receive mode change event */
-  BTM_PM_REG_NOTIF = (1u << 1),
   /* The module does not want to involve with PM anymore */
   BTM_PM_DEREG = (1u << 2),
 } tBTM_PM_REGISTER;
@@ -998,11 +973,11 @@ typedef enum : uint8_t {
  *  Power Manager Types
  ************************/
 typedef struct {
-  uint16_t max;
-  uint16_t min;
-  uint16_t attempt;
-  uint16_t timeout;
-  tBTM_PM_MODE mode;
+  uint16_t max = 0;
+  uint16_t min = 0;
+  uint16_t attempt = 0;
+  uint16_t timeout = 0;
+  tBTM_PM_MODE mode = BTM_PM_MD_ACTIVE;  // 0
 } tBTM_PM_PWR_MD;
 
 /*************************************
@@ -1010,7 +985,7 @@ typedef struct {
  *************************************/
 typedef void(tBTM_PM_STATUS_CBACK)(const RawAddress& p_bda,
                                    tBTM_PM_STATUS status, uint16_t value,
-                                   uint8_t hci_status);
+                                   tHCI_STATUS hci_status);
 
 /************************
  *  Stored Linkkey Types

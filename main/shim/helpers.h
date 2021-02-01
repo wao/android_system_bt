@@ -21,6 +21,7 @@
 #include "osi/include/allocator.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/hci_error_code.h"
+#include "stack/include/hcidefs.h"
 #include "types/ble_address_with_type.h"
 
 namespace bluetooth {
@@ -127,6 +128,17 @@ inline uint8_t ToLegacyRole(hci::Role role) {
   return static_cast<uint8_t>(role);
 }
 
+inline hci::Role ToHciRole(hci_role_t role) {
+  switch (role) {
+    case HCI_ROLE_CENTRAL:
+      return hci::Role::CENTRAL;
+    case HCI_ROLE_PERIPHERAL:
+      return hci::Role::PERIPHERAL;
+    default:
+      ASSERT_LOG(false, "Unable to determine legacy role:%u", role);
+  }
+}
+
 inline tHCI_STATUS ToLegacyHciErrorCode(hci::ErrorCode reason) {
   switch (reason) {
     case hci::ErrorCode::SUCCESS:
@@ -214,6 +226,14 @@ inline tHCI_STATUS ToLegacyHciErrorCode(hci::ErrorCode reason) {
       return static_cast<tHCI_STATUS>(
           hci::ErrorCode::CONNECTION_FAILED_ESTABLISHMENT);
   }
+}
+
+inline tHCI_MODE ToLegacyHciMode(hci::Mode mode) {
+  return static_cast<tHCI_MODE>(mode);
+}
+
+inline hci::DisconnectReason ToDisconnectReasonFromLegacy(tHCI_STATUS reason) {
+  return static_cast<hci::DisconnectReason>(reason);
 }
 
 namespace debug {

@@ -49,7 +49,7 @@ class LeAclManagerFacadeService : public LeAclManagerFacade::Service, public LeC
     acl_manager_->RegisterLeCallbacks(this, facade_handler_);
   }
 
-  ~LeAclManagerFacadeService() override {
+  ~LeAclManagerFacadeService() {
     std::unique_lock<std::mutex> lock(acl_connections_mutex_);
     for (auto& conn : acl_connections_) {
       if (conn.second.connection_ != nullptr) {
@@ -120,8 +120,8 @@ class LeAclManagerFacadeService : public LeAclManagerFacade::Service, public LeC
       ::grpc::ServerContext* context,
       const LeConnectionCommandMsg* request,
       ::google::protobuf::Empty* response) override {
-    auto command_view = ConnectionManagementCommandView::Create(
-        AclCommandView::Create(CommandPacketView::Create(PacketView<kLittleEndian>(
+    auto command_view =
+        ConnectionManagementCommandView::Create(AclCommandView::Create(CommandView::Create(PacketView<kLittleEndian>(
             std::make_shared<std::vector<uint8_t>>(request->packet().begin(), request->packet().end())))));
     if (!command_view.IsValid()) {
       return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Invalid command packet");
@@ -279,6 +279,9 @@ class LeAclManagerFacadeService : public LeAclManagerFacade::Service, public LeC
       LOG_INFO(
           "tx_octets: 0x%hx, tx_time: 0x%hx, rx_octets 0x%hx, rx_time 0x%hx", tx_octets, tx_time, rx_octets, rx_time);
     }
+
+    void OnPhyUpdate(uint8_t tx_phy, uint8_t rx_phy) override {}
+    void OnLocalAddressUpdate(AddressWithType address_with_type) override {}
     void OnDisconnection(ErrorCode reason) override {
       std::unique_ptr<BasePacketBuilder> builder =
           DisconnectionCompleteBuilder::Create(ErrorCode::SUCCESS, handle_, reason);

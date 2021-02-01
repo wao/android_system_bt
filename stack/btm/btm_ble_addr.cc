@@ -26,16 +26,18 @@
 #include <string.h>
 
 #include "bt_types.h"
-#include "btm_int.h"
 #include "btu.h"
 #include "device/include/controller.h"
 #include "gap_api.h"
 #include "hcimsgs.h"
 
 #include "btm_ble_int.h"
+#include "main/shim/shim.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/crypto_toolbox/crypto_toolbox.h"
 #include "stack/include/acl_api.h"
+
+extern tBTM_CB btm_cb;
 
 void btm_ble_set_random_address(const RawAddress& random_bda);
 
@@ -71,6 +73,14 @@ static void btm_ble_refresh_raddr_timer_timeout(UNUSED_ATTR void* data) {
 /** This function is called when random address for local controller was
  * generated */
 void btm_gen_resolve_paddr_low(const RawAddress& address) {
+  /* when GD advertising and scanning modules are enabled, set random address
+   * via address manager in GD */
+  if (bluetooth::shim::is_gd_advertising_enabled() &&
+      bluetooth::shim::is_gd_scanning_enabled()) {
+    LOG_INFO("GD advertising and scanning modules are enabled, skip");
+    return;
+  }
+
   tBTM_LE_RANDOM_CB* p_cb = &btm_cb.ble_ctr_cb.addr_mgnt_cb;
   p_cb->private_addr = address;
 

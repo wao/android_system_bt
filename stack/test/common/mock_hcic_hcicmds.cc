@@ -29,7 +29,6 @@ extern std::map<std::string, int> mock_function_count_map;
 #include <string.h>
 #include "bt_common.h"
 #include "bt_target.h"
-#include "btm_int.h"
 #include "btu.h"
 #include "hcidefs.h"
 #include "hcimsgs.h"
@@ -69,7 +68,7 @@ void btsnd_hcic_delete_stored_key(const RawAddress& bd_addr,
                                   bool delete_all_flag) {
   mock_function_count_map[__func__]++;
 }
-void btsnd_hcic_disconnect(uint16_t handle, uint8_t reason) {
+static void btsnd_hcic_disconnect(uint16_t handle, uint8_t reason) {
   mock_function_count_map[__func__]++;
 }
 void btsnd_hcic_enable_test_mode(void) { mock_function_count_map[__func__]++; }
@@ -292,4 +291,14 @@ void btsnd_hcic_write_scan_enable(uint8_t flag) {
 }
 void btsnd_hcic_write_voice_settings(uint16_t flags) {
   mock_function_count_map[__func__]++;
+}
+
+bluetooth::legacy::hci::Interface interface_ = {
+    .Disconnect = btsnd_hcic_disconnect,
+    .StartRoleSwitch = btsnd_hcic_switch_role,
+};
+
+const bluetooth::legacy::hci::Interface&
+bluetooth::legacy::hci::GetInterface() {
+  return interface_;
 }

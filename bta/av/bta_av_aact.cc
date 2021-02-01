@@ -35,6 +35,7 @@
 #include "a2dp_sbc.h"
 #include "avdt_api.h"
 #include "avrcp_service.h"
+#include "bta_ar_api.h"
 #include "bta_av_int.h"
 #include "btif/include/btif_av_co.h"
 #include "btif/include/btif_config.h"
@@ -42,12 +43,14 @@
 #include "device/include/interop.h"
 #include "l2c_api.h"
 #include "l2cdefs.h"
+#include "main/shim/dumpsys.h"
 #include "osi/include/log.h"
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
 #include "stack/include/acl_api.h"
+#include "stack/include/btm_api.h"
+#include "stack/include/btm_client_interface.h"
 #include "utl.h"
-#include "bta_ar_api.h"
 
 /*****************************************************************************
  *  Constants
@@ -1781,11 +1784,13 @@ void bta_av_conn_failed(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 void bta_av_do_start(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   uint8_t cur_role;
 
-  LOG_INFO("%s: peer %s sco_occupied:%s role:0x%x started:%s wait:0x%x",
-           __func__, p_scb->PeerAddress().ToString().c_str(),
-           logbool(bta_av_cb.sco_occupied).c_str(), p_scb->role,
-           logbool(p_scb->started).c_str(), p_scb->wait);
+  LOG_INFO(
+      "A2dp stream start peer:%s sco_occupied:%s role:%s started:%s wait:0x%x",
+      PRIVATE_ADDRESS(p_scb->PeerAddress()),
+      logbool(bta_av_cb.sco_occupied).c_str(), RoleText(p_scb->role).c_str(),
+      logbool(p_scb->started).c_str(), p_scb->wait);
   if (bta_av_cb.sco_occupied) {
+    LOG_WARN("A2dp stream start failed");
     bta_av_start_failed(p_scb, p_data);
     return;
   }
@@ -2716,7 +2721,7 @@ void bta_av_rcfg_cfm(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
   APPL_TRACE_DEBUG("%s: err_code = %d", __func__, err_code);
 
-  // Disable AVDTP RECONFIGURE for blacklisted devices
+  // Disable AVDTP RECONFIGURE for rejectlisted devices
   bool disable_avdtp_reconfigure = false;
   {
     char remote_name[BTM_MAX_REM_BD_NAME_LEN] = "";
@@ -3167,7 +3172,8 @@ static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb,
   p_a2dp_offload->max_latency = 0;
   p_a2dp_offload->mtu = mtu;
   p_a2dp_offload->acl_hdl =
-      BTM_GetHCIConnHandle(p_scb->PeerAddress(), BT_TRANSPORT_BR_EDR);
+      get_btm_client_interface().lifecycle.BTM_GetHCIConnHandle(
+          p_scb->PeerAddress(), BT_TRANSPORT_BR_EDR);
   btav_a2dp_scmst_info_t scmst_info =
       p_scb->p_cos->get_scmst_info(p_scb->PeerAddress());
   p_a2dp_offload->scms_t_enable[0] = scmst_info.enable_status;

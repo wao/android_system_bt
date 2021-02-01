@@ -37,11 +37,6 @@
 #define BTA_DM_PAGE_TIMEOUT 8192
 #endif
 
-/* link supervision timeout in 625uS (5 secs) */
-#ifndef BTA_DM_LINK_TIMEOUT
-#define BTA_DM_LINK_TIMEOUT 8000
-#endif
-
 /* TRUE to avoid scatternet when av is streaming (be the central) */
 #ifndef BTA_DM_AVOID_SCATTER_A2DP
 #define BTA_DM_AVOID_SCATTER_A2DP TRUE
@@ -60,8 +55,6 @@ const tBTA_DM_CFG bta_dm_cfg = {
     BTA_DM_COD,
     /* page timeout in 625uS */
     BTA_DM_PAGE_TIMEOUT,
-    /* link supervision timeout in 625uS*/
-    BTA_DM_LINK_TIMEOUT,
     /* true to avoid scatternet when av is streaming (be the central) */
     BTA_DM_AVOID_SCATTER_A2DP};
 
@@ -534,14 +527,15 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTM_PM_PWR_MD bta_dm_pm_md[] = {
  * lowest latency */
 tBTA_DM_SSR_SPEC bta_dm_ssr_spec[] = {
     /*max_lat, min_rmt_to, min_loc_to*/
-    {0, 0, 0}, /* BTA_DM_PM_SSR0 - do not use SSR */
+    {0, 0, 0, "no_ssr"}, /* BTA_DM_PM_SSR0 - do not use SSR */
     /* BTA_DM_PM_SSR1 - HH, can NOT share entry with any other profile, seting
        default max latency and min remote timeout as 0, and always read
        individual device preference from HH module */
-    {0, 0, 2},
-    {1200, 2, 2},     /* BTA_DM_PM_SSR2 - others (as long as sniff is allowed)*/
-    {360, 160, 1600}, /* BTA_DM_PM_SSR3 - HD */
-    {1200, 65534, 65534} /* BTA_DM_PM_SSR4 - A2DP streaming */
+    {0, 0, 2, "hid_host"},
+    {1200, 2, 2, "sniff_capable"},  /* BTA_DM_PM_SSR2 - others (as long as sniff
+                                       is allowed)*/
+    {360, 160, 1600, "hid_device"}, /* BTA_DM_PM_SSR3 - HD */
+    {1200, 65534, 65534, "a2dp"}    /* BTA_DM_PM_SSR4 - A2DP streaming */
 };
 
 tBTA_DM_SSR_SPEC* p_bta_dm_ssr_spec = &bta_dm_ssr_spec[0];
