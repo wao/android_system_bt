@@ -35,31 +35,33 @@ static_library("device") {
 
   deps = [
     "//bt/gd/rust/shim:init_flags_bridge_header",
+    "//bt/gd/rust/shim:message_loop_thread_bridge_header",
   ]
 }
 
-executable("net_test_device") {
-  testonly = true
-  sources = [
-    "//bt/osi/test/AllocationTestHarness.cc",
-  ]
+if (use.test) {
+  executable("net_test_device") {
+    sources = [
+      "//bt/osi/test/AllocationTestHarness.cc",
+    ]
 
-  include_dirs = [ "//bt" ]
+    include_dirs = [ "//bt" ]
 
-  deps = [
-    "//bt/device",
-    "//bt/btcore",
-    "//bt/osi",
-  ]
+    deps = [
+      "//bt/device",
+      "//bt/btcore",
+      "//bt/osi",
+    ]
 
-  configs += [
-    "//bt:external_gtest_main",
-    "//bt:target_defaults",
-  ]
+    configs += [
+      "//bt:external_gtest_main",
+      "//bt:target_defaults",
+    ]
 
-  libs = [
-    "-lpthread",
-    "-lrt",
-    "-ldl",
-  ]
+    libs = [
+      "pthread",
+      "rt",
+      "dl",
+    ]
+  }
 }

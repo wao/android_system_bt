@@ -76,6 +76,8 @@ void remove_classic_cid_token_entry(uint16_t cid_token) {
   classic_cid_token_to_channel_map_.erase(cid_token);
 }
 
+void remove_classic_dynamic_channel_helper(uint16_t psm);
+
 struct ClassicDynamicChannelHelper {
   ClassicDynamicChannelHelper(uint16_t psm, tL2CAP_APPL_INFO appl_info,
                               classic::DynamicChannelConfigurationOption config,
@@ -143,11 +145,13 @@ struct ClassicDynamicChannelHelper {
     for (const auto& device : channels_) {
       device.second->Close();
     }
+    remove_classic_dynamic_channel_helper(psm_);
   }
 
   void on_channel_close(uint16_t cid_token,
                         bluetooth::hci::ErrorCode error_code) {
     channel_enqueue_buffer_[cid_token] = nullptr;
+    channel_enqueue_buffer_.erase(cid_token);
     channels_[cid_token]->GetQueueUpEnd()->UnregisterDequeue();
     channels_.erase(cid_token);
     do_in_main_thread(FROM_HERE, base::Bind(appl_info_.pL2CA_DisconnectInd_Cb,
@@ -174,17 +178,9 @@ struct ClassicDynamicChannelHelper {
     channel->RegisterOnCloseCallback(GetGdShimHandler()->BindOnceOn(
         this, &ClassicDynamicChannelHelper::on_channel_close, cid_token));
 
-    channel->GetQueueUpEnd()->RegisterDequeue(
-        GetGdShimHandler(),
-        bluetooth::common::Bind(&ClassicDynamicChannelHelper::on_incoming_data,
-                                bluetooth::common::Unretained(this),
-                                cid_token));
-
     channel_enqueue_buffer_[cid_token] = std::make_unique<
         bluetooth::os::EnqueueBuffer<bluetooth::packet::BasePacketBuilder>>(
         channel->GetQueueUpEnd());
-
-    channels_[cid_token] = std::move(channel);
 
     if (initiator_local) {
       do_in_main_thread(
@@ -207,6 +203,14 @@ struct ClassicDynamicChannelHelper {
                                               cid_token, L2CAP_INITIATOR_LOCAL,
                                               base::Unretained(&cfg_info)));
     }
+
+    channel->GetQueueUpEnd()->RegisterDequeue(
+        GetGdShimHandler(),
+        bluetooth::common::Bind(&ClassicDynamicChannelHelper::on_incoming_data,
+                                bluetooth::common::Unretained(this),
+                                cid_token));
+
+    channels_[cid_token] = std::move(channel);
   }
 
   void on_incoming_data(uint16_t cid_token) {
@@ -290,6 +294,13 @@ struct ClassicDynamicChannelHelper {
 
 std::unordered_map<uint16_t, std::unique_ptr<ClassicDynamicChannelHelper>>
     classic_dynamic_channel_helper_map_;
+
+void remove_classic_dynamic_channel_helper(uint16_t psm) {
+  if (classic_dynamic_channel_helper_map_.count(psm) != 0 &&
+      classic_dynamic_channel_helper_map_[psm]->channels_.empty()) {
+    classic_dynamic_channel_helper_map_.erase(psm);
+  }
+}
 
 // Helper: L2cap security enforcement shim
 
@@ -722,9 +733,6 @@ void L2CA_Deregister(uint16_t psm) {
     return;
   }
   classic_dynamic_channel_helper_map_[psm]->Unregister();
-  if (classic_dynamic_channel_helper_map_[psm]->channels_.empty()) {
-    classic_dynamic_channel_helper_map_.erase(psm);
-  }
 }
 
 /**
@@ -1016,18 +1024,12 @@ bool L2CA_RemoveFixedChnl(uint16_t cid, const RawAddress& rem_bda) {
   return true;
 }
 
-uint16_t L2CA_GetLeHandle(uint16_t cid, const RawAddress& rem_bda) {
-  if (cid != kAttCid && cid != kSmpCid) {
-    LOG(ERROR) << "Invalid cid " << cid;
+uint16_t L2CA_GetLeHandle(const RawAddress& rem_bda) {
+  auto addr = ToGdAddress(rem_bda);
+  if (le_link_property_listener_shim_.info_.count(addr) == 0) {
     return 0;
   }
-  auto* helper = &le_fixed_channel_helper_.find(cid)->second;
-  auto channel = helper->channels_.find(ToGdAddress(rem_bda));
-  if (channel == helper->channels_.end() || channel->second == nullptr) {
-    LOG(ERROR) << "Channel is not open";
-    return 0;
-  }
-  return channel->second->GetLinkOptions()->GetHandle();
+  return le_link_property_listener_shim_.info_[addr].handle;
 }
 
 void L2CA_LeConnectionUpdate(const RawAddress& rem_bda, uint16_t min_int,
@@ -1156,7 +1158,7 @@ bool L2CA_IsLinkEstablished(const RawAddress& bd_addr,
   if (transport == BT_TRANSPORT_BR_EDR) {
     return security_listener_shim_.IsLinkUp(bd_addr);
   } else {
-    return bluetooth::shim::L2CA_GetLeHandle(kAttCid, bd_addr) != 0;
+    return bluetooth::shim::L2CA_GetLeHandle(bd_addr) != 0;
   }
 }
 
@@ -1239,6 +1241,8 @@ void remove_le_cid_token_entry(uint16_t cid_token) {
   le_cid_token_to_channel_map_.erase(cid_token);
 }
 
+void remove_le_dynamic_channel_helper(uint16_t psm);
+
 struct LeDynamicChannelHelper {
   LeDynamicChannelHelper(uint16_t psm, tL2CAP_APPL_INFO appl_info,
                          le::DynamicChannelConfigurationOption config,
@@ -1317,11 +1321,13 @@ struct LeDynamicChannelHelper {
     for (const auto& device : channels_) {
       device.second->Close();
     }
+    remove_le_dynamic_channel_helper(psm_);
   }
 
   void on_channel_close(uint16_t cid_token,
                         bluetooth::hci::ErrorCode error_code) {
     channel_enqueue_buffer_[cid_token] = nullptr;
+    channel_enqueue_buffer_.erase(cid_token);
     channels_[cid_token]->GetQueueUpEnd()->UnregisterDequeue();
     channels_.erase(cid_token);
     do_in_main_thread(FROM_HERE, base::Bind(appl_info_.pL2CA_DisconnectInd_Cb,
@@ -1424,6 +1430,13 @@ struct LeDynamicChannelHelper {
 std::unordered_map<uint16_t, std::unique_ptr<LeDynamicChannelHelper>>
     le_dynamic_channel_helper_map_;
 
+void remove_le_dynamic_channel_helper(uint16_t psm) {
+  if (le_dynamic_channel_helper_map_.count(psm) != 0 &&
+      le_dynamic_channel_helper_map_[psm]->channels_.empty()) {
+    le_dynamic_channel_helper_map_.erase(psm);
+  }
+}
+
 std::unordered_set<uint16_t> assigned_dynamic_le_psm_;
 uint16_t next_assigned_dynamic_le_psm_ = 0x80;
 }  // namespace
@@ -1476,9 +1489,6 @@ void L2CA_DeregisterLECoc(uint16_t psm) {
     return;
   }
   le_dynamic_channel_helper_map_[psm]->Unregister();
-  if (le_dynamic_channel_helper_map_[psm]->channels_.empty()) {
-    le_dynamic_channel_helper_map_.erase(psm);
-  }
 }
 
 uint16_t L2CA_ConnectLECocReq(uint16_t psm, const RawAddress& p_bd_addr,

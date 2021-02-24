@@ -50,6 +50,7 @@
 #include "bta/include/bta_hf_client_api.h"
 #include "btif/avrcp/avrcp_service.h"
 #include "btif_a2dp.h"
+#include "btif_activity_attribution.h"
 #include "btif_api.h"
 #include "btif_av.h"
 #include "btif_bqr.h"
@@ -437,7 +438,7 @@ static const void* get_profile_interface(const char* profile_id) {
     return bluetooth::bluetooth_keystore::getBluetoothKeystoreInterface();
 
   if (is_profile(profile_id, BT_ACTIVITY_ATTRIBUTION_ID)) {
-    return NULL;
+    return bluetooth::activity_attribution::get_activity_attribution_instance();
   }
 
   if (is_profile(profile_id, BT_PROFILE_LE_AUDIO_ID))
@@ -724,15 +725,16 @@ void invoke_bond_state_changed_cb(bt_status_t status, RawAddress bd_addr,
 }
 
 void invoke_acl_state_changed_cb(bt_status_t status, RawAddress bd_addr,
-                                 bt_acl_state_t state) {
+                                 bt_acl_state_t state, bt_hci_error_code_t hci_reason) {
   do_in_jni_thread(
       FROM_HERE,
       base::BindOnce(
-          [](bt_status_t status, RawAddress bd_addr, bt_acl_state_t state) {
+          [](bt_status_t status, RawAddress bd_addr, bt_acl_state_t state,
+             bt_hci_error_code_t hci_reason) {
             HAL_CBACK(bt_hal_cbacks, acl_state_changed_cb, status, &bd_addr,
-                      state);
+                      state, hci_reason);
           },
-          status, bd_addr, state));
+          status, bd_addr, state, hci_reason));
 }
 
 void invoke_thread_evt_cb(bt_cb_thread_evt event) {
@@ -767,4 +769,23 @@ void invoke_energy_info_cb(bt_activity_energy_info energy_info,
             osi_free(uid_data);
           },
           energy_info, uid_data));
+}
+
+void invoke_link_quality_report_cb(
+    uint64_t timestamp, int report_id, int rssi, int snr,
+    int retransmission_count, int packets_not_receive_count,
+    int negative_acknowledgement_count) {
+  do_in_jni_thread(
+      FROM_HERE,
+      base::BindOnce(
+          [](uint64_t timestamp, int report_id, int rssi, int snr,
+             int retransmission_count, int packets_not_receive_count,
+             int negative_acknowledgement_count) {
+            HAL_CBACK(bt_hal_cbacks, link_quality_report_cb,
+                      timestamp, report_id, rssi, snr, retransmission_count,
+                      packets_not_receive_count,
+                      negative_acknowledgement_count);
+          },
+          timestamp, report_id, rssi, snr, retransmission_count,
+          packets_not_receive_count, negative_acknowledgement_count));
 }

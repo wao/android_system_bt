@@ -42,6 +42,7 @@
 #include "stack/include/btu.h"
 #include "stack/include/dev_hci_link_interface.h"
 #include "stack/include/gatt_api.h"
+#include "stack/include/hci_error_code.h"
 #include "stack/include/hci_evt_length.h"
 #include "stack/include/hcidefs.h"
 #include "stack/include/inq_hci_link_interface.h"
@@ -52,7 +53,8 @@
 using base::Location;
 using bluetooth::hci::IsoManager;
 
-bool l2c_link_hci_disc_comp(uint16_t handle, uint8_t reason);  // TODO remove
+bool l2c_link_hci_disc_comp(uint16_t handle,
+                            tHCI_REASON reason);               // TODO remove
 bool BTM_BLE_IS_RESOLVE_BDA(const RawAddress& x);              // TODO remove
 void BTA_sys_signal_hw_error();                                // TODO remove
 void smp_cancel_start_encryption_attempt();                    // TODO remove
@@ -1446,7 +1448,7 @@ static void btu_hcif_hdl_command_status(uint16_t opcode, uint8_t status,
     case HCI_BLE_CREATE_LL_CONN:
     case HCI_LE_EXTENDED_CREATE_CONNECTION:
       if (status != HCI_SUCCESS) {
-        btm_ble_create_ll_conn_complete(status);
+        btm_ble_create_ll_conn_complete(static_cast<tHCI_STATUS>(status));
       }
       break;
     case HCI_BLE_START_ENC:

@@ -40,7 +40,10 @@ async fn provide_controller(mut hci: CommandSender) -> Arc<ControllerExports> {
     assert_success!(
         hci.send(WriteSimplePairingModeBuilder { simple_pairing_mode: Enable::Enabled })
     );
-    assert_success!(hci.send(WriteLeHostSupportBuilder { le_supported_host: Enable::Enabled }));
+    assert_success!(hci.send(WriteLeHostSupportBuilder {
+        le_supported_host: Enable::Enabled,
+        simultaneous_le_host: Enable::Enabled
+    }));
 
     let name = null_terminated_to_string(
         assert_success!(hci.send(ReadLocalNameBuilder {})).get_local_name(),
@@ -218,21 +221,15 @@ pub struct SupportedCommands {
 impl SupportedCommands {
     /// Check whether a given opcode is supported by the controller
     pub fn is_supported(&self, opcode: OpCode) -> bool {
-        match opcode {
-            OpCode::ReadLocalSupportedCommands => true,
-            _ => {
-                let converted = OpCodeIndex::try_from(opcode);
-                if converted.is_err() {
-                    return false;
-                }
-
-                let index = converted.unwrap().to_usize().unwrap();
-
-                // The 10 here looks sus, but hci_packets.pdl mentions the index value
-                // is octet * 10 + bit
-                self.supported[index / 10] & (1 << (index % 10)) == 1
-            }
+        let converted = OpCodeIndex::try_from(opcode);
+        if converted.is_err() {
+            return false;
         }
+
+        let index = converted.unwrap().to_usize().unwrap();
+
+        // OpCodeIndex is encoded as octet * 10 + bit for readability
+        self.supported[index / 10] & (1 << (index % 10)) == 1
     }
 }
 

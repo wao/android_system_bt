@@ -210,10 +210,14 @@ void invoke_ssp_request_cb(RawAddress bd_addr, bt_bdname_t bd_name,
 void invoke_bond_state_changed_cb(bt_status_t status, RawAddress bd_addr,
                                   bt_bond_state_t state);
 void invoke_acl_state_changed_cb(bt_status_t status, RawAddress bd_addr,
-                                 bt_acl_state_t state);
+                                 bt_acl_state_t state, bt_hci_error_code_t hci_reason);
 void invoke_thread_evt_cb(bt_cb_thread_evt event);
 void invoke_le_test_mode_cb(bt_status_t status, uint16_t count);
 void invoke_energy_info_cb(bt_activity_energy_info energy_info,
                            bt_uid_traffic_t* uid_data);
+void invoke_link_quality_report_cb(
+    uint64_t timestamp, int report_id, int rssi, int snr,
+    int retransmission_count, int packets_not_receive_count,
+    int negative_acknowledgement_count);
 
 #endif /* BTIF_COMMON_H */

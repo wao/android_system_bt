@@ -99,27 +99,6 @@ static void btm_sco_flush_sco_data(UNUSED_ATTR uint16_t sco_inx) {}
 
 /*******************************************************************************
  *
- * Function         btm_sco_init
- *
- * Description      This function is called at BTM startup to initialize
- *
- * Returns          void
- *
- ******************************************************************************/
-void btm_sco_init(void) {
-  /* Initialize nonzero defaults */
-  btm_cb.sco_cb.def_esco_parms = esco_parameters_for_codec(ESCO_CODEC_CVSD);
-  btm_cb.sco_cb.def_esco_parms.max_latency_ms = 12;
-  btm_cb.sco_cb.sco_route = ESCO_DATA_PATH_PCM;
-
-  btm_cb.btm_sco_pkt_types_supported =
-      ESCO_PKT_TYPES_MASK_HV1 + ESCO_PKT_TYPES_MASK_HV2 +
-      ESCO_PKT_TYPES_MASK_HV3 + ESCO_PKT_TYPES_MASK_EV3 +
-      ESCO_PKT_TYPES_MASK_EV4 + ESCO_PKT_TYPES_MASK_EV5;
-}
-
-/*******************************************************************************
- *
  * Function         btm_esco_conn_rsp
  *
  * Description      This function is called upon receipt of an (e)SCO connection
@@ -1004,10 +983,7 @@ tBTM_STATUS BTM_SetEScoMode(enh_esco_params_t* p_parms) {
         p_def->retransmission_effort);
   } else {
     /* Load defaults for SCO only */
-    *p_def = esco_parameters_for_codec(ESCO_CODEC_CVSD);
-    p_def->packet_types &= BTM_SCO_LINK_ONLY_MASK;
-    p_def->retransmission_effort = ESCO_RETRANSMISSION_OFF;
-    p_def->max_latency_ms = 12;
+    *p_def = esco_parameters_for_codec(SCO_CODEC_CVSD_D1);
     LOG_WARN("eSCO not supported so setting SCO parameters instead");
     LOG_DEBUG(
         "Setting SCO mode parameters txbw:0x%08x rxbw:0x%08x max_lat:0x%04x"

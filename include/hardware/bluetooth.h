@@ -135,6 +135,10 @@ inline std::string bt_status_text(const bt_status_t& status) {
   }
 }
 
+/** Bluetooth HCI Error Codes */
+/** Corresponding to [Vol 2] Part D, "Error Codes" of Core_v5.1 specs */
+typedef uint8_t bt_hci_error_code_t;
+
 /** Bluetooth PinKey Code */
 typedef struct { uint8_t pin[16]; } __attribute__((packed)) bt_pin_code_t;
 
@@ -423,7 +427,14 @@ typedef void (*bond_state_changed_callback)(bt_status_t status,
 /** Bluetooth ACL connection state changed callback */
 typedef void (*acl_state_changed_callback)(bt_status_t status,
                                            RawAddress* remote_bd_addr,
-                                           bt_acl_state_t state);
+                                           bt_acl_state_t state,
+                                           bt_hci_error_code_t hci_reason);
+
+/** Bluetooth link quality report callback */
+typedef void (*link_quality_report_callback)(
+    uint64_t timestamp, int report_id, int rssi, int snr,
+    int retransmission_count, int packets_not_receive_count,
+    int negative_acknowledgement_count);
 
 typedef enum { ASSOCIATE_JVM, DISASSOCIATE_JVM } bt_cb_thread_evt;
 
@@ -475,6 +486,7 @@ typedef struct {
   dut_mode_recv_callback dut_mode_recv_cb;
   le_test_mode_callback le_test_mode_cb;
   energy_info_callback energy_info_cb;
+  link_quality_report_callback link_quality_report_cb;
 } bt_callbacks_t;
 
 typedef void (*alarm_cb)(void* data);

@@ -1217,7 +1217,7 @@ void btif_hh_timer_timeout(void* data) {
   if (p_dev->dev_status != BTHH_CONN_STATE_CONNECTED) return;
 
   memset(&p_data, 0, sizeof(tBTA_HH));
-  p_data.dev_status.status = BTHH_ERR;
+  p_data.dev_status.status = BTA_HH_ERR;  // tBTA_HH_STATUS
   p_data.dev_status.handle = p_dev->dev_handle;
 
   /* switch context to btif task context */
@@ -1370,7 +1370,7 @@ static bt_status_t set_idle_time(RawAddress* bd_addr, uint8_t idle_time) {
     return BT_STATUS_FAIL;
   }
 
-  btif_hh_device_t* p_dev = p_dev = btif_hh_find_connected_dev_by_bda(*bd_addr);
+  btif_hh_device_t* p_dev = btif_hh_find_connected_dev_by_bda(*bd_addr);
   if (p_dev == NULL) {
     BTIF_TRACE_WARNING("%s: addr = %s not opened", __func__,
                        bd_addr->ToString().c_str());

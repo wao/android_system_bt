@@ -59,6 +59,7 @@
 #include "stack/include/btm_api.h"
 #include "stack/include/btm_iso_api.h"
 #include "stack/include/btu.h"
+#include "stack/include/hci_error_code.h"
 #include "stack/include/hcimsgs.h"
 #include "stack/include/l2cap_acl_interface.h"
 #include "stack/include/sco_hci_link_interface.h"
@@ -66,7 +67,7 @@
 
 void gatt_find_in_device_record(const RawAddress& bd_addr,
                                 tBLE_BD_ADDR* address_with_type);
-void l2c_link_hci_conn_comp(uint8_t status, uint16_t handle,
+void l2c_link_hci_conn_comp(tHCI_STATUS status, uint16_t handle,
                             const RawAddress& p_bda);
 
 void BTM_db_reset(void);
@@ -1191,13 +1192,7 @@ uint16_t BTM_GetNumAclLinks(void) {
   if (bluetooth::shim::is_gd_l2cap_enabled()) {
     return bluetooth::shim::L2CA_GetNumLinks();
   }
-  uint16_t num_acl = 0;
-
-  for (uint16_t i = 0; i < MAX_L2CAP_LINKS; ++i) {
-    if (btm_cb.acl_cb_.acl_db[i].in_use) ++num_acl;
-  }
-
-  return num_acl;
+  return static_cast<uint16_t>(btm_cb.acl_cb_.NumberOfActiveLinks());
 }
 
 /*******************************************************************************
@@ -2038,24 +2033,30 @@ tBTM_STATUS btm_remove_acl(const RawAddress& bd_addr, tBT_TRANSPORT transport) {
     bluetooth::shim::L2CA_DisconnectLink(bd_addr);
     return BTM_SUCCESS;
   }
-  uint16_t hci_handle = BTM_GetHCIConnHandle(bd_addr, transport);
-  tBTM_STATUS status = BTM_SUCCESS;
-  tACL_CONN* p_acl = internal_.btm_bda_to_acl(bd_addr, transport);
-  if (p_acl == nullptr) return BTM_UNKNOWN_ADDR;
 
-  /* Role Switch is pending, postpone until completed */
-  if (p_acl->rs_disc_pending == BTM_SEC_RS_PENDING) {
-    p_acl->rs_disc_pending = BTM_SEC_DISC_PENDING;
-  } else /* otherwise can disconnect right away */
-  {
-    if (hci_handle != HCI_INVALID_HANDLE) {
-      hci_btsnd_hcic_disconnect(*p_acl, HCI_ERR_PEER_USER);
-    } else {
-      status = BTM_UNKNOWN_ADDR;
-    }
+  tACL_CONN* p_acl = internal_.btm_bda_to_acl(bd_addr, transport);
+  if (p_acl == nullptr) {
+    LOG_WARN("Unable to find active acl");
+    return BTM_UNKNOWN_ADDR;
   }
 
-  return status;
+  if (p_acl->Handle() == HCI_INVALID_HANDLE) {
+    LOG_WARN("Cannot remove unknown acl bd_addr:%s transport:%s",
+             PRIVATE_ADDRESS(bd_addr), BtTransportText(transport).c_str());
+    return BTM_UNKNOWN_ADDR;
+  }
+
+  if (p_acl->rs_disc_pending == BTM_SEC_RS_PENDING) {
+    LOG_DEBUG(
+        "Delay disconnect until role switch is complete bd_addr:%s "
+        "transport:%s",
+        PRIVATE_ADDRESS(bd_addr), BtTransportText(transport).c_str());
+    p_acl->rs_disc_pending = BTM_SEC_DISC_PENDING;
+    return BTM_SUCCESS;
+  }
+
+  hci_btsnd_hcic_disconnect(*p_acl, HCI_ERR_PEER_USER);
+  return BTM_SUCCESS;
 }
 
 /*******************************************************************************
@@ -2318,6 +2319,10 @@ void BTM_ReadConnectionAddr(const RawAddress& remote_bda,
     bluetooth::shim::L2CA_ReadConnectionAddr(remote_bda, local_conn_addr,
                                              p_addr_type);
     return;
+  } else if (bluetooth::shim::is_gd_scanning_enabled()) {
+    bluetooth::shim::ACL_ReadConnectionAddress(remote_bda, local_conn_addr,
+                                               p_addr_type);
+    return;
   }
 
   tACL_CONN* p_acl = internal_.btm_bda_to_acl(remote_bda, BT_TRANSPORT_LE);
@@ -2524,7 +2529,7 @@ bool acl_is_role_switch_allowed() {
 }
 
 uint16_t acl_get_supported_packet_types() {
-  return btm_cb.acl_cb_.btm_acl_pkt_types_supported;
+  return btm_cb.acl_cb_.DefaultPacketTypes();
 }
 
 bool acl_set_peer_le_features_from_handle(uint16_t hci_handle,
@@ -2745,7 +2750,7 @@ bool acl_create_le_connection_with_id(uint8_t id, const RawAddress& bd_addr) {
     gatt_find_in_device_record(bd_addr, &address_with_type);
     LOG_DEBUG("Creating le connection to:%s",
               address_with_type.ToString().c_str());
-    bluetooth::shim::ACL_CreateLeConnection(address_with_type);
+    bluetooth::shim::ACL_AcceptLeConnectionFrom(address_with_type);
     return true;
   }
   return connection_manager::direct_connect_add(id, bd_addr);

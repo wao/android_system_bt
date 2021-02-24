@@ -113,10 +113,12 @@ class LinkLayerController {
       const std::function<void(std::shared_ptr<bluetooth::hci::AclBuilder>)>&
           send_acl);
 
-  void RegisterScoChannel(const std::function<void(std::shared_ptr<std::vector<uint8_t>>)>& send_sco);
+  void RegisterScoChannel(
+      const std::function<void(std::shared_ptr<bluetooth::hci::ScoBuilder>)>&
+          send_sco);
 
   void RegisterIsoChannel(
-      const std::function<void(std::shared_ptr<std::vector<uint8_t>>)>&
+      const std::function<void(std::shared_ptr<bluetooth::hci::IsoBuilder>)>&
           send_iso);
 
   void RegisterRemoteChannel(
@@ -160,16 +162,18 @@ class LinkLayerController {
                           uint16_t connection_latency,
                           uint16_t supervision_timeout);
 
-  void LeConnectListClear();
-  void LeConnectListAddDevice(Address addr, uint8_t addr_type);
-  void LeConnectListRemoveDevice(Address addr, uint8_t addr_type);
+  bool ConnectListBusy();
+  ErrorCode LeConnectListClear();
+  ErrorCode LeConnectListAddDevice(Address addr, uint8_t addr_type);
+  ErrorCode LeConnectListRemoveDevice(Address addr, uint8_t addr_type);
   bool LeConnectListContainsDevice(Address addr, uint8_t addr_type);
   bool LeConnectListFull();
-  void LeResolvingListClear();
-  void LeResolvingListAddDevice(Address addr, uint8_t addr_type,
-                                std::array<uint8_t, kIrk_size> peerIrk,
-                                std::array<uint8_t, kIrk_size> localIrk);
-  void LeResolvingListRemoveDevice(Address addr, uint8_t addr_type);
+  bool ResolvingListBusy();
+  ErrorCode LeResolvingListClear();
+  ErrorCode LeResolvingListAddDevice(Address addr, uint8_t addr_type,
+                                     std::array<uint8_t, kIrk_size> peerIrk,
+                                     std::array<uint8_t, kIrk_size> localIrk);
+  ErrorCode LeResolvingListRemoveDevice(Address addr, uint8_t addr_type);
   bool LeResolvingListContainsDevice(Address addr, uint8_t addr_type);
   bool LeResolvingListFull();
   void LeSetPrivacyMode(uint8_t address_type, Address addr, uint8_t mode);
@@ -362,6 +366,9 @@ class LinkLayerController {
   void IncomingLeEncryptConnection(model::packets::LinkLayerPacketView packet);
   void IncomingLeEncryptConnectionResponse(
       model::packets::LinkLayerPacketView packet);
+  void IncomingLeReadRemoteFeatures(model::packets::LinkLayerPacketView packet);
+  void IncomingLeReadRemoteFeaturesResponse(
+      model::packets::LinkLayerPacketView packet);
   void IncomingLeScanPacket(model::packets::LinkLayerPacketView packet);
   void IncomingLeScanResponsePacket(model::packets::LinkLayerPacketView packet);
   void IncomingPagePacket(model::packets::LinkLayerPacketView packet);
@@ -415,8 +422,8 @@ class LinkLayerController {
   std::function<void(std::shared_ptr<bluetooth::hci::AclBuilder>)> send_acl_;
   std::function<void(std::shared_ptr<bluetooth::hci::EventBuilder>)>
       send_event_;
-  std::function<void(std::shared_ptr<std::vector<uint8_t>>)> send_sco_;
-  std::function<void(std::shared_ptr<std::vector<uint8_t>>)> send_iso_;
+  std::function<void(std::shared_ptr<bluetooth::hci::ScoBuilder>)> send_sco_;
+  std::function<void(std::shared_ptr<bluetooth::hci::IsoBuilder>)> send_iso_;
 
   // Callback to send packets to remote devices.
   std::function<void(std::shared_ptr<model::packets::LinkLayerPacketBuilder>,

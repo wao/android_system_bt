@@ -26,31 +26,36 @@
 
 #define LOG_TAG "bt_bta_av"
 
-#include "bt_target.h"
-
-#include <base/logging.h>
-#include <string.h>
+#include <base/strings/stringprintf.h>
+#include <cstdint>
+#include <cstring>
 #include <vector>
 
-#include "a2dp_sbc.h"
-#include "avdt_api.h"
-#include "avrcp_service.h"
-#include "bta_ar_api.h"
-#include "bta_av_int.h"
+#include "bt_target.h"  // Must be first to define build configuration
+
+#include "bta/av/bta_av_int.h"
+#include "bta/include/bta_ar_api.h"
+#include "bta/include/bta_av_co.h"
+#include "btif/avrcp/avrcp_service.h"
 #include "btif/include/btif_av_co.h"
 #include "btif/include/btif_config.h"
 #include "btif/include/btif_storage.h"
 #include "device/include/interop.h"
-#include "l2c_api.h"
-#include "l2cdefs.h"
 #include "main/shim/dumpsys.h"
 #include "osi/include/log.h"
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
+#include "stack/include/a2dp_sbc.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/btm_api.h"
 #include "stack/include/btm_client_interface.h"
-#include "utl.h"
+#include "stack/include/l2c_api.h"
+
+namespace {
+
+constexpr char kBtmLogTag[] = "A2DP";
+
+}
 
 /*****************************************************************************
  *  Constants
@@ -1970,15 +1975,19 @@ void bta_av_reconfig(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
   alarm_cancel(p_scb->avrc_ct_timer);
 
-  APPL_TRACE_DEBUG(
-      "%s: p_scb->sep_info_idx=%d p_scb->rcfg_idx=%d p_rcfg->sep_info_idx=%d",
-      __func__, p_scb->sep_info_idx, p_scb->rcfg_idx, p_rcfg->sep_info_idx);
-  APPL_TRACE_DEBUG("%s: codec: %s", __func__,
-                   A2DP_CodecInfoString(p_scb->peer_cap.codec_info).c_str());
-  APPL_TRACE_DEBUG("%s: codec: %s", __func__,
-                   A2DP_CodecInfoString(p_scb->cfg.codec_info).c_str());
-  APPL_TRACE_DEBUG("%s: codec: %s", __func__,
-                   A2DP_CodecInfoString(p_rcfg->codec_info).c_str());
+  LOG_DEBUG("p_scb->sep_info_idx=%d p_scb->rcfg_idx=%d p_rcfg->sep_info_idx=%d",
+            p_scb->sep_info_idx, p_scb->rcfg_idx, p_rcfg->sep_info_idx);
+  LOG_DEBUG("Peer capable codec: %s",
+            A2DP_CodecInfoString(p_scb->peer_cap.codec_info).c_str());
+  LOG_DEBUG("Current codec: %s",
+            A2DP_CodecInfoString(p_scb->cfg.codec_info).c_str());
+  LOG_DEBUG("Reconfig codec: %s",
+            A2DP_CodecInfoString(p_rcfg->codec_info).c_str());
+
+  BTM_LogHistory(
+      kBtmLogTag, p_scb->PeerAddress(), "Codec reconfig",
+      base::StringPrintf("%s => %s", A2DP_CodecName(p_scb->cfg.codec_info),
+                         A2DP_CodecName(p_rcfg->codec_info)));
 
   p_cfg->num_protect = p_rcfg->num_protect;
   memcpy(p_cfg->codec_info, p_rcfg->codec_info, AVDT_CODEC_SIZE);
