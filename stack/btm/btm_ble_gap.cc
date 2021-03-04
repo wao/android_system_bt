@@ -47,6 +47,7 @@
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_api_types.h"
 #include "stack/include/gap_api.h"
+#include "stack/include/hci_error_code.h"
 #include "stack/include/hcimsgs.h"
 #include "stack/include/inq_hci_link_interface.h"
 #include "types/raw_address.h"
@@ -62,6 +63,8 @@ extern bool btm_identity_addr_to_random_pseudo(RawAddress* bd_addr,
 extern void btm_ble_batchscan_init(void);
 extern void btm_ble_adv_filter_init(void);
 extern void btm_clear_all_pending_le_entry(void);
+extern const tBLE_BD_ADDR convert_to_address_with_type(
+    const RawAddress& bd_addr, const tBTM_SEC_DEV_REC* p_dev_rec);
 
 #define BTM_EXT_BLE_RMT_NAME_TIMEOUT_MS (30 * 1000)
 #define MIN_ADV_LENGTH 2
@@ -617,8 +620,6 @@ static void btm_ble_vendor_capability_vsc_cmpl_cback(
  *
  ******************************************************************************/
 extern void BTM_BleGetVendorCapabilities(tBTM_BLE_VSC_CB* p_cmn_vsc_cb) {
-  BTM_TRACE_DEBUG("BTM_BleGetVendorCapabilities");
-
   if (NULL != p_cmn_vsc_cb) {
     *p_cmn_vsc_cb = btm_cb.cmn_ble_vsc_cb;
   }
@@ -707,7 +708,8 @@ bool BTM_BleConfigPrivacy(bool privacy_mode) {
 
   GAP_BleAttrDBUpdate(GATT_UUID_GAP_CENTRAL_ADDR_RESOL, &gap_ble_attr_value);
 
-  if (bluetooth::shim::is_gd_acl_enabled()) {
+  if (bluetooth::shim::is_gd_acl_enabled() ||
+      bluetooth::shim::is_gd_l2cap_enabled()) {
     bluetooth::shim::ACL_ConfigureLePrivacy(privacy_mode);
   }
   return true;
@@ -2476,7 +2478,7 @@ void btm_ble_decrement_link_topology_mask(uint8_t link_role) {
  *
  ******************************************************************************/
 void btm_ble_update_mode_operation(uint8_t link_role, const RawAddress* bd_addr,
-                                   uint8_t status) {
+                                   tHCI_STATUS status) {
   if (status == HCI_ERR_ADVERTISING_TIMEOUT) {
     btm_cb.ble_ctr_cb.inq_var.adv_mode = BTM_BLE_ADV_DISABLE;
     /* make device fall back into undirected adv mode by default */
@@ -2492,7 +2494,25 @@ void btm_ble_update_mode_operation(uint8_t link_role, const RawAddress* bd_addr,
 
   /* in case of disconnected, we must cancel bgconn and restart
      in order to add back device to acceptlist in order to reconnect */
-  if (bd_addr) btm_ble_bgconn_cancel_if_disconnected(*bd_addr);
+  if (bd_addr != nullptr) {
+    const RawAddress bda(*bd_addr);
+    if (bluetooth::shim::is_gd_acl_enabled()) {
+      if (acl_check_and_clear_ignore_auto_connect_after_disconnect(bda)) {
+        LOG_DEBUG(
+            "Local disconnect initiated so skipping re-add to acceptlist "
+            "device:%s",
+            PRIVATE_ADDRESS(bda));
+      } else {
+        if (!bluetooth::shim::ACL_AcceptLeConnectionFrom(
+                convert_to_address_with_type(bda, btm_find_dev(bda)))) {
+          LOG_ERROR("Unable to add to acceptlist as it is full:%s",
+                    PRIVATE_ADDRESS(bda));
+        }
+      }
+    } else {
+      btm_ble_bgconn_cancel_if_disconnected(bda);
+    }
+  }
 
   /* when no connection is attempted, and controller is not rejecting last
      request
@@ -2502,6 +2522,7 @@ void btm_ble_update_mode_operation(uint8_t link_role, const RawAddress* bd_addr,
   if (btm_cb.ble_ctr_cb.is_connection_state_idle() &&
       status != HCI_ERR_HOST_REJECT_RESOURCES &&
       status != HCI_ERR_MAX_NUM_OF_CONNECTIONS) {
+    LOG_DEBUG("Resuming le background connections");
     btm_ble_resume_bg_conn();
   }
 }

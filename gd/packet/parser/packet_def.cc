@@ -395,7 +395,7 @@ void PacketDef::GenTestingFromView(std::ostream& s) const {
   FieldList params = GetParamList().GetFieldsWithoutTypes({
       BodyField::kFieldType,
   });
-  for (int i = 0; i < params.size(); i++) {
+  for (std::size_t i = 0; i < params.size(); i++) {
     params[i]->GenBuilderParameterFromView(s);
     if (i != params.size() - 1) {
       s << ", ";
@@ -498,7 +498,7 @@ void PacketDef::GenBuilderCreate(std::ostream& s) const {
   s << "static std::unique_ptr<" << name_ << "Builder> Create(";
 
   auto params = GetParamList();
-  for (int i = 0; i < params.size(); i++) {
+  for (std::size_t i = 0; i < params.size(); i++) {
     params[i]->GenBuilderParameter(s);
     if (i != params.size() - 1) {
       s << ", ";
@@ -514,7 +514,7 @@ void PacketDef::GenBuilderCreate(std::ostream& s) const {
       BodyField::kFieldType,
   });
   // Add the parameters.
-  for (int i = 0; i < params.size(); i++) {
+  for (std::size_t i = 0; i < params.size(); i++) {
     if (params[i]->BuilderParameterMustBeMoved()) {
       s << "std::move(" << params[i]->GetName() << ")";
     } else {
@@ -630,7 +630,7 @@ void PacketDef::GenBuilderParameterChecker(std::ostream& s) const {
 
   // Generate function arguments.
   s << "void CheckParameterValues(";
-  for (int i = 0; i < params_to_validate.size(); i++) {
+  for (std::size_t i = 0; i < params_to_validate.size(); i++) {
     params_to_validate[i]->GenBuilderParameter(s);
     if (i != params_to_validate.size() - 1) {
       s << ", ";
@@ -653,7 +653,7 @@ void PacketDef::GenBuilderConstructor(std::ostream& s) const {
       PayloadField::kFieldType,
       BodyField::kFieldType,
   });
-  for (int i = 0; i < params.size(); i++) {
+  for (std::size_t i = 0; i < params.size(); i++) {
     params[i]->GenBuilderParameter(s);
     if (i != params.size() - 1) {
       s << ", ";
@@ -677,7 +677,7 @@ void PacketDef::GenBuilderConstructor(std::ostream& s) const {
 
     // Go through all the fields and replace constrained fields with fixed values
     // when calling the parent constructor.
-    for (int i = 0; i < parent_params.size(); i++) {
+    for (std::size_t i = 0; i < parent_params.size(); i++) {
       const auto& field = parent_params[i];
       const auto& constraint = parent_constraints_.find(field->GetName());
       if (constraint != parent_constraints_.end()) {
@@ -711,7 +711,7 @@ void PacketDef::GenBuilderConstructor(std::ostream& s) const {
   if (parent_ != nullptr && saved_params.size() > 0) {
     s << ",";
   }
-  for (int i = 0; i < saved_params.size(); i++) {
+  for (std::size_t i = 0; i < saved_params.size(); i++) {
     const auto& saved_param_name = saved_params[i]->GetName();
     if (saved_params[i]->BuilderParameterMustBeMoved()) {
       s << saved_param_name << "_(std::move(" << saved_param_name << "))";
@@ -728,7 +728,7 @@ void PacketDef::GenBuilderConstructor(std::ostream& s) const {
 
   if (params_to_validate.size() > 0) {
     s << "CheckParameterValues(";
-    for (int i = 0; i < params_to_validate.size(); i++) {
+    for (std::size_t i = 0; i < params_to_validate.size(); i++) {
       s << params_to_validate[i]->GetName() << "_";
       if (i != params_to_validate.size() - 1) {
         s << ", ";
@@ -746,9 +746,6 @@ void PacketDef::GenRustChildEnums(std::ostream& s) const {
     s << "#[derive(Debug)] ";
     s << "enum " << name_ << "DataChild {";
     for (const auto& child : children_) {
-      if (child->name_.rfind("LeGetVendorCapabilitiesComplete", 0) == 0) {
-        continue;
-      }
       s << child->name_ << "(Arc<" << child->name_ << "Data>),";
     }
     if (payload) {
@@ -761,9 +758,6 @@ void PacketDef::GenRustChildEnums(std::ostream& s) const {
     s << "fn get_total_size(&self) -> usize {";
     s << "match self {";
     for (const auto& child : children_) {
-      if (child->name_.rfind("LeGetVendorCapabilitiesComplete", 0) == 0) {
-        continue;
-      }
       s << name_ << "DataChild::" << child->name_ << "(value) => value.get_total_size(),";
     }
     if (payload) {
@@ -777,9 +771,6 @@ void PacketDef::GenRustChildEnums(std::ostream& s) const {
     s << "#[derive(Debug)] ";
     s << "pub enum " << name_ << "Child {";
     for (const auto& child : children_) {
-      if (child->name_.rfind("LeGetVendorCapabilitiesComplete", 0) == 0) {
-        continue;
-      }
       s << child->name_ << "(" << child->name_ << "Packet),";
     }
     if (payload) {
@@ -843,8 +834,8 @@ bool PacketDef::GenRustStructFieldNameAndType(std::ostream& s) const {
   if (fields.size() == 0) {
     return false;
   }
-  for (int i = 0; i < fields.size(); i++) {
-    fields[i]->GenRustNameAndType(s);
+  for (const auto& field : fields) {
+    field->GenRustNameAndType(s);
     s << ", ";
   }
   return true;
@@ -860,41 +851,45 @@ void PacketDef::GenRustStructFieldNames(std::ostream& s) const {
       PayloadField::kFieldType,
       FixedScalarField::kFieldType,
   });
-  for (int i = 0; i < fields.size(); i++) {
-    s << fields[i]->GetName();
+  for (const auto field : fields) {
+    s << field->GetName();
     s << ", ";
   }
-}
-
-void PacketDef::GenRustStructSizeField(std::ostream& s) const {
-  int size = 0;
-  auto fields = fields_.GetFieldsWithoutTypes({
-      BodyField::kFieldType,
-      CountField::kFieldType,
-      SizeField::kFieldType,
-  });
-  for (int i = 0; i < fields.size(); i++) {
-    size += fields[i]->GetSize().bytes();
-  }
-  s << size;
 }
 
 void PacketDef::GenRustStructImpls(std::ostream& s) const {
   s << "impl " << name_ << "Data {";
 
+  // conforms function
+  s << "fn conforms(bytes: &[u8]) -> bool {";
+  GenRustConformanceCheck(s);
+
+  auto fields = fields_.GetFieldsWithTypes({
+      StructField::kFieldType,
+  });
+
+  for (auto const& field : fields) {
+    auto start_offset = GetOffsetForField(field->GetName(), false);
+    auto end_offset = GetOffsetForField(field->GetName(), true);
+
+    s << "if !" << field->GetRustDataType() << "::conforms(&bytes[" << start_offset.bytes();
+    s << ".." << start_offset.bytes() + field->GetSize().bytes() << "]) { return false; }";
+  }
+
+  s << " true";
+  s << "}";
+
   // parse function
-  if (parent_constraints_.empty() && !children_.empty() && parent_ != nullptr) {
-      auto constraint = FindConstraintField();
-      auto constraint_field = GetParamList().GetField(constraint);
-      auto constraint_type = constraint_field->GetRustDataType();
-      s << "fn parse(bytes: &[u8], " << constraint << ": " << constraint_type
-          << ") -> Result<Self> {";
+  if (parent_constraints_.empty() && children_.size() > 1 && parent_ != nullptr) {
+    auto constraint = FindConstraintField();
+    auto constraint_field = GetParamList().GetField(constraint);
+    auto constraint_type = constraint_field->GetRustDataType();
+    s << "fn parse(bytes: &[u8], " << constraint << ": " << constraint_type << ") -> Result<Self> {";
   } else {
     s << "fn parse(bytes: &[u8]) -> Result<Self> {";
   }
-  auto fields = fields_.GetFieldsWithoutTypes({
+  fields = fields_.GetFieldsWithoutTypes({
       BodyField::kFieldType,
-      FixedScalarField::kFieldType,
   });
 
   for (auto const& field : fields) {
@@ -906,6 +901,7 @@ void PacketDef::GenRustStructImpls(std::ostream& s) const {
                    << "no method exists to determine field location from begin() or end().\n";
     }
 
+    field->GenBoundsCheck(s, start_field_offset, end_field_offset, name_);
     field->GenRustGetter(s, start_field_offset, end_field_offset);
   }
 
@@ -922,13 +918,10 @@ void PacketDef::GenRustStructImpls(std::ostream& s) const {
   auto constraint_name = FindConstraintField();
   auto constrained_descendants = FindDescendantsWithConstraint(constraint_name);
 
-  if (!children_.empty()) {
+  if (children_.size() > 1) {
     s << "let child = match " << constraint_name << " {";
 
     for (const auto& desc : constrained_descendants) {
-      if (desc.first->name_.rfind("LeGetVendorCapabilitiesComplete", 0) == 0) {
-        continue;
-      }
       auto desc_path = FindPathToDescendant(desc.first->name_);
       std::reverse(desc_path.begin(), desc_path.end());
       auto constraint_field = GetParamList().GetField(constraint_name);
@@ -941,14 +934,15 @@ void PacketDef::GenRustStructImpls(std::ostream& s) const {
         auto enum_variant = enum_type + "::"
             + util::UnderscoreToCamelCase(util::ToLowerCase(variant_name));
         s << enum_variant;
+        s << " if " << desc_path[0]->name_ << "Data::conforms(&bytes[..])";
         s << " => {";
         s << name_ << "DataChild::";
         s << desc_path[0]->name_ << "(Arc::new(";
         if (desc_path[0]->parent_constraints_.empty()) {
-          s << desc_path[0]->name_ << "Data::parse(&bytes[" << payload_offset.bytes() << "..]";
+          s << desc_path[0]->name_ << "Data::parse(&bytes[..]";
           s << ", " << enum_variant << ")?))";
         } else {
-          s << desc_path[0]->name_ << "Data::parse(&bytes[" << payload_offset.bytes() << "..])?))";
+          s << desc_path[0]->name_ << "Data::parse(&bytes[..])?))";
         }
       } else if (constraint_type == ScalarField::kFieldType) {
         s << std::get<int64_t>(desc.second) << " => {";
@@ -958,10 +952,20 @@ void PacketDef::GenRustStructImpls(std::ostream& s) const {
     }
 
     if (!constrained_descendants.empty()) {
-      s << "_ => panic!(\"unexpected value " << "\"),";
+      s << "v => return Err(Error::ConstraintOutOfBounds{field: \"" << constraint_name
+        << "\".to_string(), value: v as u64}),";
     }
 
     s << "};\n";
+  } else if (children_.size() == 1) {
+    auto child = children_.at(0);
+    s << "let child = match " << child->name_ << "Data::parse(&bytes[..]) {";
+    s << " Ok(c) if " << child->name_ << "Data::conforms(&bytes[..]) => {";
+    s << name_ << "DataChild::" << child->name_ << "(Arc::new(c))";
+    s << " },";
+    s << " Err(Error::InvalidLengthError { .. }) => " << name_ << "DataChild::None,";
+    s << " _ => return Err(Error::InvalidPacketError),";
+    s << "};";
   } else if (fields_.HasPayload()) {
     s << "let child = if payload.len() > 0 {";
     s << name_ << "DataChild::Payload(Bytes::from(payload))";
@@ -982,9 +986,9 @@ void PacketDef::GenRustStructImpls(std::ostream& s) const {
   });
 
   if (fields.size() > 0) {
-    for (int i = 0; i < fields.size(); i++) {
-      auto field_type = fields[i]->GetFieldType();
-      s << fields[i]->GetName();
+    for (const auto& field : fields) {
+      auto field_type = field->GetFieldType();
+      s << field->GetName();
       s << ", ";
     }
   }
@@ -997,41 +1001,16 @@ void PacketDef::GenRustStructImpls(std::ostream& s) const {
 
   // write_to function
   s << "fn write_to(&self, buffer: &mut BytesMut) {";
-  if (fields.size() > 0) {
-    s << " buffer.resize(buffer.len() + self.get_size(), 0);";
-  }
-
-  fields = fields_.GetFieldsWithoutTypes({
-      BodyField::kFieldType,
-      CountField::kFieldType,
-      PaddingField::kFieldType,
-      ReservedField::kFieldType,
-      SizeField::kFieldType,
-      FixedScalarField::kFieldType,
-  });
-
-  for (auto const& field : fields) {
-    auto start_field_offset = GetOffsetForField(field->GetName(), false);
-    auto end_field_offset = GetOffsetForField(field->GetName(), true);
-
-    if (start_field_offset.empty() && end_field_offset.empty()) {
-      ERROR(field) << "Field location for " << field->GetName() << " is ambiguous, "
-                   << "no method exists to determine field location from begin() or end().\n";
-    }
-
-    field->GenRustWriter(s, start_field_offset, end_field_offset);
-  }
+  GenRustWriteToFields(s);
 
   if (HasChildEnums()) {
     s << "match &self.child {";
     for (const auto& child : children_) {
-      if (child->name_.rfind("LeGetVendorCapabilitiesComplete", 0) == 0) {
-        continue;
-      }
       s << name_ << "DataChild::" << child->name_ << "(value) => value.write_to(buffer),";
     }
     if (fields_.HasPayload()) {
-      s << name_ << "DataChild::Payload(p) => buffer.put(&p[..]),";
+      auto offset = GetOffsetForField("payload");
+      s << name_ << "DataChild::Payload(p) => buffer[" << offset.bytes() << "..].copy_from_slice(&p[..]),";
     }
     s << name_ << "DataChild::None => {}";
     s << "}";
@@ -1047,14 +1026,14 @@ void PacketDef::GenRustStructImpls(std::ostream& s) const {
   }
   s << "}\n";
 
-  s << "pub fn get_size(&self) -> usize {";
-  GenRustStructSizeField(s);
+  s << "fn get_size(&self) -> usize {";
+  GenSizeRetVal(s);
   s << "}\n";
   s << "}\n";
 }
 
 void PacketDef::GenRustAccessStructImpls(std::ostream& s) const {
-  if (complement_ != nullptr && complement_->name_.rfind("LeGetVendorCapabilitiesComplete", 0) != 0) {
+  if (complement_ != nullptr) {
     auto complement_root = complement_->GetRootDef();
     auto complement_root_accessor = util::CamelCaseToUnderScore(complement_root->name_);
     s << "impl CommandExpectations for " << name_ << "Packet {";
@@ -1071,6 +1050,7 @@ void PacketDef::GenRustAccessStructImpls(std::ostream& s) const {
 
   s << "fn to_bytes(self) -> Bytes {";
   s << " let mut buffer = BytesMut::new();";
+  s << " buffer.resize(self." << root_accessor << ".get_total_size(), 0);";
   s << " self." << root_accessor << ".write_to(&mut buffer);";
   s << " buffer.freeze()";
   s << "}\n";
@@ -1089,9 +1069,6 @@ void PacketDef::GenRustAccessStructImpls(std::ostream& s) const {
     s << " pub fn specialize(&self) -> " << name_ << "Child {";
     s << " match &self." << util::CamelCaseToUnderScore(name_) << ".child {";
     for (const auto& child : children_) {
-      if (child->name_.rfind("LeGetVendorCapabilitiesComplete", 0) == 0) {
-        continue;
-      }
       s << name_ << "DataChild::" << child->name_ << "(_) => " << name_ << "Child::" << child->name_ << "("
         << child->name_ << "Packet::new(self." << root_accessor << ".clone())),";
     }
@@ -1165,7 +1142,7 @@ void PacketDef::GenRustAccessStructImpls(std::ostream& s) const {
 }
 
 void PacketDef::GenRustBuilderStructImpls(std::ostream& s) const {
-  if (complement_ != nullptr && complement_->name_.rfind("LeGetVendorCapabilitiesComplete", 0) != 0) {
+  if (complement_ != nullptr) {
     auto complement_root = complement_->GetRootDef();
     auto complement_root_accessor = util::CamelCaseToUnderScore(complement_root->name_);
     s << "impl CommandExpectations for " << name_ << "Builder {";

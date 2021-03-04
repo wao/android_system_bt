@@ -27,25 +27,22 @@
 
 #define LOG_TAG "bt_btif_hf"
 
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
+#include <cstdint>
+#include <string>
 
-#include <bta/include/bta_ag_api.h>
-#include <hardware/bluetooth.h>
-#include <hardware/bluetooth_headset_callbacks.h>
-#include <hardware/bluetooth_headset_interface.h>
-#include <hardware/bt_hf.h>
-#include <log/log.h>
-
+#include "bta/include/bta_ag_api.h"
 #include "bta/include/utl.h"
-#include "bta_ag_api.h"
-#include "btif_common.h"
-#include "btif_hf.h"
-#include "btif_profile_queue.h"
-#include "btif_util.h"
+#include "btif/include/btif_common.h"
+#include "btif/include/btif_profile_queue.h"
+#include "btif/include/btif_util.h"
 #include "common/metrics.h"
+#include "include/hardware/bluetooth_headset_callbacks.h"
+#include "include/hardware/bluetooth_headset_interface.h"
+#include "include/hardware/bt_hf.h"
 #include "main/shim/dumpsys.h"
+#include "osi/include/log.h"
+#include "stack/include/btm_api.h"
+#include "types/raw_address.h"
 
 namespace {
 constexpr char kBtmLogTag[] = "HFP";
@@ -75,10 +72,10 @@ namespace headset {
 #endif
 
 #ifndef BTIF_HF_FEATURES
-#define BTIF_HF_FEATURES                                       \
-  (BTA_AG_FEAT_3WAY | BTA_AG_FEAT_ECNR | BTA_AG_FEAT_REJECT |  \
-   BTA_AG_FEAT_ECS | BTA_AG_FEAT_EXTERR | BTA_AG_FEAT_VREC |   \
-   BTA_AG_FEAT_CODEC | BTA_AG_FEAT_HF_IND | BTA_AG_FEAT_ESCO | \
+#define BTIF_HF_FEATURES                                          \
+  (BTA_AG_FEAT_3WAY | BTA_AG_FEAT_ECNR | BTA_AG_FEAT_REJECT |     \
+   BTA_AG_FEAT_ECS | BTA_AG_FEAT_EXTERR | BTA_AG_FEAT_VREC |      \
+   BTA_AG_FEAT_CODEC | BTA_AG_FEAT_HF_IND | BTA_AG_FEAT_ESCO_S4 | \
    BTA_AG_FEAT_UNAT)
 #endif
 

@@ -71,6 +71,10 @@ class FuzzHciLayer : public HciLayer {
     return acl_queue_.GetUpEnd();
   }
 
+  common::BidiQueueEnd<hci::IsoBuilder, hci::IsoView>* GetIsoQueueEnd() override {
+    return iso_queue_.GetUpEnd();
+  }
+
   void RegisterEventHandler(hci::EventCode event, common::ContextualCallback<void(hci::EventView)> handler) override {
     event_handlers_[event] = handler;
   }
@@ -102,12 +106,14 @@ class FuzzHciLayer : public HciLayer {
   hci::AclConnectionInterface* GetAclConnectionInterface(
       common::ContextualCallback<void(hci::EventView)> event_handler,
       common::ContextualCallback<void(uint16_t, hci::ErrorCode)> on_disconnect,
-      common::ContextualCallback<void(uint16_t, uint8_t, uint16_t, uint16_t)> on_read_remote_version) override;
+      common::ContextualCallback<void(hci::ErrorCode hci_status, uint16_t, uint8_t, uint16_t, uint16_t)>
+          on_read_remote_version) override;
 
   hci::LeAclConnectionInterface* GetLeAclConnectionInterface(
       common::ContextualCallback<void(hci::LeMetaEventView)> event_handler,
       common::ContextualCallback<void(uint16_t, hci::ErrorCode)> on_disconnect,
-      common::ContextualCallback<void(uint16_t, uint8_t, uint16_t, uint16_t)> on_read_remote_version) override;
+      common::ContextualCallback<void(hci::ErrorCode hci_status, uint16_t, uint8_t, uint16_t, uint16_t)>
+          on_read_remote_version) override;
 
   hci::LeAdvertisingInterface* GetLeAdvertisingInterface(
       common::ContextualCallback<void(hci::LeMetaEventView)> event_handler) override;
@@ -155,6 +161,7 @@ class FuzzHciLayer : public HciLayer {
   FuzzedDataProvider* auto_reply_fdp;
 
   common::BidiQueue<hci::AclView, hci::AclBuilder> acl_queue_{3};
+  common::BidiQueue<hci::IsoView, hci::IsoBuilder> iso_queue_{3};
   os::fuzz::DevNullQueue<AclBuilder>* acl_dev_null_;
   os::fuzz::FuzzInjectQueue<AclView>* acl_inject_;
 

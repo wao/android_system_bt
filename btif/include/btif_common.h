@@ -24,9 +24,9 @@
 
 #include <base/bind.h>
 #include <base/location.h>
-#include <base/message_loop/message_loop.h>
 #include <hardware/bluetooth.h>
 
+#include "abstract_message_loop.h"
 #include "bt_types.h"
 #include "bta/include/bta_api.h"
 #include "osi/include/log.h"
@@ -154,7 +154,7 @@ extern bt_status_t do_in_jni_thread(base::OnceClosure task);
 extern bt_status_t do_in_jni_thread(const base::Location& from_here,
                                     base::OnceClosure task);
 extern bool is_on_jni_thread();
-extern base::MessageLoop* get_jni_message_loop();
+extern btbase::AbstractMessageLoop* get_jni_message_loop();
 /**
  * This template wraps callback into callback that will be executed on jni
  * thread
@@ -210,10 +210,14 @@ void invoke_ssp_request_cb(RawAddress bd_addr, bt_bdname_t bd_name,
 void invoke_bond_state_changed_cb(bt_status_t status, RawAddress bd_addr,
                                   bt_bond_state_t state);
 void invoke_acl_state_changed_cb(bt_status_t status, RawAddress bd_addr,
-                                 bt_acl_state_t state);
+                                 bt_acl_state_t state, bt_hci_error_code_t hci_reason);
 void invoke_thread_evt_cb(bt_cb_thread_evt event);
 void invoke_le_test_mode_cb(bt_status_t status, uint16_t count);
 void invoke_energy_info_cb(bt_activity_energy_info energy_info,
                            bt_uid_traffic_t* uid_data);
+void invoke_link_quality_report_cb(
+    uint64_t timestamp, int report_id, int rssi, int snr,
+    int retransmission_count, int packets_not_receive_count,
+    int negative_acknowledgement_count);
 
 #endif /* BTIF_COMMON_H */

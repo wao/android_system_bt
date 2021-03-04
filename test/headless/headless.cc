@@ -103,7 +103,7 @@ void bond_state_changed(bt_status_t status, RawAddress* remote_bd_addr,
 
 /** Bluetooth ACL connection state changed callback */
 void acl_state_changed(bt_status_t status, RawAddress* remote_bd_addr,
-                       bt_acl_state_t state) {
+                       bt_acl_state_t state, bt_hci_error_code_t hci_reason) {
   auto callback_list = interface_api_callback_map_.at(__func__);
   for (auto callback : callback_list) {
     interface_data_t params{
@@ -111,12 +111,20 @@ void acl_state_changed(bt_status_t status, RawAddress* remote_bd_addr,
         .params.acl_state_changed.status = status,
         .params.acl_state_changed.remote_bd_addr = remote_bd_addr,
         .params.acl_state_changed.state = state,
+        .params.acl_state_changed.hci_reason = hci_reason,
     };
     (callback)(params);
   }
   LOG_INFO("%s status:%s device:%s state:%s", __func__,
            bt_status_text(status).c_str(), remote_bd_addr->ToString().c_str(),
            (state) ? "disconnected" : "connected");
+}
+
+/** Bluetooth Link Quality Report callback */
+void link_quality_report(uint64_t timestamp, int report_id, int rssi, int snr,
+    int retransmission_count, int packets_not_receive_count,
+    int negative_acknowledgement_count) {
+  LOG_INFO("%s", __func__);
 }
 
 void thread_event(bt_cb_thread_evt evt) { LOG_INFO("%s", __func__); }
@@ -150,6 +158,7 @@ bt_callbacks_t bt_callbacks{
     .dut_mode_recv_cb = dut_mode_recv,
     .le_test_mode_cb = le_test_mode,
     .energy_info_cb = energy_info,
+    .link_quality_report_cb = link_quality_report,
 };
 // HAL HARDWARE CALLBACKS
 

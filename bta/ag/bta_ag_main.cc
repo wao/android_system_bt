@@ -22,16 +22,16 @@
  *
  ******************************************************************************/
 
-#include <stack/include/bt_types.h>
-#include <string.h>
+#include <string>
+#include <vector>
 
-#include "bta_ag_int.h"
-#include "bta_api.h"
-#include "bta_sys.h"
+#include "bta/ag/bta_ag_int.h"
 #include "main/shim/dumpsys.h"
+#include "osi/include/alarm.h"
+#include "osi/include/compat.h"
 #include "osi/include/log.h"
 #include "osi/include/osi.h"
-#include "utl.h"
+#include "stack/include/btm_api.h"
 
 /*****************************************************************************
  * Constants and types
@@ -503,8 +503,6 @@ void bta_ag_api_register(tBTA_SERVICE_MASK services, tBTA_AG_FEAT features,
  ******************************************************************************/
 void bta_ag_api_result(uint16_t handle, tBTA_AG_RES result,
                        const tBTA_AG_RES_DATA& result_data) {
-  LOG_DEBUG("Handle AG API result handle:0x%04x", handle);
-
   tBTA_AG_DATA event_data = {};
   event_data.api_result.result = result;
   event_data.api_result.data = result_data;
@@ -512,16 +510,23 @@ void bta_ag_api_result(uint16_t handle, tBTA_AG_RES result,
   if (handle != BTA_AG_HANDLE_ALL) {
     p_scb = bta_ag_scb_by_idx(handle);
     if (p_scb) {
-      LOG_DEBUG("AG event scb:%s", p_scb->ToString().c_str());
+      LOG_DEBUG("Audio gateway event for one client handle:%hu scb:%s", handle,
+                p_scb->ToString().c_str());
       bta_ag_sm_execute(p_scb, static_cast<uint16_t>(BTA_AG_API_RESULT_EVT),
                         event_data);
+    } else {
+      LOG_WARN(
+          "Received audio gateway event for unknown AG control block "
+          "handle:%hu",
+          handle);
     }
   } else {
     int i;
     for (i = 0, p_scb = &bta_ag_cb.scb[0]; i < BTA_AG_MAX_NUM_CLIENTS;
          i++, p_scb++) {
       if (p_scb->in_use && p_scb->svc_conn) {
-        LOG_DEBUG("AG event for all scb:%s", p_scb->ToString().c_str());
+        LOG_DEBUG("Audio gateway event for all clients scb:%s",
+                  p_scb->ToString().c_str());
         bta_ag_sm_execute(p_scb, static_cast<uint16_t>(BTA_AG_API_RESULT_EVT),
                           event_data);
       }

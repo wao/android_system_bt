@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 
@@ -75,14 +76,17 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
 
   void OnDisconnection(hci::ErrorCode reason) override;
 
-  void OnConnectionUpdate(uint16_t connection_interval, uint16_t connection_latency,
-                          uint16_t supervision_timeout) override;
+  void OnConnectionUpdate(
+      hci::ErrorCode hci_status,
+      uint16_t connection_interval,
+      uint16_t connection_latency,
+      uint16_t supervision_timeout) override;
 
   void OnDataLengthChange(uint16_t tx_octets, uint16_t tx_time, uint16_t rx_octets, uint16_t rx_time) override;
 
   void OnReadRemoteVersionInformationComplete(
-      uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) override;
-  void OnPhyUpdate(uint8_t tx_phy, uint8_t rx_phy) override;
+      hci::ErrorCode hci_status, uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) override;
+  void OnPhyUpdate(hci::ErrorCode hci_status, uint8_t tx_phy, uint8_t rx_phy) override;
 
   void OnLocalAddressUpdate(hci::AddressWithType address_with_type) override;
 
@@ -145,6 +149,8 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
 
   void ReadRemoteVersionInformation();
 
+  void OnPendingPacketChange(Cid local_cid, bool has_packet) override;
+
  private:
   os::Handler* l2cap_handler_;
   l2cap::internal::FixedChannelAllocator<FixedChannelImpl, Link> fixed_channel_allocator_{this, l2cap_handler_};
@@ -163,6 +169,7 @@ class Link : public l2cap::internal::ILink, public hci::acl_manager::LeConnectio
   uint16_t update_request_interval_max_;
   uint16_t update_request_latency_;
   uint16_t update_request_supervision_timeout_;
+  std::atomic_int remaining_packets_to_be_sent_ = 0;
   DISALLOW_COPY_AND_ASSIGN(Link);
 
   // Received connection update complete from ACL manager. SignalId is bound to a valid number when we need to send a

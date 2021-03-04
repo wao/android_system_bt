@@ -1,3 +1,13 @@
+package {
+    // See: http://go/android-license-faq
+    // A large-scale-change added 'default_applicable_licenses' to import
+    // all of the 'license_kinds' from "system_bt_license"
+    // to get the below license kinds:
+    //   SPDX-license-identifier-Apache-2.0
+    //   SPDX-license-identifier-BSD
+    default_applicable_licenses: ["system_bt_license"],
+}
+
 cc_defaults {
     name: "gd_defaults",
     target: {
@@ -115,24 +125,25 @@ cc_defaults {
         },
         host: {
             srcs: [
+                ":BluetoothBtaaSources_host",
                 ":BluetoothHalSources_hci_rootcanal",
                 ":BluetoothOsSources_host",
             ],
         },
         android: {
             srcs: [
+                ":BluetoothBtaaSources_android",
                 ":BluetoothHalSources_hci_android_hidl",
                 ":BluetoothOsSources_android",
             ],
             shared_libs: [
                 "android.hardware.bluetooth@1.0",
+                "android.hardware.bluetooth@1.1",
+                "android.system.suspend.control-V1-ndk",
+                "libbinder_ndk",
+                "libcutils",
                 "libhidlbase",
                 "libutils",
-                "libcutils",
-            ],
-            static_libs: [
-                "libbt_common_sys_prop_cxx",
-                "libbt_hidl_hal_cxx",
             ],
         },
     },
@@ -169,8 +180,6 @@ cc_defaults {
     static_libs: [
         "libbluetooth-protos",
         "libbluetooth_rust_interop",
-        "libbt_shim_ffi",
-        "libcxxbridge05",
     ],
     export_static_lib_headers: [ "libbluetooth_rust_interop" ],
 }
@@ -232,8 +241,6 @@ cc_binary {
         "libbluetooth_gd",
         "libflatbuffers-cpp",
         "libbluetooth_rust_interop",
-        "libbt_shim_ffi",
-        "libcxxbridge05",
     ],
     shared_libs: [
         "libbacktrace",
@@ -248,13 +255,12 @@ cc_binary {
         android: {
             shared_libs: [
                 "android.hardware.bluetooth@1.0",
+                "android.hardware.bluetooth@1.1",
+                "android.system.suspend.control-V1-ndk",
+                "libbinder_ndk",
                 "libhidlbase",
                 "libutils",
                 "libcutils",
-            ],
-            static_libs: [
-                "libbt_common_sys_prop_cxx",
-                "libbt_hidl_hal_cxx",
             ],
         },
         host: {
@@ -299,13 +305,12 @@ cc_test {
             ],
             shared_libs: [
                 "android.hardware.bluetooth@1.0",
+                "android.hardware.bluetooth@1.1",
+                "android.system.suspend.control-V1-ndk",
+                "libbinder_ndk",
                 "libhidlbase",
                 "libutils",
                 "libcutils",
-            ],
-            static_libs: [
-                "libbt_common_sys_prop_cxx",
-                "libbt_hidl_hal_cxx",
             ],
         },
     },
@@ -341,8 +346,6 @@ cc_test {
         "libflatbuffers-cpp",
         "libgmock",
         "libbluetooth_rust_interop",
-        "libbt_shim_ffi",
-        "libcxxbridge05",
     ],
     shared_libs: [
         "libchrome",
@@ -380,8 +383,6 @@ cc_test {
     },
     static_libs: [
         "libbluetooth_rust_interop",
-        "libbt_shim_ffi",
-        "libcxxbridge05",
         "libchrome",
     ],
     shared_libs: [
@@ -392,13 +393,10 @@ cc_test {
         android: {
             shared_libs: [
                 "android.hardware.bluetooth@1.0",
+                "android.hardware.bluetooth@1.1",
                 "libhidlbase",
                 "libutils",
                 "libcutils",
-            ],
-            static_libs: [
-                "libbt_common_sys_prop_cxx",
-                "libbt_hidl_hal_cxx",
             ],
         },
     },
@@ -418,8 +416,6 @@ cc_defaults {
         "libgmock",
         "libgtest",
         "libbluetooth_rust_interop",
-        "libbt_shim_ffi",
-        "libcxxbridge05",
     ],
     host_supported: true,
     generated_headers: [
@@ -439,13 +435,12 @@ cc_defaults {
         android: {
             shared_libs: [
                 "android.hardware.bluetooth@1.0",
+                "android.hardware.bluetooth@1.1",
+                "android.system.suspend.control-V1-ndk",
+                "libbinder_ndk",
                 "libcutils",
                 "libhidlbase",
                 "libutils",
-            ],
-            static_libs: [
-                "libbt_common_sys_prop_cxx",
-                "libbt_hidl_hal_cxx",
             ],
         },
     },
@@ -547,6 +542,7 @@ rust_library {
         "libnum_traits",
         "libthiserror",
         "libbt_hci_custom_types",
+        "liblog_rust",
     ],
 }
 

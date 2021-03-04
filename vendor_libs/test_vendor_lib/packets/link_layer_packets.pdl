@@ -48,6 +48,8 @@ enum PacketType : 8 {
     KEYPRESS_NOTIFICATION = 0x29,
     PIN_REQUEST = 0x2A,
     PIN_RESPONSE = 0x2B,
+    LE_READ_REMOTE_FEATURES = 0x2C,
+    LE_READ_REMOTE_FEATURES_RESPONSE = 0x2D,
 }
 
 packet LinkLayerPacket {
@@ -260,8 +262,6 @@ enum Complete : 1 {
 packet IsoDataPacket : LinkLayerPacket (type = ISO) {
   handle : 12,
   _reserved_ : 4,
-  remote_handle : 12,
-  _reserved_ : 4,
   sc : StartContinuation,
   cmplt : Complete,
   _reserved_ : 6,
@@ -304,6 +304,9 @@ packet IsoConnectionResponse  : LinkLayerPacket (type = ISO_CONNECTION_RESPONSE)
   requester_cis_handle : 12,
   _reserved_ : 4,
   requester_acl_handle : 12,
+  _reserved_ : 4,
+  // For the link layer
+  responder_cis_handle : 12,
   _reserved_ : 4,
 }
 
@@ -349,4 +352,12 @@ packet PinResponse : LinkLayerPacket (type = PIN_RESPONSE) {
   _size_(pin_code) : 5, // 0x01 - 0x10
   _reserved_ : 3,
   pin_code : 8[], // string parameter, first octet first
+}
+
+packet LeReadRemoteFeatures : LinkLayerPacket (type = LE_READ_REMOTE_FEATURES) {
+}
+
+packet LeReadRemoteFeaturesResponse : LinkLayerPacket (type = LE_READ_REMOTE_FEATURES_RESPONSE) {
+  features : 64,
+  status : 8,
 }

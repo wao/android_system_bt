@@ -28,43 +28,34 @@
 
 #define LOG_TAG "bt_btif_core"
 
+#include <signal.h>
+#include <sys/types.h>
+
 #include <base/at_exit.h>
 #include <base/bind.h>
-#include <base/run_loop.h>
 #include <base/threading/platform_thread.h>
-#include <base/threading/thread.h>
-#include <ctype.h>
-#include <dirent.h>
-#include <fcntl.h>
-#include <hardware/bluetooth.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <cstdint>
 
-#include "bt_common.h"
-#include "bt_utils.h"
-#include "bta_api.h"
-#include "bte.h"
-#include "btif_api.h"
-#include "btif_av.h"
-#include "btif_config.h"
-#include "btif_pan.h"
-#include "btif_profile_queue.h"
-#include "btif_sock.h"
-#include "btif_storage.h"
-#include "btif_uid.h"
-#include "btif_util.h"
-#include "btu.h"
+#include "bt_target.h"  // Must be first to define build configuration
+
+#include "btif/include/btif_av.h"
+#include "btif/include/btif_common.h"
+#include "btif/include/btif_config.h"
+#include "btif/include/btif_dm.h"
+#include "btif/include/btif_pan.h"
+#include "btif/include/btif_profile_queue.h"
+#include "btif/include/btif_sock.h"
+#include "btif/include/btif_storage.h"
+#include "btif/include/stack_manager.h"
 #include "common/message_loop_thread.h"
 #include "device/include/controller.h"
-#include "osi/include/fixed_queue.h"
 #include "osi/include/future.h"
 #include "osi/include/log.h"
-#include "osi/include/osi.h"
 #include "osi/include/properties.h"
-#include "stack_manager.h"
+#include "stack/include/a2dp_api.h"
+#include "stack/include/btm_api.h"
+#include "stack/include/btm_ble_api.h"
+#include "types/bluetooth/uuid.h"
 
 using base::PlatformThread;
 using bluetooth::Uuid;
@@ -180,7 +171,9 @@ bool is_on_jni_thread() {
   return jni_thread.GetThreadId() == PlatformThread::CurrentId();
 }
 
-base::MessageLoop* get_jni_message_loop() { return jni_thread.message_loop(); }
+btbase::AbstractMessageLoop* get_jni_message_loop() {
+  return jni_thread.message_loop();
+}
 
 /*******************************************************************************
  *
@@ -262,55 +255,6 @@ static bool btif_is_a2dp_offload_enabled() {
   return a2dp_offload_enabled_;
 }
 
-void btif_dynamic_audio_buffer_init() {
-  LOG_INFO("%s entered", __func__);
-
-  char buf[512];
-  bt_property_t prop;
-  prop.type = BT_PROPERTY_DYNAMIC_AUDIO_BUFFER;
-  prop.val = (void*)buf;
-
-  bt_dynamic_audio_buffer_item_t dynamic_audio_buffer_item;
-  prop.len = sizeof(bt_dynamic_audio_buffer_item_t);
-  LOG_DEBUG("%s prop.len = %d", __func__, prop.len);
-
-  tBTM_BLE_VSC_CB cmn_vsc_cb;
-  BTM_BleGetVendorCapabilities(&cmn_vsc_cb);
-
-  if (btif_is_a2dp_offload_enabled() == false) {
-    BTIF_TRACE_DEBUG("%s Get buffer time for A2DP software encoding", __func__);
-    for (int i = 0; i < CODEC_TYPE_NUMBER; i++) {
-      dynamic_audio_buffer_item.dab_item[i] = {
-          .default_buffer_time = DEFAULT_BUFFER_TIME,
-          .maximum_buffer_time = MAXIMUM_BUFFER_TIME,
-          .minimum_buffer_time = MINIMUM_BUFFER_TIME};
-    }
-    memcpy(prop.val, &dynamic_audio_buffer_item, prop.len);
-    invoke_adapter_properties_cb(BT_STATUS_SUCCESS, 1, &prop);
-  } else {
-    if (cmn_vsc_cb.dynamic_audio_buffer_support != 0) {
-      BTIF_TRACE_DEBUG("%s Get buffer time for A2DP Offload", __func__);
-      tBTM_BT_DYNAMIC_AUDIO_BUFFER_CB
-          bt_dynamic_audio_buffer_cb[CODEC_TYPE_NUMBER];
-      BTM_BleGetDynamicAudioBuffer(bt_dynamic_audio_buffer_cb);
-
-      for (int i = 0; i < CODEC_TYPE_NUMBER; i++) {
-        dynamic_audio_buffer_item.dab_item[i] = {
-            .default_buffer_time =
-                bt_dynamic_audio_buffer_cb[i].default_buffer_time,
-            .maximum_buffer_time =
-                bt_dynamic_audio_buffer_cb[i].maximum_buffer_time,
-            .minimum_buffer_time =
-                bt_dynamic_audio_buffer_cb[i].minimum_buffer_time};
-      }
-      memcpy(prop.val, &dynamic_audio_buffer_item, prop.len);
-      invoke_adapter_properties_cb(BT_STATUS_SUCCESS, 1, &prop);
-    } else {
-      BTIF_TRACE_DEBUG("%s Don't support Dynamic Audio Buffer", __func__);
-    }
-  }
-}
-
 /*******************************************************************************
  *
  * Function         btif_enable_bluetooth_evt
@@ -356,9 +300,6 @@ void btif_enable_bluetooth_evt() {
 
   /* init pan */
   btif_pan_init();
-
-  /* init dynamic audio buffer */
-  btif_dynamic_audio_buffer_init();
 
   /* load did configuration */
   bte_load_did_conf(BTE_DID_CONF_FILE);
@@ -647,6 +588,44 @@ void btif_get_adapter_property(bt_property_type_t type) {
     local_le_features.debug_logging_supported =
         cmn_vsc_cb.debug_logging_supported > 0;
     memcpy(prop.val, &local_le_features, prop.len);
+  } else if (prop.type == BT_PROPERTY_DYNAMIC_AUDIO_BUFFER) {
+    tBTM_BLE_VSC_CB cmn_vsc_cb;
+    bt_dynamic_audio_buffer_item_t dynamic_audio_buffer_item;
+
+    BTM_BleGetVendorCapabilities(&cmn_vsc_cb);
+
+    prop.len = sizeof(bt_dynamic_audio_buffer_item_t);
+    if (btif_is_a2dp_offload_enabled() == false) {
+      BTIF_TRACE_DEBUG("%s Get buffer millis for A2DP software encoding",
+                       __func__);
+      for (int i = 0; i < CODEC_TYPE_NUMBER; i++) {
+        dynamic_audio_buffer_item.dab_item[i] = {
+            .default_buffer_time = DEFAULT_BUFFER_TIME,
+            .maximum_buffer_time = MAXIMUM_BUFFER_TIME,
+            .minimum_buffer_time = MINIMUM_BUFFER_TIME};
+      }
+      memcpy(prop.val, &dynamic_audio_buffer_item, prop.len);
+    } else {
+      if (cmn_vsc_cb.dynamic_audio_buffer_support != 0) {
+        BTIF_TRACE_DEBUG("%s Get buffer millis for A2DP Offload", __func__);
+        tBTM_BT_DYNAMIC_AUDIO_BUFFER_CB
+            bt_dynamic_audio_buffer_cb[CODEC_TYPE_NUMBER];
+        BTM_BleGetDynamicAudioBuffer(bt_dynamic_audio_buffer_cb);
+
+        for (int i = 0; i < CODEC_TYPE_NUMBER; i++) {
+          dynamic_audio_buffer_item.dab_item[i] = {
+              .default_buffer_time =
+                  bt_dynamic_audio_buffer_cb[i].default_buffer_time,
+              .maximum_buffer_time =
+                  bt_dynamic_audio_buffer_cb[i].maximum_buffer_time,
+              .minimum_buffer_time =
+                  bt_dynamic_audio_buffer_cb[i].minimum_buffer_time};
+        }
+        memcpy(prop.val, &dynamic_audio_buffer_item, prop.len);
+      } else {
+        BTIF_TRACE_DEBUG("%s Don't support Dynamic Audio Buffer", __func__);
+      }
+    }
   } else {
     status = btif_storage_get_adapter_property(&prop);
   }

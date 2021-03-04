@@ -23,7 +23,8 @@
  *
  ******************************************************************************/
 
-#include <cutils/log.h>
+#define LOG_TAG "bluetooth"
+
 #include <string.h>
 #include "a2dp_codec_api.h"
 #include "avdt_api.h"
@@ -34,6 +35,7 @@
 #include "bt_types.h"
 #include "bt_utils.h"
 #include "btu.h"
+#include "osi/include/log.h"
 #include "osi/include/osi.h"
 
 /* This table is used to lookup the callback event that matches a particular

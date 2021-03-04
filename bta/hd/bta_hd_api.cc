@@ -23,17 +23,16 @@
  *
  ******************************************************************************/
 
-#include "bt_target.h"
+#define LOG_TAG "bluetooth"
 
+// BTA_HD_INCLUDED
+#include "bt_target.h"  // Must be first to define build configuration
 #if defined(BTA_HD_INCLUDED) && (BTA_HD_INCLUDED == TRUE)
 
-#include <log/log.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include "bta_hd_api.h"
-#include "bta_hd_int.h"
+#include "bta/hd/bta_hd_int.h"
+#include "osi/include/allocator.h"
+#include "osi/include/compat.h"
+#include "osi/include/log.h"
 
 /*****************************************************************************
  *  Constants

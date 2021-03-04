@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "stack/include/acl_api_types.h"
@@ -112,12 +113,10 @@ inline std::string power_mode_state_text(tBTM_PM_STATE state) {
   }
 }
 
-struct sACL_CONN;
-
 namespace bluetooth {
 namespace shim {
-tBTM_STATUS BTM_SetPowerMode(sACL_CONN& p_acl, const tBTM_PM_PWR_MD& new_mode);
-tBTM_STATUS BTM_SetSsrParams(sACL_CONN& p_acl, uint16_t max_lat,
+tBTM_STATUS BTM_SetPowerMode(uint16_t handle, const tBTM_PM_PWR_MD& new_mode);
+tBTM_STATUS BTM_SetSsrParams(uint16_t handle, uint16_t max_lat,
                              uint16_t min_rmt_to, uint16_t min_loc_to);
 void btm_pm_on_mode_change(tHCI_STATUS status, uint16_t handle,
                            tHCI_MODE hci_mode, uint16_t interval);
@@ -138,9 +137,9 @@ typedef struct {
 
 #define BTM_PM_REC_NOT_USED 0
 typedef struct {
-  tBTM_PM_STATUS_CBACK*
-      cback;    /* to notify the registered party of mode change event */
-  uint8_t mask; /* registered request mask. 0, if this entry is not used */
+  tBTM_PM_STATUS_CBACK* cback =
+      nullptr;      /* to notify the registered party of mode change event */
+  uint8_t mask = 0; /* registered request mask. 0, if this entry is not used */
 } tBTM_PM_RCB;
 
 /* Structure returned with Role Switch information (in tBTM_CMPL_CB callback
@@ -152,34 +151,24 @@ typedef struct {
   uint8_t role;              /* HCI_ROLE_CENTRAL or HCI_ROLE_PERIPHERAL */
 } tBTM_ROLE_SWITCH_CMPL;
 
-typedef struct {
-  bool chg_ind;
-  tBTM_PM_PWR_MD req_mode[BTM_MAX_PM_RECORDS + 1];
+struct tBTM_PM_MCB {
+  bool chg_ind = false;
+  tBTM_PM_PWR_MD req_mode;
   tBTM_PM_PWR_MD set_mode;
+  tBTM_PM_STATE state = BTM_PM_ST_ACTIVE;  // 0
+  uint16_t interval = 0;
+  uint16_t max_lat = 0;
+  uint16_t min_loc_to = 0;
+  uint16_t min_rmt_to = 0;
+  void Init(RawAddress bda, uint16_t handle) {
+    bda_ = bda;
+    handle_ = handle;
+  }
+  RawAddress bda_;
+  uint16_t handle_;
+};
 
- private:
-  friend tBTM_STATUS BTM_SetPowerMode(uint8_t pm_id,
-                                      const RawAddress& remote_bda,
-                                      const tBTM_PM_PWR_MD* p_mode);
-  friend tBTM_STATUS BTM_SetSsrParams(const RawAddress& remote_bda,
-                                      uint16_t max_lat, uint16_t min_rmt_to,
-                                      uint16_t min_loc_to);
-  friend void btm_pm_proc_cmd_status(tHCI_STATUS status);
-  friend void btm_pm_proc_mode_change(tHCI_STATUS hci_status,
-                                      uint16_t hci_handle, tHCI_MODE mode,
-                                      uint16_t interval);
-  tBTM_PM_STATE state;
-
- public:
-  tBTM_PM_STATE State() const { return state; }
-  uint16_t interval;
-  uint16_t max_lat;
-  uint16_t min_loc_to;
-  uint16_t min_rmt_to;
-  void Init() { state = BTM_PM_ST_ACTIVE; }
-} tBTM_PM_MCB;
-
-struct sACL_CONN {
+struct tACL_CONN {
   BD_FEATURES peer_le_features;
   bool peer_le_features_valid;
   BD_FEATURES peer_lmp_feature_pages[HCI_EXT_FEATURES_PAGE_MAX + 1];
@@ -335,13 +324,13 @@ struct sACL_CONN {
       tBTM_PM_MODE pending_{BTM_PM_MD_UNKNOWN};
       uint16_t interval_{0};
       friend tBTM_STATUS bluetooth::shim::BTM_SetPowerMode(
-          sACL_CONN& p_acl, const tBTM_PM_PWR_MD& new_mode);
+          uint16_t, const tBTM_PM_PWR_MD& new_mode);
       friend void bluetooth::shim::btm_pm_on_mode_change(tHCI_STATUS status,
                                                          uint16_t handle,
                                                          tHCI_MODE hci_mode,
                                                          uint16_t interval);
-      friend void sACL_CONN::Reset();
-      friend tBTM_PM_MODE sACL_CONN::sPolicy::Mode() const;
+      friend void tACL_CONN::Reset();
+      friend tBTM_PM_MODE tACL_CONN::sPolicy::Mode() const;
     } mode;
 
     hci_role_t Role() const;
@@ -351,8 +340,8 @@ struct sACL_CONN {
      private:
       hci_role_t role_{HCI_ROLE_CENTRAL};
       unsigned role_switch_failed_cnt_{0};
-      friend void sACL_CONN::Reset();
-      friend tBTM_PM_MODE sACL_CONN::sPolicy::Role() const;
+      friend void tACL_CONN::Reset();
+      friend tBTM_PM_MODE tACL_CONN::sPolicy::Role() const;
     } role;
 
     struct {
@@ -360,7 +349,7 @@ struct sACL_CONN {
 
      private:
       bool pending_{false};
-      friend tBTM_STATUS bluetooth::shim::BTM_SetSsrParams(sACL_CONN& p_acl,
+      friend tBTM_STATUS bluetooth::shim::BTM_SetSsrParams(uint16_t handle,
                                                            uint16_t max_lat,
                                                            uint16_t min_rmt_to,
                                                            uint16_t min_loc_to);
@@ -368,77 +357,47 @@ struct sACL_CONN {
           tHCI_STATUS status, uint16_t handle,
           uint16_t maximum_transmit_latency, uint16_t maximum_receive_latency,
           uint16_t minimum_remote_timeout, uint16_t minimum_local_timeout);
-      friend void sACL_CONN::Reset();
+      friend void tACL_CONN::Reset();
     } sniff_subrating;
 
     tLINK_POLICY Settings() const { return settings_; }
 
    private:
     tLINK_POLICY settings_{kAllLinkPoliciesEnabled};
-    friend void btm_set_link_policy(sACL_CONN* conn, tLINK_POLICY policy);
-    friend void sACL_CONN::Reset();
+    friend void btm_set_link_policy(tACL_CONN* conn, tLINK_POLICY policy);
+    friend void tACL_CONN::Reset();
   } policy;
 };
-typedef sACL_CONN tACL_CONN;
 
 struct controller_t;
 
 /****************************************************
  **      ACL Management API
  ****************************************************/
-struct sACL_CB {
+struct tACL_CB {
  private:
-  friend int btm_pm_find_acl_ind(const RawAddress& remote_bda);
-  friend tBTM_PM_MCB* acl_power_mode_from_handle(uint16_t hci_handle);
-  friend tBTM_STATUS BTM_SetPowerMode(uint8_t pm_id,
-                                      const RawAddress& remote_bda,
-                                      const tBTM_PM_PWR_MD* p_mode);
-  friend tBTM_STATUS BTM_SetSsrParams(const RawAddress& remote_bda,
-                                      uint16_t max_lat, uint16_t min_rmt_to,
-                                      uint16_t min_loc_to);
-  friend uint16_t BTM_GetNumAclLinks(void);
-  friend uint16_t acl_get_supported_packet_types();
   friend uint8_t btm_handle_to_acl_index(uint16_t hci_handle);
-  friend void BTM_SetDefaultLinkSuperTout(uint16_t timeout);
-  friend void acl_initialize_power_mode(const tACL_CONN& p_acl);
-  friend void acl_set_disconnect_reason(tHCI_STATUS acl_disc_reason);
-  friend void btm_acl_created(const RawAddress& bda, uint16_t hci_handle,
-                              uint8_t link_role, tBT_TRANSPORT transport);
   friend void btm_acl_device_down(void);
   friend void btm_acl_encrypt_change(uint16_t handle, uint8_t status,
                                      uint8_t encr_enable);
-  friend void btm_pm_proc_cmd_status(tHCI_STATUS status);
-  friend void btm_pm_proc_mode_change(tHCI_STATUS hci_status,
-                                      uint16_t hci_handle, tHCI_MODE mode,
-                                      uint16_t interval);
-  friend void btm_pm_proc_ssr_evt(uint8_t* p, uint16_t evt_len);
-  friend void btm_pm_reset(void);
+
   friend void DumpsysL2cap(int fd);
   friend void DumpsysAcl(int fd);
-
   friend struct StackAclBtmAcl;
-  friend struct StackAclBtmPm;
 
   tACL_CONN acl_db[MAX_L2CAP_LINKS];
-  tBTM_PM_MCB pm_mode_db[MAX_L2CAP_LINKS];
   tBTM_ROLE_SWITCH_CMPL switch_role_ref_data;
-  uint16_t btm_acl_pkt_types_supported;
+  uint16_t btm_acl_pkt_types_supported =
+      HCI_PKT_TYPES_MASK_DH1 + HCI_PKT_TYPES_MASK_DM1 + HCI_PKT_TYPES_MASK_DH3 +
+      HCI_PKT_TYPES_MASK_DM3 + HCI_PKT_TYPES_MASK_DH5 + HCI_PKT_TYPES_MASK_DM5;
   uint16_t btm_def_link_policy;
-  tHCI_STATUS acl_disc_reason;
-  uint8_t pm_pend_link;
-
- public:
-  bool is_power_mode_pending() const { return pm_pend_link != MAX_L2CAP_LINKS; }
+  tHCI_STATUS acl_disc_reason = HCI_ERR_UNDEFINED;
 
  public:
   tHCI_STATUS get_disconnect_reason() const { return acl_disc_reason; }
   void set_disconnect_reason(tHCI_STATUS reason) { acl_disc_reason = reason; }
   uint16_t DefaultPacketTypes() const { return btm_acl_pkt_types_supported; }
   uint16_t DefaultLinkPolicy() const { return btm_def_link_policy; }
-
-  tBTM_PM_RCB pm_reg_db[BTM_MAX_PM_RECORDS + 1]; /* per application/module */
-
-  uint8_t pm_pend_id{0}; /* the id pf the module, which has a pending PM cmd */
 
   struct {
     std::vector<tBTM_PM_STATUS_CBACK*> clients;
@@ -452,6 +411,11 @@ struct sACL_CB {
     return cnt;
   }
 
-  void Init();
+ private:
+  std::unordered_set<RawAddress> ignore_auto_connect_after_disconnect_set_;
+
+ public:
+  void AddToIgnoreAutoConnectAfterDisconnect(const RawAddress& bd_addr);
+  bool CheckAndClearIgnoreAutoConnectAfterDisconnect(const RawAddress& bd_addr);
+  void ClearAllIgnoreAutoConnectAfterDisconnect();
 };
-typedef sACL_CB tACL_CB;

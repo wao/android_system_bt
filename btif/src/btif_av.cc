@@ -18,38 +18,34 @@
 
 #define LOG_TAG "btif_av"
 
-#include "btif_av.h"
-
 #include <base/bind.h>
-#include <base/logging.h>
 #include <base/strings/stringprintf.h>
-#include <string.h>
-#include <map>
+#include <cstdint>
+#include <future>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include <hardware/bluetooth.h>
-#include <hardware/bt_av.h>
-#include <hardware/bt_rc.h>
-
-#include "audio_a2dp_hw/include/audio_a2dp_hw.h"
 #include "audio_hal_interface/a2dp_encoding.h"
-#include "bt_common.h"
-#include "bt_utils.h"
-#include "bta/include/bta_api.h"
+#include "audio_hal_interface/hearing_aid_software_encoding.h"
+#include "bta/av/bta_av_int.h"
+#include "btif/include/btif_a2dp.h"
+#include "btif/include/btif_a2dp_control.h"
+#include "btif/include/btif_a2dp_sink.h"
 #include "btif/include/btif_a2dp_source.h"
-#include "btif_a2dp.h"
-#include "btif_a2dp_audio_interface.h"
-#include "btif_a2dp_control.h"
-#include "btif_a2dp_sink.h"
-#include "btif_av_co.h"
-#include "btif_profile_queue.h"
-#include "btif_rc.h"
-#include "btif_util.h"
-#include "btu.h"
+#include "btif/include/btif_av.h"
+#include "btif/include/btif_av_co.h"
+#include "btif/include/btif_common.h"
+#include "btif/include/btif_profile_queue.h"
+#include "btif/include/btif_rc.h"
+#include "btif/include/btif_util.h"
 #include "common/state_machine.h"
+#include "include/hardware/bt_rc.h"
 #include "main/shim/dumpsys.h"
-#include "osi/include/allocator.h"
-#include "osi/include/osi.h"
 #include "osi/include/properties.h"
+#include "stack/include/btm_api.h"
+#include "stack/include/btu.h"  // do_in_main_thread
+#include "types/raw_address.h"
 
 /*****************************************************************************
  *  Constants & Macros
@@ -551,7 +547,8 @@ class BtifAvSink {
         max_connected_peers_(kDefaultMaxConnectedAudioDevices) {}
   ~BtifAvSink();
 
-  bt_status_t Init(btav_sink_callbacks_t* callbacks);
+  bt_status_t Init(btav_sink_callbacks_t* callbacks,
+                   int max_connected_audio_devices);
   void Cleanup();
 
   btav_sink_callbacks_t* Callbacks() { return callbacks_; }
@@ -1176,12 +1173,14 @@ void BtifAvSource::BtaHandleRegistered(uint8_t peer_id,
 
 BtifAvSink::~BtifAvSink() { CleanupAllPeers(); }
 
-bt_status_t BtifAvSink::Init(btav_sink_callbacks_t* callbacks) {
-  LOG_INFO("%s", __PRETTY_FUNCTION__);
+bt_status_t BtifAvSink::Init(btav_sink_callbacks_t* callbacks,
+                             int max_connected_audio_devices) {
+  LOG_INFO("%s(max_connected_audio_devices=%d)", __PRETTY_FUNCTION__,
+           max_connected_audio_devices);
   if (enabled_) return BT_STATUS_SUCCESS;
 
   CleanupAllPeers();
-  max_connected_peers_ = kDefaultMaxConnectedAudioDevices;
+  max_connected_peers_ = max_connected_audio_devices;
   callbacks_ = callbacks;
 
   std::vector<btav_a2dp_codec_config_t> codec_priorities;  // Default priorities
@@ -2756,9 +2755,10 @@ static bt_status_t init_src(
 }
 
 // Initializes the AV interface for sink mode
-static bt_status_t init_sink(btav_sink_callbacks_t* callbacks) {
+static bt_status_t init_sink(btav_sink_callbacks_t* callbacks,
+                             int max_connected_audio_devices) {
   BTIF_TRACE_EVENT("%s", __func__);
-  return btif_av_sink.Init(callbacks);
+  return btif_av_sink.Init(callbacks, max_connected_audio_devices);
 }
 
 // Updates the final focus state reported by components calling this module

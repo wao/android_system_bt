@@ -446,7 +446,9 @@ struct Controller::impl {
   }
 
   void write_le_host_support(Enable enable) {
-    std::unique_ptr<WriteLeHostSupportBuilder> packet = WriteLeHostSupportBuilder::Create(enable);
+    // Since Bluetooth Core Spec 4.1, this bit should be 0, but some controllers still require it
+    Enable simultaneous_le_host = Enable::ENABLED;
+    std::unique_ptr<WriteLeHostSupportBuilder> packet = WriteLeHostSupportBuilder::Create(enable, simultaneous_le_host);
     hci_->EnqueueCommand(
         std::move(packet),
         module_.GetHandler()->BindOnceOn(this, &Controller::impl::check_status<WriteLeHostSupportCompleteView>));
@@ -512,7 +514,7 @@ struct Controller::impl {
     uint16_t bit_index = index % 10;                                           \
     bool supported = local_supported_commands_[byte_index] & (1 << bit_index); \
     if (!supported) {                                                          \
-      LOG_WARN("unsupported command opcode: 0x%04x", (uint16_t)OpCode::name);  \
+      LOG_DEBUG("unsupported command opcode: 0x%04x", (uint16_t)OpCode::name); \
     }                                                                          \
     return supported;                                                          \
   }
@@ -743,6 +745,7 @@ struct Controller::impl {
       OP_CODE_MAPPING(LE_READ_BUFFER_SIZE_V2)
       OP_CODE_MAPPING(LE_READ_ISO_TX_SYNC)
       OP_CODE_MAPPING(LE_SET_CIG_PARAMETERS)
+      OP_CODE_MAPPING(LE_SET_CIG_PARAMETERS_TEST)
       OP_CODE_MAPPING(LE_CREATE_CIS)
       OP_CODE_MAPPING(LE_REMOVE_CIG)
       OP_CODE_MAPPING(LE_ACCEPT_CIS_REQUEST)
@@ -777,8 +780,6 @@ struct Controller::impl {
         return vendor_capabilities_.total_scan_results_storage_ != 0x00;
       case OpCode::LE_ADV_FILTER:
         return vendor_capabilities_.filtering_support_ == 0x01;
-      case OpCode::LE_TRACK_ADV:
-        return vendor_capabilities_.total_num_of_advt_tracked_ > 0;
       case OpCode::LE_ENERGY_INFO:
         return vendor_capabilities_.activity_energy_info_support_ == 0x01;
       case OpCode::LE_EXTENDED_SCAN_PARAMS:
@@ -790,7 +791,6 @@ struct Controller::impl {
       case OpCode::CONTROLLER_BQR:
         return vendor_capabilities_.bluetooth_quality_report_support_ == 0x01;
       // undefined in local_supported_commands_
-      case OpCode::CREATE_NEW_UNIT_KEY:
       case OpCode::READ_LOCAL_SUPPORTED_COMMANDS:
         return true;
       case OpCode::NONE:

@@ -19,14 +19,17 @@
 #include <base/location.h>
 #include <base/strings/stringprintf.h>
 #include <time.h>
+#include <unordered_set>
 
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <future>
 #include <map>
 #include <memory>
 #include <string>
 
+#include "device/include/controller.h"
 #include "gd/common/bidi_queue.h"
 #include "gd/common/bind.h"
 #include "gd/common/strings.h"
@@ -76,6 +79,49 @@ using OnDisconnect = std::function<void(HciHandle, hci::ErrorCode reason)>;
 
 constexpr char kConnectionDescriptorTimeFormat[] = "%Y-%m-%d %H:%M:%S";
 
+class ShadowAcceptlist {
+ public:
+  ShadowAcceptlist(uint8_t max_acceptlist_size)
+      : max_acceptlist_size_(max_acceptlist_size) {}
+
+  bool Add(const hci::AddressWithType& address_with_type) {
+    if (acceptlist_set_.size() == max_acceptlist_size_) {
+      LOG_ERROR("Acceptlist is full size:%zu", acceptlist_set_.size());
+      return false;
+    }
+    if (!acceptlist_set_.insert(address_with_type).second) {
+      LOG_WARN("Attempted to add duplicate le address to acceptlist:%s",
+               PRIVATE_ADDRESS(address_with_type));
+    }
+    return true;
+  }
+
+  bool Remove(const hci::AddressWithType& address_with_type) {
+    auto iter = acceptlist_set_.find(address_with_type);
+    if (iter == acceptlist_set_.end()) {
+      LOG_WARN("Unknown device being removed from acceptlist:%s",
+               PRIVATE_ADDRESS(address_with_type));
+      return false;
+    }
+    acceptlist_set_.erase(iter);
+    return true;
+  }
+
+  std::unordered_set<hci::AddressWithType> GetCopy() const {
+    return acceptlist_set_;
+  }
+
+  bool IsFull() const {
+    return acceptlist_set_.size() == static_cast<size_t>(max_acceptlist_size_);
+  }
+
+  void Clear() { acceptlist_set_.clear(); }
+
+ private:
+  uint8_t max_acceptlist_size_{0};
+  std::unordered_set<hci::AddressWithType> acceptlist_set_;
+};
+
 struct ConnectionDescriptor {
   CreationTime creation_time_;
   TeardownTime teardown_time_;
@@ -98,10 +144,10 @@ struct ConnectionDescriptor {
         " creation_time:%s teardown_time:%s disconnect_reason:%s",
         GetPrivateRemoteAddress().c_str(), handle_,
         logbool(is_locally_initiated_).c_str(),
-        bluetooth::common::StringFormatTimeWithMilliseconds(
+        common::StringFormatTimeWithMilliseconds(
             kConnectionDescriptorTimeFormat, creation_time_)
             .c_str(),
-        bluetooth::common::StringFormatTimeWithMilliseconds(
+        common::StringFormatTimeWithMilliseconds(
             kConnectionDescriptorTimeFormat, teardown_time_)
             .c_str(),
         hci::ErrorCodeText(disconnect_reason_).c_str());
@@ -166,8 +212,7 @@ constexpr size_t kConnectionHistorySize = 40;
 inline uint8_t LowByte(uint16_t val) { return val & 0xff; }
 inline uint8_t HighByte(uint16_t val) { return val >> 8; }
 
-void ValidateAclInterface(
-    const bluetooth::shim::legacy::acl_interface_t& acl_interface) {
+void ValidateAclInterface(const shim::legacy::acl_interface_t& acl_interface) {
   ASSERT_LOG(acl_interface.on_send_data_upwards != nullptr,
              "Must provide to receive data on acl links");
   ASSERT_LOG(acl_interface.on_packets_completed != nullptr,
@@ -222,13 +267,13 @@ class ShimAclConnection {
                "Shim Acl was not properly disconnected handle:0x%04x", handle_);
   }
 
-  void EnqueuePacket(std::unique_ptr<bluetooth::packet::RawBuilder> packet) {
+  void EnqueuePacket(std::unique_ptr<packet::RawBuilder> packet) {
     // TODO Handle queue size exceeds some threshold
     queue_.push(std::move(packet));
     RegisterEnqueue();
   }
 
-  std::unique_ptr<bluetooth::packet::BasePacketBuilder> handle_enqueue() {
+  std::unique_ptr<packet::BasePacketBuilder> handle_enqueue() {
     auto packet = std::move(queue_.front());
     queue_.pop();
     if (queue_.empty()) {
@@ -256,6 +301,11 @@ class ShimAclConnection {
   CreationTime GetCreationTime() const { return creation_time_; }
   uint16_t Handle() const { return handle_; }
 
+  void Shutdown() {
+    Disconnect();
+    LOG_INFO("Shutdown ACL connection handle:0x%04x", handle_);
+  }
+
  protected:
   const uint16_t handle_{kInvalidHciHandle};
   os::Handler* handler_;
@@ -279,7 +329,7 @@ class ShimAclConnection {
   SendDataUpwards send_data_upwards_;
   hci::acl_manager::AclConnection::QueueUpEnd* queue_up_end_;
 
-  std::queue<std::unique_ptr<bluetooth::packet::RawBuilder>> queue_;
+  std::queue<std::unique_ptr<packet::RawBuilder>> queue_;
   bool is_enqueue_registered_{false};
   bool is_disconnected_{false};
   CreationTime creation_time_;
@@ -326,9 +376,9 @@ class ClassicShimAclConnection
     TRY_POSTING_ON_MAIN(interface_.on_packet_type_changed, packet_type);
   }
 
-  void OnAuthenticationComplete() override {
+  void OnAuthenticationComplete(hci::ErrorCode hci_status) override {
     TRY_POSTING_ON_MAIN(interface_.on_authentication_complete, handle_,
-                        ToLegacyHciErrorCode(hci::ErrorCode::SUCCESS));
+                        ToLegacyHciErrorCode(hci_status));
   }
 
   void OnEncryptionChange(hci::EncryptionEnabled enabled) override {
@@ -345,18 +395,19 @@ class ClassicShimAclConnection
     LOG_INFO("UNIMPLEMENTED");
   }
 
-  void OnModeChange(hci::Mode current_mode, uint16_t interval) override {
-    TRY_POSTING_ON_MAIN(interface_.on_mode_change,
-                        ToLegacyHciErrorCode(hci::ErrorCode::SUCCESS), handle_,
-                        ToLegacyHciMode(current_mode), interval);
+  void OnModeChange(hci::ErrorCode status, hci::Mode current_mode,
+                    uint16_t interval) override {
+    TRY_POSTING_ON_MAIN(interface_.on_mode_change, ToLegacyHciErrorCode(status),
+                        handle_, ToLegacyHciMode(current_mode), interval);
   }
 
-  void OnSniffSubrating(uint16_t maximum_transmit_latency,
+  void OnSniffSubrating(hci::ErrorCode hci_status,
+                        uint16_t maximum_transmit_latency,
                         uint16_t maximum_receive_latency,
                         uint16_t minimum_remote_timeout,
                         uint16_t minimum_local_timeout) {
     TRY_POSTING_ON_MAIN(interface_.on_sniff_subrating,
-                        ToLegacyHciErrorCode(hci::ErrorCode::SUCCESS), handle_,
+                        ToLegacyHciErrorCode(hci_status), handle_,
                         maximum_transmit_latency, maximum_receive_latency,
                         minimum_remote_timeout, minimum_local_timeout);
   }
@@ -424,14 +475,14 @@ class ClassicShimAclConnection
     LOG_INFO("%s UNIMPLEMENTED", __func__);
   }
 
-  void OnRoleChange(hci::Role new_role) override {
-    TRY_POSTING_ON_MAIN(interface_.on_role_change,
-                        ToLegacyHciErrorCode(hci::ErrorCode::SUCCESS),
-                        ToRawAddress(connection_->GetAddress()),
-                        ToLegacyRole(new_role));
+  void OnRoleChange(hci::ErrorCode hci_status, hci::Role new_role) override {
+    TRY_POSTING_ON_MAIN(
+        interface_.on_role_change, ToLegacyHciErrorCode(hci_status),
+        ToRawAddress(connection_->GetAddress()), ToLegacyRole(new_role));
     BTM_LogHistory(kBtmLogTag, ToRawAddress(connection_->GetAddress()),
                    "Role change",
-                   base::StringPrintf("classic new_role:%s",
+                   base::StringPrintf("classic  status:%s new_role:%s",
+                                      hci::ErrorCodeText(hci_status).c_str(),
                                       hci::RoleText(new_role).c_str()));
   }
 
@@ -440,12 +491,13 @@ class ClassicShimAclConnection
     on_disconnect_(handle_, reason);
   }
 
-  void OnReadRemoteVersionInformationComplete(uint8_t lmp_version,
+  void OnReadRemoteVersionInformationComplete(hci::ErrorCode hci_status,
+                                              uint8_t lmp_version,
                                               uint16_t manufacturer_name,
                                               uint16_t sub_version) override {
     TRY_POSTING_ON_MAIN(interface_.on_read_remote_version_information_complete,
-                        ToLegacyHciErrorCode(hci::ErrorCode::SUCCESS), handle_,
-                        lmp_version, manufacturer_name, sub_version);
+                        ToLegacyHciErrorCode(hci_status), handle_, lmp_version,
+                        manufacturer_name, sub_version);
   }
 
   void OnReadRemoteExtendedFeaturesComplete(uint8_t page_number,
@@ -519,13 +571,17 @@ class LeShimAclConnection
     // TODO Issue LeReadRemoteFeatures Command
   }
 
-  void OnConnectionUpdate(uint16_t connection_interval,
+  bluetooth::hci::AddressWithType GetLocalAddressWithType() {
+    return connection_->GetLocalAddress();
+  }
+
+  void OnConnectionUpdate(hci::ErrorCode hci_status,
+                          uint16_t connection_interval,
                           uint16_t connection_latency,
                           uint16_t supervision_timeout) {
-    TRY_POSTING_ON_MAIN(interface_.on_connection_update,
-                        ToLegacyHciErrorCode(hci::ErrorCode::SUCCESS), handle_,
-                        connection_interval, connection_latency,
-                        supervision_timeout);
+    TRY_POSTING_ON_MAIN(
+        interface_.on_connection_update, ToLegacyHciErrorCode(hci_status),
+        handle_, connection_interval, connection_latency, supervision_timeout);
   }
   void OnDataLengthChange(uint16_t tx_octets, uint16_t tx_time,
                           uint16_t rx_octets, uint16_t rx_time) {
@@ -533,21 +589,25 @@ class LeShimAclConnection
                         rx_octets, rx_time);
   }
 
-  void OnReadRemoteVersionInformationComplete(uint8_t lmp_version,
+  void OnReadRemoteVersionInformationComplete(hci::ErrorCode hci_status,
+                                              uint8_t lmp_version,
                                               uint16_t manufacturer_name,
                                               uint16_t sub_version) override {
     TRY_POSTING_ON_MAIN(interface_.on_read_remote_version_information_complete,
-                        ToLegacyHciErrorCode(hci::ErrorCode::SUCCESS), handle_,
-                        lmp_version, manufacturer_name, sub_version);
+                        ToLegacyHciErrorCode(hci_status), handle_, lmp_version,
+                        manufacturer_name, sub_version);
   }
 
-  void OnPhyUpdate(uint8_t tx_phy, uint8_t rx_phy) override {
+  void OnPhyUpdate(hci::ErrorCode hci_status, uint8_t tx_phy,
+                   uint8_t rx_phy) override {
     TRY_POSTING_ON_MAIN(interface_.on_phy_update,
-                        ToLegacyHciErrorCode(hci::ErrorCode::SUCCESS), handle_,
-                        tx_phy, rx_phy);
+                        ToLegacyHciErrorCode(hci_status), handle_, tx_phy,
+                        rx_phy);
   }
 
-  void OnLocalAddressUpdate(hci::AddressWithType address_with_type) override {}
+  void OnLocalAddressUpdate(hci::AddressWithType address_with_type) override {
+    connection_->UpdateLocalAddress(address_with_type);
+  }
 
   void OnDisconnection(hci::ErrorCode reason) {
     Disconnect();
@@ -572,7 +632,10 @@ class LeShimAclConnection
   std::unique_ptr<hci::acl_manager::LeAclConnection> connection_;
 };
 
-struct bluetooth::shim::legacy::Acl::impl {
+struct shim::legacy::Acl::impl {
+  impl(uint8_t max_acceptlist_size)
+      : shadow_acceptlist_(ShadowAcceptlist(max_acceptlist_size)) {}
+
   std::map<HciHandle, std::unique_ptr<ClassicShimAclConnection>>
       handle_to_classic_connection_map_;
   std::map<HciHandle, std::unique_ptr<LeShimAclConnection>>
@@ -581,13 +644,15 @@ struct bluetooth::shim::legacy::Acl::impl {
   FixedQueue<std::unique_ptr<ConnectionDescriptor>> connection_history_ =
       FixedQueue<std::unique_ptr<ConnectionDescriptor>>(kConnectionHistorySize);
 
+  ShadowAcceptlist shadow_acceptlist_;
+
   bool IsClassicAcl(HciHandle handle) {
     return handle_to_classic_connection_map_.find(handle) !=
            handle_to_classic_connection_map_.end();
   }
 
-  void EnqueueClassicPacket(
-      HciHandle handle, std::unique_ptr<bluetooth::packet::RawBuilder> packet) {
+  void EnqueueClassicPacket(HciHandle handle,
+                            std::unique_ptr<packet::RawBuilder> packet) {
     ASSERT_LOG(IsClassicAcl(handle), "handle %d is not a classic connection",
                handle);
     handle_to_classic_connection_map_[handle]->EnqueuePacket(std::move(packet));
@@ -599,9 +664,27 @@ struct bluetooth::shim::legacy::Acl::impl {
   }
 
   void EnqueueLePacket(HciHandle handle,
-                       std::unique_ptr<bluetooth::packet::RawBuilder> packet) {
+                       std::unique_ptr<packet::RawBuilder> packet) {
     ASSERT_LOG(IsLeAcl(handle), "handle %d is not a LE connection", handle);
     handle_to_le_connection_map_[handle]->EnqueuePacket(std::move(packet));
+  }
+
+  void ShutdownClassicConnections(std::promise<void> promise) {
+    LOG_INFO("Shutdown gd acl shim classic connections");
+    for (auto& connection : handle_to_classic_connection_map_) {
+      connection.second->Shutdown();
+    }
+    handle_to_classic_connection_map_.clear();
+    promise.set_value();
+  }
+
+  void ShutdownLeConnections(std::promise<void> promise) {
+    LOG_INFO("Shutdown gd acl shim le connections");
+    for (auto& connection : handle_to_le_connection_map_) {
+      connection.second->Shutdown();
+    }
+    handle_to_le_connection_map_.clear();
+    promise.set_value();
   }
 
   void HoldMode(HciHandle handle, uint16_t max_interval,
@@ -641,11 +724,53 @@ struct bluetooth::shim::legacy::Acl::impl {
     handle_to_classic_connection_map_[handle]->SetConnectionEncryption(enable);
   }
 
+  void accept_le_connection_from(const hci::AddressWithType& address_with_type,
+                                 std::promise<bool> promise) {
+    if (shadow_acceptlist_.IsFull()) {
+      LOG_ERROR("Acceptlist is full preventing new Le connection");
+      promise.set_value(false);
+      return;
+    }
+    shadow_acceptlist_.Add(address_with_type);
+    promise.set_value(true);
+    GetAclManager()->CreateLeConnection(address_with_type);
+    LOG_DEBUG("Allow Le connection from remote:%s",
+              PRIVATE_ADDRESS(address_with_type));
+    BTM_LogHistory(kBtmLogTag, ToLegacyAddressWithType(address_with_type),
+                   "Allow connection from", "Le");
+  }
+
+  void ignore_le_connection_from(
+      const hci::AddressWithType& address_with_type) {
+    shadow_acceptlist_.Remove(address_with_type);
+    GetAclManager()->CancelLeConnect(address_with_type);
+    LOG_DEBUG("Ignore Le connection from remote:%s",
+              PRIVATE_ADDRESS(address_with_type));
+    BTM_LogHistory(kBtmLogTag, ToLegacyAddressWithType(address_with_type),
+                   "Ignore connection from", "Le");
+  }
+
+  void clear_acceptlist() {
+    auto shadow_acceptlist = shadow_acceptlist_.GetCopy();
+    size_t count = shadow_acceptlist.size();
+    for (auto address_with_type : shadow_acceptlist) {
+      ignore_le_connection_from(address_with_type);
+    }
+    shadow_acceptlist_.Clear();
+    LOG_DEBUG("Cleared entire Le address acceptlist count:%zu", count);
+  }
+
   void DumpConnectionHistory() const {
     std::vector<std::string> history =
         connection_history_.ReadElementsAsString();
     for (auto& entry : history) {
       LOG_DEBUG("%s", entry.c_str());
+    }
+    LOG_DEBUG("Shadow le accept list  size:%hhu",
+              controller_get_interface()->get_ble_acceptlist_size());
+    const auto acceptlist = shadow_acceptlist_.GetCopy();
+    for (auto& entry : acceptlist) {
+      LOG_DEBUG("acceptlist:%s", entry.ToString().c_str());
     }
   }
 
@@ -655,6 +780,13 @@ struct bluetooth::shim::legacy::Acl::impl {
         connection_history_.ReadElementsAsString();
     for (auto& entry : history) {
       LOG_DUMPSYS(fd, "%s", entry.c_str());
+    }
+    LOG_DUMPSYS(fd, "Shadow le accept list  size:%hhu",
+                controller_get_interface()->get_ble_acceptlist_size());
+    unsigned cnt = 0;
+    auto acceptlist = shadow_acceptlist_.GetCopy();
+    for (auto& entry : acceptlist) {
+      LOG_DUMPSYS(fd, "%03u le acceptlist:%s", ++cnt, entry.ToString().c_str());
     }
   }
 #undef DUMPSYS_TAG
@@ -688,11 +820,10 @@ void DumpsysAcl(int fd) {
 
   LOG_DUMPSYS_TITLE(fd, DUMPSYS_TAG);
 
-  bluetooth::shim::Stack::GetInstance()->GetAcl()->DumpConnectionHistory(fd);
+  shim::Stack::GetInstance()->GetAcl()->DumpConnectionHistory(fd);
 
   for (int i = 0; i < MAX_L2CAP_LINKS; i++) {
     const tACL_CONN& acl_conn = acl_cb.acl_db[i];
-    const tBTM_PM_MCB& btm_pm_mcb = acl_cb.pm_mode_db[i];
     if (!acl_conn.in_use) continue;
 
     LOG_DUMPSYS(fd, "    peer_le_features valid:%s data:%s",
@@ -728,15 +859,12 @@ void DumpsysAcl(int fd) {
                 ticks_to_seconds(acl_conn.link_super_tout));
     LOG_DUMPSYS(fd, "    pkt_types_mask:0x%04x", acl_conn.pkt_types_mask);
     LOG_DUMPSYS(fd, "    disconnect_reason:0x%02x", acl_conn.disconnect_reason);
-    LOG_DUMPSYS(fd, "    chg_ind:%s", (btm_pm_mcb.chg_ind) ? "true" : "false");
     LOG_DUMPSYS(fd, "    role:%s", RoleText(acl_conn.link_role).c_str());
-    LOG_DUMPSYS(fd, "    power_mode_state:%s",
-                power_mode_state_text(btm_pm_mcb.State()).c_str());
   }
 }
 #undef DUMPSYS_TAG
 
-using Record = bluetooth::common::TimestampedEntry<std::string>;
+using Record = common::TimestampedEntry<std::string>;
 const std::string kTimeFormat("%Y-%m-%d %H:%M:%S");
 
 #define DUMPSYS_TAG "shim::legacy::btm"
@@ -778,24 +906,25 @@ void DumpsysRecord(int fd) {
 }
 #undef DUMPSYS_TAG
 
-void bluetooth::shim::legacy::Acl::Dump(int fd) const {
+void shim::legacy::Acl::Dump(int fd) const {
   DumpsysRecord(fd);
   DumpsysAcl(fd);
   DumpsysL2cap(fd);
   DumpsysBtm(fd);
 }
 
-bluetooth::shim::legacy::Acl::Acl(os::Handler* handler,
-                                  const acl_interface_t& acl_interface)
+shim::legacy::Acl::Acl(os::Handler* handler,
+                       const acl_interface_t& acl_interface,
+                       uint8_t max_acceptlist_size)
     : handler_(handler), acl_interface_(acl_interface) {
   ValidateAclInterface(acl_interface_);
-  pimpl_ = std::make_unique<Acl::impl>();
+  pimpl_ = std::make_unique<Acl::impl>(max_acceptlist_size);
   GetAclManager()->RegisterCallbacks(this, handler_);
   GetAclManager()->RegisterLeCallbacks(this, handler_);
   GetController()->RegisterCompletedMonitorAclPacketsCallback(
       handler->BindOn(this, &Acl::on_incoming_acl_credits));
-  bluetooth::shim::RegisterDumpsysFunction(static_cast<void*>(this),
-                                           [this](int fd) { Dump(fd); });
+  shim::RegisterDumpsysFunction(static_cast<void*>(this),
+                                [this](int fd) { Dump(fd); });
   Stack::GetInstance()->GetBtm()->Register_HACK_SetScoDisconnectCallback(
       [this](uint16_t handle, uint8_t reason) {
         TRY_POSTING_ON_MAIN(acl_interface_.connection.sco.on_disconnected,
@@ -803,51 +932,55 @@ bluetooth::shim::legacy::Acl::Acl(os::Handler* handler,
       });
 }
 
-bluetooth::shim::legacy::Acl::~Acl() {
-  bluetooth::shim::UnregisterDumpsysFunction(static_cast<void*>(this));
+shim::legacy::Acl::~Acl() {
+  shim::UnregisterDumpsysFunction(static_cast<void*>(this));
   GetController()->UnregisterCompletedMonitorAclPacketsCallback();
 
-  bool dump_connection_history = false;
-
-  if (!pimpl_->handle_to_classic_connection_map_.empty()) {
-    LOG_ERROR("About to destroy classic active ACL");
-    for (auto& connection : pimpl_->handle_to_classic_connection_map_) {
-      LOG_ERROR("  Orphaned classic ACL handle:0x%04x bd_addr:%s created:%s",
-                connection.second->Handle(),
-                PRIVATE_ADDRESS(connection.second->GetRemoteAddress()),
-                bluetooth::common::StringFormatTimeWithMilliseconds(
-                    kConnectionDescriptorTimeFormat,
-                    connection.second->GetCreationTime())
-                    .c_str());
-    }
-    dump_connection_history = true;
-  }
-
-  if (!pimpl_->handle_to_le_connection_map_.empty()) {
-    LOG_ERROR("About to destroy le active ACL");
-    for (auto& connection : pimpl_->handle_to_le_connection_map_) {
-      LOG_ERROR("  Orphaned le ACL handle:0x%04x bd_addr:%s created:%s",
-                connection.second->Handle(),
-                PRIVATE_ADDRESS(connection.second->GetRemoteAddressWithType()),
-                bluetooth::common::StringFormatTimeWithMilliseconds(
-                    kConnectionDescriptorTimeFormat,
-                    connection.second->GetCreationTime())
-                    .c_str());
-    }
-    dump_connection_history = true;
-  }
-  if (dump_connection_history) {
+  if (CheckForOrphanedAclConnections()) {
     pimpl_->DumpConnectionHistory();
   }
 }
 
-void bluetooth::shim::legacy::Acl::on_incoming_acl_credits(uint16_t handle,
-                                                           uint16_t credits) {
+bool shim::legacy::Acl::CheckForOrphanedAclConnections() const {
+  bool orphaned_acl_connections = false;
+
+  if (!pimpl_->handle_to_classic_connection_map_.empty()) {
+    LOG_ERROR("About to destroy classic active ACL");
+    for (const auto& connection : pimpl_->handle_to_classic_connection_map_) {
+      LOG_ERROR("  Orphaned classic ACL handle:0x%04x bd_addr:%s created:%s",
+                connection.second->Handle(),
+                PRIVATE_ADDRESS(connection.second->GetRemoteAddress()),
+                common::StringFormatTimeWithMilliseconds(
+                    kConnectionDescriptorTimeFormat,
+                    connection.second->GetCreationTime())
+                    .c_str());
+    }
+    orphaned_acl_connections = true;
+  }
+
+  if (!pimpl_->handle_to_le_connection_map_.empty()) {
+    LOG_ERROR("About to destroy le active ACL");
+    for (const auto& connection : pimpl_->handle_to_le_connection_map_) {
+      LOG_ERROR("  Orphaned le ACL handle:0x%04x bd_addr:%s created:%s",
+                connection.second->Handle(),
+                PRIVATE_ADDRESS(connection.second->GetRemoteAddressWithType()),
+                common::StringFormatTimeWithMilliseconds(
+                    kConnectionDescriptorTimeFormat,
+                    connection.second->GetCreationTime())
+                    .c_str());
+    }
+    orphaned_acl_connections = true;
+  }
+  return orphaned_acl_connections;
+}
+
+void shim::legacy::Acl::on_incoming_acl_credits(uint16_t handle,
+                                                uint16_t credits) {
   TRY_POSTING_ON_MAIN(acl_interface_.on_packets_completed, handle, credits);
 }
 
-void bluetooth::shim::legacy::Acl::write_data_sync(
-    HciHandle handle, std::unique_ptr<bluetooth::packet::RawBuilder> packet) {
+void shim::legacy::Acl::write_data_sync(
+    HciHandle handle, std::unique_ptr<packet::RawBuilder> packet) {
   if (pimpl_->IsClassicAcl(handle)) {
     pimpl_->EnqueueClassicPacket(handle, std::move(packet));
   } else if (pimpl_->IsLeAcl(handle)) {
@@ -857,15 +990,14 @@ void bluetooth::shim::legacy::Acl::write_data_sync(
   }
 }
 
-void bluetooth::shim::legacy::Acl::WriteData(
-    HciHandle handle, std::unique_ptr<bluetooth::packet::RawBuilder> packet) {
+void shim::legacy::Acl::WriteData(HciHandle handle,
+                                  std::unique_ptr<packet::RawBuilder> packet) {
   handler_->Post(common::BindOnce(&Acl::write_data_sync,
                                   common::Unretained(this), handle,
                                   std::move(packet)));
 }
 
-void bluetooth::shim::legacy::Acl::CreateClassicConnection(
-    const bluetooth::hci::Address& address) {
+void shim::legacy::Acl::CreateClassicConnection(const hci::Address& address) {
   GetAclManager()->CreateConnection(address);
   LOG_DEBUG("Connection initiated for classic to remote:%s",
             PRIVATE_ADDRESS(address));
@@ -873,27 +1005,29 @@ void bluetooth::shim::legacy::Acl::CreateClassicConnection(
                  "classic");
 }
 
-void bluetooth::shim::legacy::Acl::CreateLeConnection(
-    const bluetooth::hci::AddressWithType& address_with_type) {
-  GetAclManager()->CreateLeConnection(address_with_type);
-  LOG_DEBUG("Connection initiated for le connection to remote:%s",
-            PRIVATE_ADDRESS(address_with_type));
-  BTM_LogHistory(kBtmLogTag, ToLegacyAddressWithType(address_with_type),
-                 "Initiated connection", "le");
+void shim::legacy::Acl::CancelClassicConnection(const hci::Address& address) {
+  GetAclManager()->CancelConnect(address);
+  LOG_DEBUG("Connection cancelled for classic to remote:%s",
+            PRIVATE_ADDRESS(address));
+  BTM_LogHistory(kBtmLogTag, ToRawAddress(address), "Cancelled connection",
+                 "classic");
 }
 
-void bluetooth::shim::legacy::Acl::CancelLeConnection(
-    const bluetooth::hci::AddressWithType& address_with_type) {
-  GetAclManager()->CancelLeConnect(address_with_type);
-  LOG_DEBUG("Cancelled le connection to remote:%s",
-            PRIVATE_ADDRESS(address_with_type));
-  BTM_LogHistory(kBtmLogTag, ToLegacyAddressWithType(address_with_type),
-                 "Cancelled connection", "le");
+void shim::legacy::Acl::AcceptLeConnectionFrom(
+    const hci::AddressWithType& address_with_type, std::promise<bool> promise) {
+  handler_->CallOn(pimpl_.get(), &Acl::impl::accept_le_connection_from,
+                   address_with_type, std::move(promise));
 }
 
-void bluetooth::shim::legacy::Acl::OnClassicLinkDisconnected(
-    HciHandle handle, hci::ErrorCode reason) {
-  bluetooth::hci::Address remote_address =
+void shim::legacy::Acl::IgnoreLeConnectionFrom(
+    const hci::AddressWithType& address_with_type) {
+  handler_->CallOn(pimpl_.get(), &Acl::impl::ignore_le_connection_from,
+                   address_with_type);
+}
+
+void shim::legacy::Acl::OnClassicLinkDisconnected(HciHandle handle,
+                                                  hci::ErrorCode reason) {
+  hci::Address remote_address =
       pimpl_->handle_to_classic_connection_map_[handle]->GetRemoteAddress();
   CreationTime creation_time =
       pimpl_->handle_to_classic_connection_map_[handle]->GetCreationTime();
@@ -918,8 +1052,21 @@ void bluetooth::shim::legacy::Acl::OnClassicLinkDisconnected(
           is_locally_initiated, reason)));
 }
 
-void bluetooth::shim::legacy::Acl::OnLeLinkDisconnected(HciHandle handle,
-                                                        hci::ErrorCode reason) {
+bluetooth::hci::AddressWithType shim::legacy::Acl::GetConnectionLocalAddress(
+    const RawAddress& remote_bda) {
+  bluetooth::hci::AddressWithType address_with_type;
+  auto remote_address = ToGdAddress(remote_bda);
+  for (auto& [handle, connection] : pimpl_->handle_to_le_connection_map_) {
+    if (connection->GetRemoteAddressWithType().GetAddress() == remote_address) {
+      return connection->GetLocalAddressWithType();
+    }
+  }
+  LOG_WARN("address not found!");
+  return address_with_type;
+}
+
+void shim::legacy::Acl::OnLeLinkDisconnected(HciHandle handle,
+                                             hci::ErrorCode reason) {
   hci::AddressWithType remote_address_with_type =
       pimpl_->handle_to_le_connection_map_[handle]->GetRemoteAddressWithType();
   CreationTime creation_time =
@@ -939,14 +1086,14 @@ void bluetooth::shim::legacy::Acl::OnLeLinkDisconnected(HciHandle handle,
   BTM_LogHistory(
       kBtmLogTag, ToLegacyAddressWithType(remote_address_with_type),
       "Disconnected",
-      base::StringPrintf("le reason:%s", ErrorCodeText(reason).c_str()));
+      base::StringPrintf("Le reason:%s", ErrorCodeText(reason).c_str()));
   pimpl_->connection_history_.Push(
       std::move(std::make_unique<LeConnectionDescriptor>(
           remote_address_with_type, creation_time, teardown_time, handle,
           is_locally_initiated, reason)));
 }
 
-void bluetooth::shim::legacy::Acl::OnConnectSuccess(
+void shim::legacy::Acl::OnConnectSuccess(
     std::unique_ptr<hci::acl_manager::ClassicAclConnection> connection) {
   ASSERT(connection != nullptr);
   auto handle = connection->GetHandle();
@@ -975,8 +1122,8 @@ void bluetooth::shim::legacy::Acl::OnConnectSuccess(
                  (locally_initiated) ? "Local initiated" : "Remote initiated");
 }
 
-void bluetooth::shim::legacy::Acl::OnConnectFail(hci::Address address,
-                                                 hci::ErrorCode reason) {
+void shim::legacy::Acl::OnConnectFail(hci::Address address,
+                                      hci::ErrorCode reason) {
   const RawAddress bd_addr = ToRawAddress(address);
   TRY_POSTING_ON_MAIN(acl_interface_.connection.classic.on_failed, bd_addr,
                       ToLegacyHciErrorCode(reason));
@@ -987,13 +1134,13 @@ void bluetooth::shim::legacy::Acl::OnConnectFail(hci::Address address,
                                     hci::ErrorCodeText(reason).c_str()));
 }
 
-void bluetooth::shim::legacy::Acl::OnLeConnectSuccess(
+void shim::legacy::Acl::OnLeConnectSuccess(
     hci::AddressWithType address_with_type,
     std::unique_ptr<hci::acl_manager::LeAclConnection> connection) {
   ASSERT(connection != nullptr);
   auto handle = connection->GetHandle();
 
-  bluetooth::hci::Role connection_role = connection->GetRole();
+  hci::Role connection_role = connection->GetRole();
   bool locally_initiated = connection->locally_initiated_;
 
   pimpl_->handle_to_le_connection_map_.emplace(
@@ -1028,11 +1175,11 @@ void bluetooth::shim::legacy::Acl::OnLeConnectSuccess(
             PRIVATE_ADDRESS(address_with_type), handle,
             (locally_initiated) ? "local" : "remote");
   BTM_LogHistory(kBtmLogTag, ToLegacyAddressWithType(address_with_type),
-                 "Connection successful", "le");
+                 "Connection successful", "Le");
 }
 
-void bluetooth::shim::legacy::Acl::OnLeConnectFail(
-    hci::AddressWithType address_with_type, hci::ErrorCode reason) {
+void shim::legacy::Acl::OnLeConnectFail(hci::AddressWithType address_with_type,
+                                        hci::ErrorCode reason) {
   tBLE_BD_ADDR legacy_address_with_type =
       ToLegacyAddressWithType(address_with_type);
 
@@ -1050,8 +1197,7 @@ void bluetooth::shim::legacy::Acl::OnLeConnectFail(
       base::StringPrintf("le reason:%s", hci::ErrorCodeText(reason).c_str()));
 }
 
-void bluetooth::shim::legacy::Acl::ConfigureLePrivacy(
-    bool is_le_privacy_enabled) {
+void shim::legacy::Acl::ConfigureLePrivacy(bool is_le_privacy_enabled) {
   LOG_INFO("Configuring Le privacy:%s",
            (is_le_privacy_enabled) ? "true" : "false");
   ASSERT_LOG(is_le_privacy_enabled,
@@ -1063,20 +1209,16 @@ void bluetooth::shim::legacy::Acl::ConfigureLePrivacy(
       hci::LeAddressManager::AddressPolicy::USE_RESOLVABLE_ADDRESS;
   hci::AddressWithType empty_address_with_type(
       hci::Address{}, hci::AddressType::RANDOM_DEVICE_ADDRESS);
-  crypto_toolbox::Octet16 rotation_irk = {0x44, 0xfb, 0x4b, 0x8d, 0x6c, 0x58,
-                                          0x21, 0x0c, 0xf9, 0x3d, 0xda, 0xf1,
-                                          0x64, 0xa3, 0xbb, 0x7f};
   /* 7 minutes minimum, 15 minutes maximum for random address refreshing */
   auto minimum_rotation_time = std::chrono::minutes(7);
   auto maximum_rotation_time = std::chrono::minutes(15);
 
   GetAclManager()->SetPrivacyPolicyForInitiatorAddress(
-      address_policy, empty_address_with_type, rotation_irk,
-      minimum_rotation_time, maximum_rotation_time);
+      address_policy, empty_address_with_type, minimum_rotation_time,
+      maximum_rotation_time);
 }
 
-void bluetooth::shim::legacy::Acl::DisconnectClassic(uint16_t handle,
-                                                     tHCI_STATUS reason) {
+void shim::legacy::Acl::DisconnectClassic(uint16_t handle, tHCI_STATUS reason) {
   auto connection = pimpl_->handle_to_classic_connection_map_.find(handle);
   if (connection != pimpl_->handle_to_classic_connection_map_.end()) {
     auto remote_address = connection->second->GetRemoteAddress();
@@ -1092,8 +1234,7 @@ void bluetooth::shim::legacy::Acl::DisconnectClassic(uint16_t handle,
   }
 }
 
-void bluetooth::shim::legacy::Acl::DisconnectLe(uint16_t handle,
-                                                tHCI_STATUS reason) {
+void shim::legacy::Acl::DisconnectLe(uint16_t handle, tHCI_STATUS reason) {
   auto connection = pimpl_->handle_to_le_connection_map_.find(handle);
   if (connection != pimpl_->handle_to_le_connection_map_.end()) {
     auto remote_address_with_type =
@@ -1104,50 +1245,72 @@ void bluetooth::shim::legacy::Acl::DisconnectLe(uint16_t handle,
               PRIVATE_ADDRESS(remote_address_with_type), handle);
     BTM_LogHistory(kBtmLogTag,
                    ToLegacyAddressWithType(remote_address_with_type),
-                   "Disconnection initiated", "le");
+                   "Disconnection initiated", "Le");
   } else {
     LOG_WARN("Unable to disconnect unknown le connection handle:0x%04x",
              handle);
   }
 }
-bool bluetooth::shim::legacy::Acl::HoldMode(uint16_t hci_handle,
-                                            uint16_t max_interval,
-                                            uint16_t min_interval) {
+bool shim::legacy::Acl::HoldMode(uint16_t hci_handle, uint16_t max_interval,
+                                 uint16_t min_interval) {
   handler_->CallOn(pimpl_.get(), &Acl::impl::HoldMode, hci_handle, max_interval,
                    min_interval);
   return false;  // TODO void
 }
 
-bool bluetooth::shim::legacy::Acl::SniffMode(uint16_t hci_handle,
-                                             uint16_t max_interval,
-                                             uint16_t min_interval,
-                                             uint16_t attempt,
-                                             uint16_t timeout) {
+bool shim::legacy::Acl::SniffMode(uint16_t hci_handle, uint16_t max_interval,
+                                  uint16_t min_interval, uint16_t attempt,
+                                  uint16_t timeout) {
   handler_->CallOn(pimpl_.get(), &Acl::impl::SniffMode, hci_handle,
                    max_interval, min_interval, attempt, timeout);
   return false;
 }
 
-bool bluetooth::shim::legacy::Acl::ExitSniffMode(uint16_t hci_handle) {
+bool shim::legacy::Acl::ExitSniffMode(uint16_t hci_handle) {
   handler_->CallOn(pimpl_.get(), &Acl::impl::ExitSniffMode, hci_handle);
   return false;
 }
 
-bool bluetooth::shim::legacy::Acl::SniffSubrating(
-    uint16_t hci_handle, uint16_t maximum_latency,
-    uint16_t minimum_remote_timeout, uint16_t minimum_local_timeout) {
+bool shim::legacy::Acl::SniffSubrating(uint16_t hci_handle,
+                                       uint16_t maximum_latency,
+                                       uint16_t minimum_remote_timeout,
+                                       uint16_t minimum_local_timeout) {
   handler_->CallOn(pimpl_.get(), &Acl::impl::SniffSubrating, hci_handle,
                    maximum_latency, minimum_remote_timeout,
                    minimum_local_timeout);
   return false;
 }
 
-void bluetooth::shim::legacy::Acl::HACK_OnScoDisconnected(uint16_t handle,
-                                                          uint8_t reason) {
+void shim::legacy::Acl::HACK_OnScoDisconnected(uint16_t handle,
+                                               uint8_t reason) {
   TRY_POSTING_ON_MAIN(acl_interface_.connection.sco.on_disconnected, handle,
                       static_cast<tHCI_REASON>(reason));
 }
 
-void bluetooth::shim::legacy::Acl::DumpConnectionHistory(int fd) const {
+void shim::legacy::Acl::DumpConnectionHistory(int fd) const {
   pimpl_->DumpConnectionHistory(fd);
+}
+
+void shim::legacy::Acl::Shutdown() {
+  if (CheckForOrphanedAclConnections()) {
+    std::promise<void> shutdown_promise;
+    auto shutdown_future = shutdown_promise.get_future();
+    handler_->CallOn(pimpl_.get(), &Acl::impl::ShutdownClassicConnections,
+                     std::move(shutdown_promise));
+    shutdown_future.wait();
+
+    shutdown_promise = std::promise<void>();
+
+    shutdown_future = shutdown_promise.get_future();
+    handler_->CallOn(pimpl_.get(), &Acl::impl::ShutdownLeConnections,
+                     std::move(shutdown_promise));
+    shutdown_future.wait();
+    LOG_WARN("Flushed open ACL connections");
+  } else {
+    LOG_INFO("All ACL connections have been previously closed");
+  }
+}
+
+void shim::legacy::Acl::ClearAcceptList() {
+  handler_->CallOn(pimpl_.get(), &Acl::impl::clear_acceptlist);
 }

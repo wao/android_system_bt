@@ -27,7 +27,10 @@
 #include <base/strings/stringprintf.h>
 #include <memory>
 #include <string>
-#include "bt_target.h"
+
+#include "bt_target.h"  // Must be first to define build configuration
+
+#include "bta/include/bta_api.h"
 #include "bta/include/bta_gatt_api.h"
 #include "bta/sys/bta_sys.h"
 #include "main/shim/dumpsys.h"
@@ -471,6 +474,7 @@ extern void bta_dm_search_sm_disable(void);
 extern void bta_dm_enable(tBTA_DM_SEC_CBACK*);
 extern void bta_dm_disable();
 extern void bta_dm_init_cb(void);
+extern void bta_dm_deinit_cb(void);
 extern void bta_dm_set_dev_name(const std::vector<uint8_t>&);
 extern void bta_dm_set_visibility(tBTA_DM_DISC, tBTA_DM_CONN);
 extern void bta_dm_set_scan_config(tBTA_DM_MSG* p_data);

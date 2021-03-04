@@ -25,21 +25,22 @@
 
 #define LOG_TAG "bt_bta_gattc"
 
-#include <string.h>
+#include <base/bind.h>
+#include <base/strings/stringprintf.h>
 
-#include <base/callback.h>
-#include "bt_common.h"
-#include "bt_target.h"
-#include "bta_gattc_int.h"
-#include "bta_sys.h"
+#include "bt_target.h"  // Must be first to define build configuration
+
+#include "bta/gatt/bta_gattc_int.h"
+#include "bta/hh/bta_hh_int.h"
 #include "btif/include/btif_debug_conn.h"
-#include "l2c_api.h"
+#include "device/include/controller.h"
 #include "osi/include/log.h"
-#include "osi/include/osi.h"
-#include "stack/include/btu.h"
-#include "utl.h"
-
-#include "bta_hh_int.h"
+#include "osi/include/osi.h"  // UNUSED_ATTR
+#include "stack/include/btm_ble_api_types.h"
+#include "stack/include/btu.h"  // do_in_main_thread
+#include "stack/include/l2c_api.h"
+#include "types/bluetooth/uuid.h"
+#include "types/raw_address.h"
 
 using base::StringPrintf;
 using bluetooth::Uuid;
@@ -69,15 +70,16 @@ static void bta_gattc_conn_update_cback(tGATT_IF gatt_if, uint16_t conn_id,
                                         uint16_t interval, uint16_t latency,
                                         uint16_t timeout, tGATT_STATUS status);
 
-static tGATT_CBACK bta_gattc_cl_cback = {bta_gattc_conn_cback,
-                                         bta_gattc_cmpl_cback,
-                                         bta_gattc_disc_res_cback,
-                                         bta_gattc_disc_cmpl_cback,
-                                         NULL,
-                                         bta_gattc_enc_cmpl_cback,
-                                         bta_gattc_cong_cback,
-                                         bta_gattc_phy_update_cback,
-                                         bta_gattc_conn_update_cback};
+static tGATT_CBACK bta_gattc_cl_cback = {
+    .p_conn_cb = bta_gattc_conn_cback,
+    .p_cmpl_cb = bta_gattc_cmpl_cback,
+    .p_disc_res_cb = bta_gattc_disc_res_cback,
+    .p_disc_cmpl_cb = bta_gattc_disc_cmpl_cback,
+    .p_req_cb = nullptr,
+    .p_enc_cmpl_cb = bta_gattc_enc_cmpl_cback,
+    .p_congestion_cb = bta_gattc_cong_cback,
+    .p_phy_update_cb = bta_gattc_phy_update_cback,
+    .p_conn_update_cb = bta_gattc_conn_update_cback};
 
 /* opcode(tGATTC_OPTYPE) order has to be comply with internal event order */
 static uint16_t bta_gattc_opcode_to_int_evt[] = {
@@ -205,8 +207,13 @@ void bta_gattc_deregister(tBTA_GATTC_RCB* p_clreg) {
     return;
   }
 
+  uint8_t accept_list_size = 0;
+  if (controller_get_interface()->supports_ble()) {
+    accept_list_size = controller_get_interface()->get_ble_acceptlist_size();
+  }
+
   /* remove bg connection associated with this rcb */
-  for (uint8_t i = 0; i < BTM_GetAcceptlistSize(); i++) {
+  for (uint8_t i = 0; i < accept_list_size; i++) {
     if (!bta_gattc_cb.bg_track[i].in_use) continue;
 
     if (bta_gattc_cb.bg_track[i].cif_mask & (1 << (p_clreg->client_if - 1))) {
@@ -268,12 +275,16 @@ void bta_gattc_process_api_open(tBTA_GATTC_DATA* p_msg) {
 
 /** process connect API request */
 void bta_gattc_process_api_open_cancel(tBTA_GATTC_DATA* p_msg) {
+  CHECK(p_msg != nullptr);
+
   uint16_t event = ((BT_HDR*)p_msg)->event;
 
   if (!p_msg->api_cancel_conn.is_direct) {
+    LOG_DEBUG("Cancel GATT client background connection");
     bta_gattc_cancel_bk_conn(&p_msg->api_cancel_conn);
     return;
   }
+  LOG_DEBUG("Cancel GATT client direct connection");
 
   tBTA_GATTC_CLCB* p_clcb = bta_gattc_find_clcb_by_cif(
       p_msg->api_cancel_conn.client_if, p_msg->api_cancel_conn.remote_bda,
@@ -546,14 +557,18 @@ void bta_gattc_close(tBTA_GATTC_CLCB* p_clcb, tBTA_GATTC_DATA* p_data) {
 
   if (p_data->hdr.event == BTA_GATTC_API_CLOSE_EVT) {
     GATT_Disconnect(p_data->hdr.layer_specific);
-    LOG_DEBUG("Local close event client_if:%hu conn_id:%hu reason:%hu",
+    LOG_DEBUG("Local close event client_if:%hu conn_id:%hu reason:%s",
               cb_data.close.client_if, cb_data.close.conn_id,
-              cb_data.close.reason);
+              gatt_disconnection_reason_text(
+                  static_cast<tGATT_DISCONN_REASON>(cb_data.close.reason))
+                  .c_str());
   } else if (p_data->hdr.event == BTA_GATTC_INT_DISCONN_EVT) {
     cb_data.close.reason = p_data->int_conn.reason;
-    LOG_DEBUG(
-        "Peer close disconnect event client_if:%hu conn_id:%hu reason:%hu",
-        cb_data.close.client_if, cb_data.close.conn_id, cb_data.close.reason);
+    LOG_DEBUG("Peer close disconnect event client_if:%hu conn_id:%hu reason:%s",
+              cb_data.close.client_if, cb_data.close.conn_id,
+              gatt_disconnection_reason_text(
+                  static_cast<tGATT_DISCONN_REASON>(cb_data.close.reason))
+                  .c_str());
   }
 
   if (p_cback) (*p_cback)(BTA_GATTC_CLOSE_EVT, &cb_data);

@@ -26,18 +26,11 @@
 
 #define LOG_TAG "bt_bta_av"
 
-#include <base/logging.h>
+#include "bt_target.h"  // Must be first to define build configuration
 
-#include "bt_target.h"
-
-#include <string.h>
-#include "bt_common.h"
-#include "bta_api.h"
-#include "bta_av_api.h"
-#include "bta_av_int.h"
-#include "bta_sys.h"
-
+#include "bta/av/bta_av_int.h"
 #include "osi/include/allocator.h"
+#include "osi/include/compat.h"
 #include "osi/include/log.h"
 
 /*****************************************************************************
@@ -222,7 +215,7 @@ void BTA_AvDisconnect(const RawAddress& bd_addr) {
  *
  ******************************************************************************/
 void BTA_AvStart(tBTA_AV_HNDL handle) {
-  LOG_INFO("%s: bta_handle=0x%x", __func__, handle);
+  LOG_INFO("Starting audio/video stream data transfer bta_handle:%hhu", handle);
 
   BT_HDR* p_buf = (BT_HDR*)osi_malloc(sizeof(BT_HDR));
 

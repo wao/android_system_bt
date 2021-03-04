@@ -123,6 +123,17 @@ void LinkManager::RegisterLinkPropertyListener(os::Handler* handler, LinkPropert
   link_property_listener_ = listener;
 }
 
+void LinkManager::OnPendingPacketChange(hci::Address remote, int num_packets) {
+  if (disconnected_links_.count(remote) != 0 && num_packets == 0) {
+    links_.erase(remote);
+    links_with_pending_packets_.erase(remote);
+  } else if (num_packets != 0) {
+    links_with_pending_packets_.emplace(remote);
+  } else {
+    links_with_pending_packets_.erase(remote);
+  }
+}
+
 Link* LinkManager::GetLink(const hci::Address device) {
   if (links_.find(device) == links_.end()) {
     return nullptr;
@@ -314,13 +325,20 @@ void LinkManager::OnDisconnect(hci::Address device, hci::ErrorCode status) {
     link_property_callback_handler_->CallOn(link_property_listener_, &LinkPropertyListener::OnLinkDisconnected, device);
   }
 
-  links_.erase(device);
+  if (links_with_pending_packets_.count(device) != 0) {
+    disconnected_links_.emplace(device);
+  } else {
+    links_.erase(device);
+  }
 }
 
-void LinkManager::OnAuthenticationComplete(hci::Address device) {
+void LinkManager::OnAuthenticationComplete(hci::ErrorCode hci_status, hci::Address device) {
   if (link_security_interface_listener_handler_ != nullptr) {
     link_security_interface_listener_handler_->CallOn(
-        link_security_interface_listener_, &LinkSecurityInterfaceListener::OnAuthenticationComplete, device);
+        link_security_interface_listener_,
+        &LinkSecurityInterfaceListener::OnAuthenticationComplete,
+        hci_status,
+        device);
   }
 }
 
@@ -335,11 +353,16 @@ void LinkManager::OnEncryptionChange(hci::Address device, hci::EncryptionEnabled
 }
 
 void LinkManager::OnReadRemoteVersionInformation(
-    hci::Address device, uint8_t lmp_version, uint16_t manufacturer_name, uint16_t sub_version) {
+    hci::ErrorCode hci_status,
+    hci::Address device,
+    uint8_t lmp_version,
+    uint16_t manufacturer_name,
+    uint16_t sub_version) {
   if (link_property_callback_handler_ != nullptr) {
     link_property_callback_handler_->CallOn(
         link_property_listener_,
         &LinkPropertyListener::OnReadRemoteVersionInformation,
+        hci_status,
         device,
         lmp_version,
         manufacturer_name,
@@ -360,9 +383,10 @@ void LinkManager::OnReadRemoteExtendedFeatures(
   }
 }
 
-void LinkManager::OnRoleChange(hci::Address remote, hci::Role role) {
+void LinkManager::OnRoleChange(hci::ErrorCode hci_status, hci::Address remote, hci::Role role) {
   if (link_property_callback_handler_ != nullptr) {
-    link_property_callback_handler_->CallOn(link_property_listener_, &LinkPropertyListener::OnRoleChange, remote, role);
+    link_property_callback_handler_->CallOn(
+        link_property_listener_, &LinkPropertyListener::OnRoleChange, hci_status, remote, role);
   }
 }
 
@@ -373,14 +397,15 @@ void LinkManager::OnReadClockOffset(hci::Address remote, uint16_t clock_offset) 
   }
 }
 
-void LinkManager::OnModeChange(hci::Address remote, hci::Mode mode, uint16_t interval) {
+void LinkManager::OnModeChange(hci::ErrorCode hci_status, hci::Address remote, hci::Mode mode, uint16_t interval) {
   if (link_property_callback_handler_ != nullptr) {
     link_property_callback_handler_->CallOn(
-        link_property_listener_, &LinkPropertyListener::OnModeChange, remote, mode, interval);
+        link_property_listener_, &LinkPropertyListener::OnModeChange, hci_status, remote, mode, interval);
   }
 }
 
 void LinkManager::OnSniffSubrating(
+    hci::ErrorCode hci_status,
     hci::Address remote,
     uint16_t max_tx_lat,
     uint16_t max_rx_lat,
@@ -390,6 +415,7 @@ void LinkManager::OnSniffSubrating(
     link_property_callback_handler_->CallOn(
         link_property_listener_,
         &LinkPropertyListener::OnSniffSubrating,
+        hci_status,
         remote,
         max_tx_lat,
         max_rx_lat,

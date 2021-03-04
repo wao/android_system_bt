@@ -1,3 +1,13 @@
+package {
+    // See: http://go/android-license-faq
+    // A large-scale-change added 'default_applicable_licenses' to import
+    // all of the 'license_kinds' from "system_bt_license"
+    // to get the below license kinds:
+    //   SPDX-license-identifier-Apache-2.0
+    //   SPDX-license-identifier-BSD
+    default_applicable_licenses: ["system_bt_license"],
+}
+
 crypto_toolbox_srcs = [
     "crypto_toolbox/aes.cc",
     "crypto_toolbox/aes_cmac.cc",
@@ -7,6 +17,7 @@ crypto_toolbox_srcs = [
 cc_test_library {
     name: "crypto_toolbox_for_tests",
     defaults: ["fluoride_defaults"],
+    host_supported: true,
     include_dirs: [
         "system/bt",
     ],
@@ -199,6 +210,7 @@ cc_library_static {
         "libldacBT_enc",
         "libldacBT_abr",
     ],
+    host_supported: true,
 }
 
 // Bluetooth stack unit tests for target
@@ -223,7 +235,10 @@ cc_test {
         "android.hardware.bluetooth@1.1",
         "android.hardware.bluetooth.a2dp@1.0",
         "android.hardware.bluetooth.audio@2.0",
+        "android.hardware.bluetooth.audio@2.1",
+        "android.system.suspend.control-V1-ndk",
         "libaaudio",
+        "libbinder_ndk",
         "libcutils",
         "libdl",
         "libfmq",
@@ -467,10 +482,12 @@ cc_test {
         "system/bt/utils/include",
     ],
     srcs: [
-        "test/gatt/gatt_sr_test.cc",
         "gatt/gatt_utils.cc",
+        "test/common/mock_acl.cc",
         "test/common/mock_eatt.cc",
         "test/common/mock_gatt_layer.cc",
+        "test/common/mock_main_shim.cc",
+        "test/gatt/gatt_sr_test.cc",
     ],
     shared_libs: [
         "libcutils",
@@ -545,9 +562,11 @@ cc_test {
         "gatt/gatt_db.cc",
         "gatt/gatt_sr_hash.cc",
         "gatt/gatt_utils.cc",
-        "test/gatt/mock_gatt_utils_ref.cc",
+        "test/common/mock_acl.cc",
         "test/common/mock_eatt.cc",
         "test/common/mock_gatt_layer.cc",
+        "test/common/mock_main_shim.cc",
+        "test/gatt/mock_gatt_utils_ref.cc",
         "test/stack_gatt_sr_hash_test.cc",
     ],
     shared_libs: [

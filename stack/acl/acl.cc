@@ -14,13 +14,18 @@
  * limitations under the License.
  */
 
+#include <unordered_set>
+
+#include "main/shim/dumpsys.h"
+#include "osi/include/log.h"
 #include "stack/acl/acl.h"
+#include "types/raw_address.h"
 
-tBTM_PM_MODE sACL_CONN::sPolicy::Mode() const { return this->mode.mode_; }
+tBTM_PM_MODE tACL_CONN::sPolicy::Mode() const { return this->mode.mode_; }
 
-hci_role_t sACL_CONN::sPolicy::Role() const { return this->role.role_; }
+hci_role_t tACL_CONN::sPolicy::Role() const { return this->role.role_; }
 
-void sACL_CONN::Reset() {
+void tACL_CONN::Reset() {
   memset(peer_le_features, 0, sizeof(peer_le_features));
   peer_le_features_valid = false;
   memset(peer_lmp_feature_pages, 0, sizeof(peer_lmp_feature_pages));
@@ -47,10 +52,25 @@ void sACL_CONN::Reset() {
   sca = 0;
 }
 
-void sACL_CB::Init() {
-  acl_disc_reason = HCI_ERR_UNDEFINED;
+// When the local device initiates an le ACL disconnect the address
+// should not be re-added to the acceptlist.
+void tACL_CB::AddToIgnoreAutoConnectAfterDisconnect(const RawAddress& bd_addr) {
+  if (!ignore_auto_connect_after_disconnect_set_.insert(bd_addr).second) {
+    LOG_WARN(
+        "Unexpectedly found device address already in ignore auto connect "
+        "device:%s",
+        PRIVATE_ADDRESS(bd_addr));
+  }
+}
 
-  btm_acl_pkt_types_supported =
-      HCI_PKT_TYPES_MASK_DH1 + HCI_PKT_TYPES_MASK_DM1 + HCI_PKT_TYPES_MASK_DH3 +
-      HCI_PKT_TYPES_MASK_DM3 + HCI_PKT_TYPES_MASK_DH5 + HCI_PKT_TYPES_MASK_DM5;
+// A check and clear mechanism used to determine if the address should be
+// re-added to the acceptlist after an le ACL disconnect is received from a
+// peer.
+bool tACL_CB::CheckAndClearIgnoreAutoConnectAfterDisconnect(
+    const RawAddress& bd_addr) {
+  return (ignore_auto_connect_after_disconnect_set_.erase(bd_addr) > 0);
+}
+
+void tACL_CB::ClearAllIgnoreAutoConnectAfterDisconnect() {
+  ignore_auto_connect_after_disconnect_set_.clear();
 }

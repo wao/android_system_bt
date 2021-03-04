@@ -171,7 +171,7 @@ typedef struct {
 
 #define MAX_BTIF_BOND_EVENT_ENTRIES 15
 
-static skip_sdp_entry_t sdp_blacklist[] = {{76}};  // Apple Mouse and Keyboard
+static skip_sdp_entry_t sdp_rejectlist[] = {{76}};  // Apple Mouse and Keyboard
 
 /* This flag will be true if HCI_Inquiry is in progress */
 static bool btif_dm_inquiry_in_progress = false;
@@ -395,11 +395,11 @@ bool check_cod_hid(const RawAddress* remote_bdaddr) {
  *
  * Function        check_sdp_bl
  *
- * Description     Checks if a given device is blacklisted to skip sdp
+ * Description     Checks if a given device is rejectlisted to skip sdp
  *
  * Parameters     skip_sdp_entry
  *
- * Returns         true if the device is present in blacklist, else false
+ * Returns         true if the device is present in rejectlist, else false
  *
  ******************************************************************************/
 bool check_sdp_bl(const RawAddress* remote_bdaddr) {
@@ -418,8 +418,8 @@ bool check_sdp_bl(const RawAddress* remote_bdaddr) {
   }
   uint16_t manufacturer = info.manufacturer;
 
-  for (unsigned int i = 0; i < ARRAY_SIZE(sdp_blacklist); i++) {
-    if (manufacturer == sdp_blacklist[i].manufact_id) return true;
+  for (unsigned int i = 0; i < ARRAY_SIZE(sdp_rejectlist); i++) {
+    if (manufacturer == sdp_rejectlist[i].manufact_id) return true;
   }
   return false;
 }
@@ -1463,6 +1463,7 @@ void BTIF_dm_disable() {
     }
   }
   bluetooth::bqr::EnableBtQualityReport(false);
+  LOG_INFO("Stack device manager shutdown finished");
   future_ready(stack_manager_get_hack_future(), FUTURE_SUCCESS);
 }
 
@@ -1531,7 +1532,7 @@ static void btif_dm_upstreams_evt(uint16_t event, char* p_param) {
       btif_update_remote_version_property(&bd_addr);
 
       invoke_acl_state_changed_cb(BT_STATUS_SUCCESS, bd_addr,
-                                  BT_ACL_STATE_CONNECTED);
+                                  BT_ACL_STATE_CONNECTED, HCI_SUCCESS);
       break;
 
     case BTA_DM_LINK_DOWN_EVT:
@@ -1542,7 +1543,8 @@ static void btif_dm_upstreams_evt(uint16_t event, char* p_param) {
       BTIF_TRACE_DEBUG(
           "BTA_DM_LINK_DOWN_EVT. Sending BT_ACL_STATE_DISCONNECTED");
       invoke_acl_state_changed_cb(BT_STATUS_SUCCESS, bd_addr,
-                                  BT_ACL_STATE_DISCONNECTED);
+                                  BT_ACL_STATE_DISCONNECTED,
+                                  static_cast<bt_hci_error_code_t>(btm_get_acl_disc_reason_code()));
       break;
 
     case BTA_DM_BLE_KEY_EVT:
@@ -2333,8 +2335,8 @@ bool btif_dm_proc_rmt_oob(const RawAddress& bd_addr, Octet16* p_c,
   }
 
   BTIF_TRACE_DEBUG("%s: read OOB data from %s", __func__, path);
-  fread(p_c->data(), 1, OCTET16_LEN, fp);
-  fread(p_r->data(), 1, OCTET16_LEN, fp);
+  (void)fread(p_c->data(), 1, OCTET16_LEN, fp);
+  (void)fread(p_r->data(), 1, OCTET16_LEN, fp);
   fclose(fp);
 
   bond_state_changed(BT_STATUS_SUCCESS, bd_addr, BT_BOND_STATE_BONDING);

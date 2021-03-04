@@ -24,22 +24,19 @@
  ******************************************************************************/
 
 #include <base/bind.h>
-#include <base/logging.h>
-#include <string.h>
-
+#include <cstdint>
 #include <mutex>
 
-#include "bt_common.h"
-#include "bta_api.h"
-#include "bta_dm_api.h"
-#include "bta_dm_int.h"
-#include "bta_sys.h"
-#include "btm_api.h"
+#include "bta/dm/bta_dm_int.h"
+#include "bta/include/bta_api.h"
+#include "bta/include/bta_dm_api.h"
+#include "bta/sys/bta_sys.h"
 #include "device/include/controller.h"
 #include "main/shim/dumpsys.h"
 #include "osi/include/log.h"
 #include "stack/include/acl_api.h"
-#include "stack/include/btu.h"
+#include "stack/include/btu.h"  // do_in_main_thread
+#include "types/raw_address.h"
 
 static void bta_dm_pm_cback(tBTA_SYS_CONN_STATUS status, uint8_t id,
                             uint8_t app_id, const RawAddress& peer_addr);
@@ -87,8 +84,7 @@ void bta_dm_init_pm(void) {
   if (p_bta_dm_pm_cfg[0].app_id != 0) {
     bta_sys_pm_register(bta_dm_pm_cback);
 
-    BTM_PmRegister((BTM_PM_REG_SET | BTM_PM_REG_NOTIF), &bta_dm_cb.pm_id,
-                   bta_dm_pm_btm_cback);
+    BTM_PmRegister((BTM_PM_REG_SET), &bta_dm_cb.pm_id, bta_dm_pm_btm_cback);
   }
 
   /* Need to initialize all PM timer service IDs */
@@ -305,10 +301,12 @@ static void bta_dm_pm_stop_timer_by_index(tBTA_PM_TIMER* p_timer,
 
   std::unique_lock<std::recursive_mutex> schedule_lock(pm_timer_schedule_mutex);
   std::unique_lock<std::recursive_mutex> state_lock(pm_timer_state_mutex);
-  if (p_timer->srvc_id[timer_idx] == BTA_ID_MAX)
-    return; /* The timer was not scheduled */
+  if (p_timer->srvc_id[timer_idx] == BTA_ID_MAX) {
+    return;
+  } /* The timer was not scheduled */
 
-  CHECK(p_timer->in_use && (p_timer->active > 0));
+  CHECK(p_timer->in_use);
+  CHECK(p_timer->active > 0);
 
   p_timer->srvc_id[timer_idx] = BTA_ID_MAX;
   /* NOTE: pm_action[timer_idx] intentionally not reset */

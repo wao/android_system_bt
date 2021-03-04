@@ -18,27 +18,22 @@
 
 #define LOG_TAG "bt_btif_sock_sco"
 
-#include <base/logging.h>
-#include <errno.h>
-#include <pthread.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
 
+#include <cstdint>
 #include <mutex>
 
-#include <hardware/bluetooth.h>
-#include <hardware/bt_sock.h>
-
-#include "btif_common.h"
 #include "device/include/esco_parameters.h"
+#include "include/hardware/bt_sock.h"
 #include "osi/include/allocator.h"
 #include "osi/include/list.h"
 #include "osi/include/log.h"
-#include "osi/include/osi.h"
+#include "osi/include/osi.h"  // UNUSED_ATTR
 #include "osi/include/socket.h"
 #include "osi/include/thread.h"
+#include "stack/include/btm_api.h"
+#include "types/raw_address.h"
 
 // This module provides a socket abstraction for SCO connections to a higher
 // layer. It returns file descriptors representing two types of sockets:
@@ -90,7 +85,7 @@ bt_status_t btsock_sco_init(thread_t* thread_) {
   if (!sco_sockets) return BT_STATUS_FAIL;
 
   thread = thread_;
-  enh_esco_params_t params = esco_parameters_for_codec(ESCO_CODEC_CVSD);
+  enh_esco_params_t params = esco_parameters_for_codec(SCO_CODEC_CVSD_D1);
   BTM_SetEScoMode(&params);
 
   return BT_STATUS_SUCCESS;
@@ -149,7 +144,7 @@ static sco_socket_t* sco_socket_establish_locked(bool is_listening,
     goto error;
   }
 
-  params = esco_parameters_for_codec(ESCO_CODEC_CVSD);
+  params = esco_parameters_for_codec(SCO_CODEC_CVSD_D1);
   status = BTM_CreateSco(bd_addr, !is_listening, params.packet_types,
                          &sco_socket->sco_handle, connect_completed_cb,
                          disconnect_completed_cb);

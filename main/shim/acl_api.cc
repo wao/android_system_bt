@@ -16,8 +16,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <future>
 
+#include "gd/hci/acl_manager.h"
 #include "main/shim/acl_api.h"
+#include "main/shim/dumpsys.h"
 #include "main/shim/helpers.h"
 #include "main/shim/stack.h"
 #include "types/ble_address_with_type.h"
@@ -29,15 +32,25 @@ void bluetooth::shim::ACL_CreateClassicConnection(
   Stack::GetInstance()->GetAcl()->CreateClassicConnection(address);
 }
 
-void bluetooth::shim::ACL_CreateLeConnection(
-    const tBLE_BD_ADDR& legacy_address_with_type) {
-  Stack::GetInstance()->GetAcl()->CreateLeConnection(
-      ToAddressWithTypeFromLegacy(legacy_address_with_type));
+void bluetooth::shim::ACL_CancelClassicConnection(
+    const RawAddress& raw_address) {
+  auto address = ToGdAddress(raw_address);
+  Stack::GetInstance()->GetAcl()->CancelClassicConnection(address);
 }
 
-void bluetooth::shim::ACL_CancelLeConnection(
+bool bluetooth::shim::ACL_AcceptLeConnectionFrom(
     const tBLE_BD_ADDR& legacy_address_with_type) {
-  Stack::GetInstance()->GetAcl()->CancelLeConnection(
+  std::promise<bool> promise;
+  auto future = promise.get_future();
+  Stack::GetInstance()->GetAcl()->AcceptLeConnectionFrom(
+      ToAddressWithTypeFromLegacy(legacy_address_with_type),
+      std::move(promise));
+  return future.get();
+}
+
+void bluetooth::shim::ACL_IgnoreLeConnectionFrom(
+    const tBLE_BD_ADDR& legacy_address_with_type) {
+  Stack::GetInstance()->GetAcl()->IgnoreLeConnectionFrom(
       ToAddressWithTypeFromLegacy(legacy_address_with_type));
 }
 
@@ -49,7 +62,22 @@ void bluetooth::shim::ACL_WriteData(uint16_t handle, const BT_HDR* p_buf) {
 }
 
 void bluetooth::shim::ACL_ConfigureLePrivacy(bool is_le_privacy_enabled) {
-  Stack::GetInstance()->GetAcl()->ConfigureLePrivacy(is_le_privacy_enabled);
+  hci::LeAddressManager::AddressPolicy address_policy =
+      is_le_privacy_enabled
+          ? hci::LeAddressManager::AddressPolicy::USE_RESOLVABLE_ADDRESS
+          : hci::LeAddressManager::AddressPolicy::USE_PUBLIC_ADDRESS;
+  hci::AddressWithType empty_address_with_type(
+      hci::Address{}, hci::AddressType::RANDOM_DEVICE_ADDRESS);
+  /* 7 minutes minimum, 15 minutes maximum for random address refreshing */
+  auto minimum_rotation_time = std::chrono::minutes(7);
+  auto maximum_rotation_time = std::chrono::minutes(15);
+
+  Stack::GetInstance()
+      ->GetStackManager()
+      ->GetInstance<bluetooth::hci::AclManager>()
+      ->SetPrivacyPolicyForInitiatorAddress(
+          address_policy, empty_address_with_type, minimum_rotation_time,
+          maximum_rotation_time);
 }
 
 void bluetooth::shim::ACL_Disconnect(uint16_t handle, bool is_classic,
@@ -57,4 +85,21 @@ void bluetooth::shim::ACL_Disconnect(uint16_t handle, bool is_classic,
   (is_classic)
       ? Stack::GetInstance()->GetAcl()->DisconnectClassic(handle, reason)
       : Stack::GetInstance()->GetAcl()->DisconnectLe(handle, reason);
+}
+
+void bluetooth::shim::ACL_Shutdown() {
+  Stack::GetInstance()->GetAcl()->Shutdown();
+}
+
+void bluetooth::shim::ACL_IgnoreAllLeConnections() {
+  return Stack::GetInstance()->GetAcl()->ClearAcceptList();
+}
+
+void bluetooth::shim::ACL_ReadConnectionAddress(const RawAddress& pseudo_addr,
+                                                RawAddress& conn_addr,
+                                                uint8_t* p_addr_type) {
+  auto local_address =
+      Stack::GetInstance()->GetAcl()->GetConnectionLocalAddress(pseudo_addr);
+  conn_addr = ToRawAddress(local_address.GetAddress());
+  *p_addr_type = static_cast<uint8_t>(local_address.GetAddressType());
 }
