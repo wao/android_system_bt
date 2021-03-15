@@ -103,18 +103,18 @@ typedef struct {
   uint16_t hci_len;
 } __attribute__((packed)) acl_header_t;
 
-#define BTM_MAX_SW_ROLE_FAILED_ATTEMPTS 3
+constexpr uint8_t BTM_MAX_SW_ROLE_FAILED_ATTEMPTS = 3;
 
 /* Define masks for supported and exception 2.0 ACL packet types
  */
-#define BTM_ACL_SUPPORTED_PKTS_MASK                                           \
-  (HCI_PKT_TYPES_MASK_DM1 | HCI_PKT_TYPES_MASK_DH1 | HCI_PKT_TYPES_MASK_DM3 | \
-   HCI_PKT_TYPES_MASK_DH3 | HCI_PKT_TYPES_MASK_DM5 | HCI_PKT_TYPES_MASK_DH5)
+constexpr uint16_t BTM_ACL_SUPPORTED_PKTS_MASK =
+    (HCI_PKT_TYPES_MASK_DM1 | HCI_PKT_TYPES_MASK_DH1 | HCI_PKT_TYPES_MASK_DM3 |
+     HCI_PKT_TYPES_MASK_DH3 | HCI_PKT_TYPES_MASK_DM5 | HCI_PKT_TYPES_MASK_DH5);
 
-#define BTM_ACL_EXCEPTION_PKTS_MASK                            \
-  (HCI_PKT_TYPES_MASK_NO_2_DH1 | HCI_PKT_TYPES_MASK_NO_3_DH1 | \
-   HCI_PKT_TYPES_MASK_NO_2_DH3 | HCI_PKT_TYPES_MASK_NO_3_DH3 | \
-   HCI_PKT_TYPES_MASK_NO_2_DH5 | HCI_PKT_TYPES_MASK_NO_3_DH5)
+constexpr uint16_t BTM_ACL_EXCEPTION_PKTS_MASK =
+    (HCI_PKT_TYPES_MASK_NO_2_DH1 | HCI_PKT_TYPES_MASK_NO_3_DH1 |
+     HCI_PKT_TYPES_MASK_NO_2_DH3 | HCI_PKT_TYPES_MASK_NO_3_DH3 |
+     HCI_PKT_TYPES_MASK_NO_2_DH5 | HCI_PKT_TYPES_MASK_NO_3_DH5);
 
 inline bool IsEprAvailable(const tACL_CONN& p_acl) {
   if (!p_acl.peer_lmp_feature_valid[0]) {
@@ -400,8 +400,9 @@ void btm_acl_created(const RawAddress& bda, uint16_t hci_handle,
   /* if BR/EDR do something more */
   if (transport == BT_TRANSPORT_BR_EDR) {
     btsnd_hcic_read_rmt_clk_offset(hci_handle);
-    if (!bluetooth::shim::is_gd_l2cap_enabled()) {
-      // GD L2cap reads this automatically
+    if (!bluetooth::shim::is_gd_l2cap_enabled() &&
+        !bluetooth::shim::is_gd_acl_enabled()) {
+      // GD L2cap and GD Acl read this automatically
       btsnd_hcic_rmt_ver_req(hci_handle);
     }
   }
@@ -1237,73 +1238,6 @@ uint16_t BTM_GetHCIConnHandle(const RawAddress& remote_bda,
 
 /*******************************************************************************
  *
- * Function         BTM_IsPhy2mSupported
- *
- * Description      This function is called to check PHY 2M support
- *                  from peer device
- * Returns          True when PHY 2M supported false otherwise
- *
- ******************************************************************************/
-bool BTM_IsPhy2mSupported(const RawAddress& remote_bda, tBT_TRANSPORT transport) {
-  tACL_CONN* p;
-  BTM_TRACE_DEBUG("BTM_IsPhy2mSupported");
-  p = internal_.btm_bda_to_acl(remote_bda, transport);
-  if (p == (tACL_CONN*)NULL) {
-    BTM_TRACE_DEBUG("BTM_IsPhy2mSupported: no connection");
-    return false;
-  }
-
-  if (!p->peer_le_features_valid) {
-    LOG_WARN(
-        "Checking remote features but remote feature read is "
-        "incomplete");
-  }
-  return HCI_LE_2M_PHY_SUPPORTED(p->peer_le_features);
-}
-
-/*******************************************************************************
- *
- * Function         BTM_RequestPeerSCA
- *
- * Description      This function is called to request sleep clock accuracy
- *                  from peer device
- *
- ******************************************************************************/
-void BTM_RequestPeerSCA(const RawAddress& remote_bda, tBT_TRANSPORT transport) {
-  tACL_CONN* p;
-  p = internal_.btm_bda_to_acl(remote_bda, transport);
-  if (p == (tACL_CONN*)NULL) {
-    LOG_WARN("Unable to find active acl");
-    return;
-  }
-
-  btsnd_hcic_req_peer_sca(p->hci_handle);
-}
-
-/*******************************************************************************
- *
- * Function         BTM_GetPeerSCA
- *
- * Description      This function is called to get peer sleep clock accuracy
- *
- * Returns          SCA or 0xFF if SCA was never previously requested, request
- *                  is not supported by peer device or ACL does not exist
- *
- ******************************************************************************/
-uint8_t BTM_GetPeerSCA(const RawAddress& remote_bda, tBT_TRANSPORT transport) {
-  tACL_CONN* p;
-  p = internal_.btm_bda_to_acl(remote_bda, transport);
-  if (p != (tACL_CONN*)NULL) {
-    return (p->sca);
-  }
-  LOG_WARN("Unable to find active acl");
-
-  /* If here, no BD Addr found */
-  return (0xFF);
-}
-
-/*******************************************************************************
- *
  * Function         btm_rejectlist_role_change_device
  *
  * Description      This function is used to rejectlist the device if the role
@@ -1895,9 +1829,10 @@ void btm_read_failed_contact_counter_complete(uint8_t* p) {
       STREAM_TO_UINT16(handle, p);
 
       STREAM_TO_UINT16(result.failed_contact_counter, p);
-      LOG_DEBUG("Failed contact counter complete: counter %u, hci status:%s",
-                result.failed_contact_counter,
-                RoleText(result.hci_status).c_str());
+      LOG_DEBUG(
+          "Failed contact counter complete: counter %u, hci status:%s",
+          result.failed_contact_counter,
+          hci_status_code_text(to_hci_status_code(result.hci_status)).c_str());
 
       tACL_CONN* p_acl_cb = internal_.acl_get_connection_from_handle(handle);
       if (p_acl_cb != nullptr) {
@@ -2866,4 +2801,18 @@ bool ACL_SupportTransparentSynchronousData(const RawAddress& bd_addr) {
   }
 
   return HCI_LMP_TRANSPNT_SUPPORTED(p_acl->peer_lmp_feature_pages[0]);
+}
+
+void acl_add_to_ignore_auto_connect_after_disconnect(
+    const RawAddress& bd_addr) {
+  btm_cb.acl_cb_.AddToIgnoreAutoConnectAfterDisconnect(bd_addr);
+}
+
+bool acl_check_and_clear_ignore_auto_connect_after_disconnect(
+    const RawAddress& bd_addr) {
+  return btm_cb.acl_cb_.CheckAndClearIgnoreAutoConnectAfterDisconnect(bd_addr);
+}
+
+void acl_clear_all_ignore_auto_connect_after_disconnect() {
+  btm_cb.acl_cb_.ClearAllIgnoreAutoConnectAfterDisconnect();
 }
