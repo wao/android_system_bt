@@ -148,7 +148,7 @@ typedef struct {
 typedef struct {
   RawAddress remote_bd_addr; /* Remote BD addr involved with the switch */
   tHCI_STATUS hci_status;    /* HCI status returned with the event */
-  uint8_t role;              /* HCI_ROLE_CENTRAL or HCI_ROLE_PERIPHERAL */
+  tHCI_ROLE role;            /* HCI_ROLE_CENTRAL or HCI_ROLE_PERIPHERAL */
 } tBTM_ROLE_SWITCH_CMPL;
 
 struct tBTM_PM_MCB {
@@ -227,7 +227,7 @@ struct tACL_CONN {
 
  public:
   bool is_encrypted = false;
-  uint8_t link_role;
+  tHCI_ROLE link_role;
   uint8_t switch_role_failed_attempts;
 
   struct {
@@ -312,8 +312,8 @@ struct tACL_CONN {
 
   void Reset();
 
-  struct sPolicy {
-    tBTM_PM_MODE Mode() const;
+  struct tPolicy {
+    tBTM_PM_MODE Mode() const { return this->mode.mode_; }
     struct {
       bool IsPending() const { return pending_ != BTM_PM_MD_UNKNOWN; }
       tBTM_PM_MODE Pending() const { return pending_; }
@@ -330,10 +330,10 @@ struct tACL_CONN {
                                                          tHCI_MODE hci_mode,
                                                          uint16_t interval);
       friend void tACL_CONN::Reset();
-      friend tBTM_PM_MODE tACL_CONN::sPolicy::Mode() const;
+      friend tBTM_PM_MODE tACL_CONN::tPolicy::Mode() const;
     } mode;
 
-    hci_role_t Role() const;
+    hci_role_t Role() const { return this->role.role_; }
     struct {
       unsigned RoleSwitchFailedCount() const { return role_switch_failed_cnt_; }
 
@@ -341,7 +341,7 @@ struct tACL_CONN {
       hci_role_t role_{HCI_ROLE_CENTRAL};
       unsigned role_switch_failed_cnt_{0};
       friend void tACL_CONN::Reset();
-      friend tBTM_PM_MODE tACL_CONN::sPolicy::Role() const;
+      friend hci_role_t tACL_CONN::tPolicy::Role() const;
     } role;
 
     struct {

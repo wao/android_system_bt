@@ -23,7 +23,6 @@ cc_defaults {
         },
         host: {
             cflags: [
-                "-DOS_LINUX",
                 "-DOS_LINUX_GENERIC",
             ],
         },
@@ -126,7 +125,7 @@ cc_defaults {
         host: {
             srcs: [
                 ":BluetoothBtaaSources_host",
-                ":BluetoothHalSources_hci_rootcanal",
+                ":BluetoothHalSources_hci_host",
                 ":BluetoothOsSources_host",
             ],
         },
@@ -144,6 +143,10 @@ cc_defaults {
                 "libcutils",
                 "libhidlbase",
                 "libutils",
+                "libstatslog",
+            ],
+            static_libs: [
+                "libbt-platform-protos-lite",
             ],
         },
     },
@@ -176,10 +179,12 @@ cc_defaults {
         "libflatbuffers-cpp",
         "libgrpc++",
         "libgrpc_wrap",
+        "libstatslog",
     ],
     static_libs: [
         "libbluetooth-protos",
         "libbluetooth_rust_interop",
+        "libbt-platform-protos-lite",
     ],
     export_static_lib_headers: [ "libbluetooth_rust_interop" ],
 }
@@ -285,7 +290,7 @@ cc_test {
     ],
     host_supported: true,
     test_options: {
-        unit_test: true,
+        unit_test: false,
     },
     target: {
         linux: {
@@ -295,7 +300,7 @@ cc_test {
         },
         host: {
             srcs: [
-                ":BluetoothHalTestSources_hci_rootcanal",
+                ":BluetoothHalTestSources_hci_host",
                 ":BluetoothOsTestSources_host",
             ],
         },
@@ -371,7 +376,7 @@ cc_test {
         unit_test: true,
     },
     srcs: [
-        ":BluetoothCommonSources",
+        "hci/address.cc",
         ":BluetoothPacketSources",
         ":BluetoothPacketParserTestPacketTestSources",
     ],
@@ -383,12 +388,13 @@ cc_test {
         cfi: true,
     },
     static_libs: [
-        "libbluetooth_rust_interop",
         "libchrome",
+        "libbt-platform-protos-lite",
     ],
     shared_libs: [
         "libgrpc++",
         "libgrpc_wrap",
+        "libstatslog",
     ],
     target: {
         android: {
@@ -537,6 +543,22 @@ rust_library {
     srcs: ["rust/packets/lib.rs", ":BluetoothGeneratedPackets_rust"],
     edition: "2018",
     host_supported: true,
+    proc_macros: ["libnum_derive"],
+    rustlibs: [
+        "libbytes",
+        "libnum_traits",
+        "libthiserror",
+        "libbt_hci_custom_types",
+        "liblog_rust",
+    ],
+}
+
+rust_test_host {
+    name: "libbt_packets_test",
+    defaults: ["gd_rust_defaults"],
+    srcs: ["rust/packets/lib.rs", ":BluetoothGeneratedPackets_rust"],
+    test_suites: ["general-tests"],
+    edition: "2018",
     proc_macros: ["libnum_derive"],
     rustlibs: [
         "libbytes",

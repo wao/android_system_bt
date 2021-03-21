@@ -66,6 +66,7 @@
 #include "common/address_obfuscator.h"
 #include "common/metric_id_allocator.h"
 #include "common/metrics.h"
+#include "common/os_utils.h"
 #include "device/include/interop.h"
 #include "gd/common/init_flags.h"
 #include "main/shim/dumpsys.h"
@@ -89,9 +90,9 @@ using bluetooth::le_audio::LeAudioClientInterface;
 
 static bt_callbacks_t* bt_hal_cbacks = NULL;
 bool restricted_mode = false;
-bool niap_mode = false;
+bool common_criteria_mode = false;
 const int CONFIG_COMPARE_ALL_PASS = 0b11;
-int niap_config_compare_result = CONFIG_COMPARE_ALL_PASS;
+int common_criteria_config_compare_result = CONFIG_COMPARE_ALL_PASS;
 bool is_local_device_atv = false;
 
 /*******************************************************************************
@@ -145,10 +146,13 @@ static bool is_profile(const char* p1, const char* p2) {
  ****************************************************************************/
 
 static int init(bt_callbacks_t* callbacks, bool start_restricted,
-                bool is_niap_mode, int config_compare_result,
+                bool is_common_criteria_mode, int config_compare_result,
                 const char** init_flags, bool is_atv) {
-  LOG_INFO("%s: start restricted = %d ; niap = %d, config compare result = %d",
-           __func__, start_restricted, is_niap_mode, config_compare_result);
+  LOG_INFO(
+      "%s: start restricted = %d ; common criteria mode = %d, config compare "
+      "result = %d",
+      __func__, start_restricted, is_common_criteria_mode,
+      config_compare_result);
 
   bluetooth::common::InitFlags::Load(init_flags);
 
@@ -160,8 +164,8 @@ static int init(bt_callbacks_t* callbacks, bool start_restricted,
 
   bt_hal_cbacks = callbacks;
   restricted_mode = start_restricted;
-  niap_mode = is_niap_mode;
-  niap_config_compare_result = config_compare_result;
+  common_criteria_mode = is_common_criteria_mode;
+  common_criteria_config_compare_result = config_compare_result;
   is_local_device_atv = is_atv;
 
   stack_manager_get_interface()->init_stack();
@@ -186,11 +190,14 @@ static int disable(void) {
 static void cleanup(void) { stack_manager_get_interface()->clean_up_stack(); }
 
 bool is_restricted_mode() { return restricted_mode; }
-bool is_niap_mode() { return niap_mode; }
-// if niap mode disable, will always return CONFIG_COMPARE_ALL_PASS(0b11)
-// indicate don't check config checksum.
-int get_niap_config_compare_result() {
-  return niap_mode ? niap_config_compare_result : CONFIG_COMPARE_ALL_PASS;
+bool is_common_criteria_mode() {
+  return is_bluetooth_uid() && common_criteria_mode;
+}
+// if common criteria mode disable, will always return
+// CONFIG_COMPARE_ALL_PASS(0b11) indicate don't check config checksum.
+int get_common_criteria_config_compare_result() {
+  return is_common_criteria_mode() ? common_criteria_config_compare_result
+                                   : CONFIG_COMPARE_ALL_PASS;
 }
 
 bool is_atv_device() { return is_local_device_atv; }
@@ -300,12 +307,14 @@ static int create_bond(const RawAddress* bd_addr, int transport) {
 }
 
 static int create_bond_out_of_band(const RawAddress* bd_addr, int transport,
-                                   const bt_out_of_band_data_t* oob_data) {
+                                   const bt_oob_data_t* p192_data,
+                                   const bt_oob_data_t* p256_data) {
   if (!interface_ready()) return BT_STATUS_NOT_READY;
   if (btif_dm_pairing_is_busy()) return BT_STATUS_BUSY;
 
-  do_in_main_thread(FROM_HERE, base::BindOnce(btif_dm_create_bond_out_of_band,
-                                              *bd_addr, transport, *oob_data));
+  do_in_main_thread(FROM_HERE,
+                    base::BindOnce(btif_dm_create_bond_out_of_band, *bd_addr,
+                                   transport, *p192_data, *p256_data));
   return BT_STATUS_SUCCESS;
 }
 
