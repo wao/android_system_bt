@@ -210,9 +210,9 @@ uint16_t acl_get_supported_packet_types() {
   mock_function_count_map[__func__]++;
   return 0;
 }
-uint16_t btm_get_acl_disc_reason_code(void) {
+tHCI_REASON btm_get_acl_disc_reason_code(void) {
   mock_function_count_map[__func__]++;
-  return 0;
+  return HCI_SUCCESS;
 }
 uint8_t BTM_SetTraceLevel(uint8_t new_level) {
   mock_function_count_map[__func__]++;
@@ -424,7 +424,6 @@ void btm_set_link_policy(tACL_CONN* conn, tLINK_POLICY policy) {
   mock_function_count_map[__func__]++;
 }
 void btm_set_packet_types_from_address(const RawAddress& bd_addr,
-                                       tBT_TRANSPORT transport,
                                        uint16_t pkt_types) {
   mock_function_count_map[__func__]++;
 }

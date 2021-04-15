@@ -145,9 +145,6 @@ cc_defaults {
                 "libutils",
                 "libstatslog",
             ],
-            static_libs: [
-                "libbt-platform-protos-lite",
-            ],
         },
     },
     srcs: [
@@ -179,7 +176,6 @@ cc_defaults {
         "libflatbuffers-cpp",
         "libgrpc++",
         "libgrpc_wrap",
-        "libstatslog",
     ],
     static_libs: [
         "libbluetooth-protos",
@@ -267,6 +263,7 @@ cc_binary {
                 "libhidlbase",
                 "libutils",
                 "libcutils",
+                "libstatslog",
             ],
         },
         host: {
@@ -317,6 +314,7 @@ cc_test {
                 "libhidlbase",
                 "libutils",
                 "libcutils",
+                "libstatslog",
             ],
         },
     },
@@ -377,7 +375,6 @@ cc_test {
     },
     srcs: [
         "hci/address.cc",
-        ":BluetoothCommonSources",
         ":BluetoothPacketSources",
         ":BluetoothPacketParserTestPacketTestSources",
     ],
@@ -389,14 +386,11 @@ cc_test {
         cfi: true,
     },
     static_libs: [
-        "libbluetooth_rust_interop",
         "libchrome",
-        "libbt-platform-protos-lite",
     ],
     shared_libs: [
         "libgrpc++",
         "libgrpc_wrap",
-        "libstatslog",
     ],
     target: {
         android: {
@@ -450,6 +444,7 @@ cc_defaults {
                 "libcutils",
                 "libhidlbase",
                 "libutils",
+                "libstatslog",
             ],
         },
     },
@@ -901,6 +896,7 @@ rust_protobuf {
     crate_name: "bt_facade_proto",
     protos: ["facade/common.proto"],
     grpc_protos: [
+        "hci/facade/controller_facade.proto",
         "hci/facade/hci_facade.proto",
         "hal/hal_facade.proto",
         "facade/rootservice.proto",

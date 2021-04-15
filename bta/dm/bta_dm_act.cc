@@ -617,7 +617,8 @@ void bta_dm_remove_device(const RawAddress& bd_addr) {
      * disconnected */
     for (int i = 0; i < bta_dm_cb.device_list.count; i++) {
       auto& peer_device = bta_dm_cb.device_list.peer_device[i];
-      if (peer_device.peer_bdaddr == other_address) {
+      if (peer_device.peer_bdaddr == other_address &&
+          peer_device.transport == other_transport) {
         peer_device.conn_state = BTA_DM_UNPAIRING;
 
         /* Make sure device is not in acceptlist before we disconnect */
@@ -1213,7 +1214,7 @@ void bta_dm_sdp_result(tBTA_DM_MSG* p_data) {
       // Piggy back the SCN over result field
       if (scn_found) {
         p_msg->disc_result.result.disc_res.result =
-            (3 + bta_dm_search_cb.peer_scn);
+            static_cast<tBTA_STATUS>((3 + bta_dm_search_cb.peer_scn));
         p_msg->disc_result.result.disc_res.services |= BTA_USER_SERVICE_MASK;
 
         APPL_TRACE_EVENT(" Piggy back the SCN over result field  SCN=%d",

@@ -39,6 +39,8 @@
 #include "gd/hci/acl_manager/connection_management_callbacks.h"
 #include "gd/hci/acl_manager/le_acl_connection.h"
 #include "gd/hci/acl_manager/le_connection_management_callbacks.h"
+#include "gd/hci/address.h"
+#include "gd/hci/class_of_device.h"
 #include "gd/hci/controller.h"
 #include "gd/os/handler.h"
 #include "gd/os/queue.h"
@@ -306,7 +308,7 @@ class ShimAclConnection {
 
   void Shutdown() {
     Disconnect();
-    LOG_INFO("Shutdown ACL connection handle:0x%04x", handle_);
+    LOG_INFO("Shutdown and disconnect ACL connection handle:0x%04x", handle_);
   }
 
  protected:
@@ -700,6 +702,27 @@ struct shim::legacy::Acl::impl {
       connection.second->Shutdown();
     }
     handle_to_le_connection_map_.clear();
+    promise.set_value();
+  }
+
+  void FinalShutdown(std::promise<void> promise) {
+    if (!handle_to_classic_connection_map_.empty()) {
+      for (auto& connection : handle_to_classic_connection_map_) {
+        connection.second->Shutdown();
+      }
+      handle_to_classic_connection_map_.clear();
+      LOG_INFO("Cleared all classic connections count:%zu",
+               handle_to_classic_connection_map_.size());
+    }
+
+    if (!handle_to_le_connection_map_.empty()) {
+      for (auto& connection : handle_to_le_connection_map_) {
+        connection.second->Shutdown();
+      }
+      handle_to_le_connection_map_.clear();
+      LOG_INFO("Cleared all le connections count:%zu",
+               handle_to_le_connection_map_.size());
+    }
     promise.set_value();
   }
 
@@ -1152,6 +1175,31 @@ void shim::legacy::Acl::OnConnectFail(hci::Address address,
                                     hci::ErrorCodeText(reason).c_str()));
 }
 
+void shim::legacy::Acl::HACK_OnEscoConnectRequest(hci::Address address,
+                                                  hci::ClassOfDevice cod) {
+  const RawAddress bd_addr = ToRawAddress(address);
+  types::ClassOfDevice legacy_cod;
+  types::ClassOfDevice::FromString(cod.ToLegacyConfigString(), legacy_cod);
+
+  TRY_POSTING_ON_MAIN(acl_interface_.connection.sco.on_esco_connect_request,
+                      bd_addr, legacy_cod);
+  LOG_DEBUG("Received ESCO connect request remote:%s",
+            PRIVATE_ADDRESS(address));
+  BTM_LogHistory(kBtmLogTag, ToRawAddress(address), "ESCO Connection request");
+}
+
+void shim::legacy::Acl::HACK_OnScoConnectRequest(hci::Address address,
+                                                 hci::ClassOfDevice cod) {
+  const RawAddress bd_addr = ToRawAddress(address);
+  types::ClassOfDevice legacy_cod;
+  types::ClassOfDevice::FromString(cod.ToLegacyConfigString(), legacy_cod);
+
+  TRY_POSTING_ON_MAIN(acl_interface_.connection.sco.on_sco_connect_request,
+                      bd_addr, legacy_cod);
+  LOG_DEBUG("Received SCO connect request remote:%s", PRIVATE_ADDRESS(address));
+  BTM_LogHistory(kBtmLogTag, ToRawAddress(address), "SCO Connection request");
+}
+
 void shim::legacy::Acl::OnLeConnectSuccess(
     hci::AddressWithType address_with_type,
     std::unique_ptr<hci::acl_manager::LeAclConnection> connection) {
@@ -1327,6 +1375,26 @@ void shim::legacy::Acl::Shutdown() {
   } else {
     LOG_INFO("All ACL connections have been previously closed");
   }
+}
+
+void shim::legacy::Acl::FinalShutdown() {
+  std::promise<void> promise;
+  auto future = promise.get_future();
+  GetAclManager()->UnregisterCallbacks(this, std::move(promise));
+  future.wait();
+  LOG_DEBUG("Unregistered classic callbacks from gd acl manager");
+
+  promise = std::promise<void>();
+  future = promise.get_future();
+  GetAclManager()->UnregisterLeCallbacks(this, std::move(promise));
+  future.wait();
+  LOG_DEBUG("Unregistered le callbacks from gd acl manager");
+
+  promise = std::promise<void>();
+  future = promise.get_future();
+  handler_->CallOn(pimpl_.get(), &Acl::impl::FinalShutdown, std::move(promise));
+  future.wait();
+  LOG_INFO("Unregistered and cleared any orphaned ACL connections");
 }
 
 void shim::legacy::Acl::ClearAcceptList() {

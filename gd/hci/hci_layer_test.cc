@@ -35,7 +35,20 @@ using std::vector;
 
 namespace {
 vector<uint8_t> information_request = {
-    0xfe, 0x2e, 0x0a, 0x00, 0x06, 0x00, 0x01, 0x00, 0x0a, 0x02, 0x02, 0x00, 0x02, 0x00,
+    0xfe,
+    0x2e,
+    0x0a,
+    0x00,
+    0x06,
+    0x00,
+    0x01,
+    0x00,
+    0x0a,
+    0x02,
+    0x02,
+    0x00,
+    0x02,
+    0x00,
 };
 // 0x00, 0x01, 0x02, 0x03, ...
 vector<uint8_t> counting_bytes;
@@ -151,6 +164,10 @@ class TestHciHal : public hal::HciHal {
 
   void ListDependencies(ModuleList*) {}
 
+  std::string ToString() const override {
+    return std::string("TestHciHal");
+  }
+
   static const ModuleFactory Factory;
 
  private:
@@ -170,13 +187,13 @@ class DependsOnHci : public Module {
   DependsOnHci() : Module() {}
 
   void SendHciCommandExpectingStatus(std::unique_ptr<CommandBuilder> command) {
-    hci_->EnqueueCommand(std::move(command),
-                         GetHandler()->BindOnceOn(this, &DependsOnHci::handle_event<CommandStatusView>));
+    hci_->EnqueueCommand(
+        std::move(command), GetHandler()->BindOnceOn(this, &DependsOnHci::handle_event<CommandStatusView>));
   }
 
   void SendHciCommandExpectingComplete(std::unique_ptr<CommandBuilder> command) {
-    hci_->EnqueueCommand(std::move(command),
-                         GetHandler()->BindOnceOn(this, &DependsOnHci::handle_event<CommandCompleteView>));
+    hci_->EnqueueCommand(
+        std::move(command), GetHandler()->BindOnceOn(this, &DependsOnHci::handle_event<CommandCompleteView>));
   }
 
   void SendSecurityCommandExpectingComplete(std::unique_ptr<SecurityCommandBuilder> command) {
@@ -184,8 +201,8 @@ class DependsOnHci : public Module {
       security_interface_ =
           hci_->GetSecurityInterface(GetHandler()->BindOn(this, &DependsOnHci::handle_event<EventView>));
     }
-    hci_->EnqueueCommand(std::move(command),
-                         GetHandler()->BindOnceOn(this, &DependsOnHci::handle_event<CommandCompleteView>));
+    hci_->EnqueueCommand(
+        std::move(command), GetHandler()->BindOnceOn(this, &DependsOnHci::handle_event<CommandCompleteView>));
   }
 
   void SendLeSecurityCommandExpectingComplete(std::unique_ptr<LeSecurityCommandBuilder> command) {
@@ -193,8 +210,8 @@ class DependsOnHci : public Module {
       le_security_interface_ =
           hci_->GetLeSecurityInterface(GetHandler()->BindOn(this, &DependsOnHci::handle_event<LeMetaEventView>));
     }
-    hci_->EnqueueCommand(std::move(command),
-                         GetHandler()->BindOnceOn(this, &DependsOnHci::handle_event<CommandCompleteView>));
+    hci_->EnqueueCommand(
+        std::move(command), GetHandler()->BindOnceOn(this, &DependsOnHci::handle_event<CommandCompleteView>));
   }
 
   void SendAclData(std::unique_ptr<AclBuilder> acl) {
@@ -260,10 +277,10 @@ class DependsOnHci : public Module {
     hci_ = GetDependency<HciLayer>();
     hci_->RegisterEventHandler(
         EventCode::CONNECTION_COMPLETE, GetHandler()->BindOn(this, &DependsOnHci::handle_event<EventView>));
-    hci_->RegisterLeEventHandler(SubeventCode::CONNECTION_COMPLETE,
-                                 GetHandler()->BindOn(this, &DependsOnHci::handle_event<LeMetaEventView>));
-    hci_->GetAclQueueEnd()->RegisterDequeue(GetHandler(),
-                                            common::Bind(&DependsOnHci::handle_acl, common::Unretained(this)));
+    hci_->RegisterLeEventHandler(
+        SubeventCode::CONNECTION_COMPLETE, GetHandler()->BindOn(this, &DependsOnHci::handle_event<LeMetaEventView>));
+    hci_->GetAclQueueEnd()->RegisterDequeue(
+        GetHandler(), common::Bind(&DependsOnHci::handle_acl, common::Unretained(this)));
     hci_->GetIsoQueueEnd()->RegisterDequeue(
         GetHandler(), common::Bind(&DependsOnHci::handle_iso, common::Unretained(this)));
   }
@@ -275,6 +292,10 @@ class DependsOnHci : public Module {
 
   void ListDependencies(ModuleList* list) {
     list->add<HciLayer>();
+  }
+
+  std::string ToString() const override {
+    return std::string("DependsOnHci");
   }
 
   static const ModuleFactory Factory;
@@ -434,6 +455,26 @@ TEST_F(HciTest, leMetaEvent) {
 
   auto event = upper->GetReceivedEvent();
   ASSERT_TRUE(LeConnectionCompleteView::Create(LeMetaEventView::Create(EventView::Create(event))).IsValid());
+}
+
+TEST_F(HciTest, hciTimeOut) {
+  auto event_future = upper->GetReceivedEventFuture();
+  auto reset_command_future = hal->GetSentCommandFuture();
+  upper->SendHciCommandExpectingComplete(ResetBuilder::Create());
+  auto reset_command_sent_status = reset_command_future.wait_for(kTimeout);
+  ASSERT_EQ(reset_command_sent_status, std::future_status::ready);
+  auto reset = hal->GetSentCommand();
+  ASSERT_TRUE(reset.IsValid());
+  ASSERT_EQ(reset.GetOpCode(), OpCode::RESET);
+
+  auto debug_command_future = hal->GetSentCommandFuture();
+  auto event_status = event_future.wait_for(HciLayer::kHciTimeoutMs);
+  ASSERT_NE(event_status, std::future_status::ready);
+  auto debug_command_sent_status = debug_command_future.wait_for(kTimeout);
+  ASSERT_EQ(debug_command_sent_status, std::future_status::ready);
+  auto debug = hal->GetSentCommand();
+  ASSERT_TRUE(debug.IsValid());
+  ASSERT_EQ(debug.GetOpCode(), OpCode::CONTROLLER_DEBUG_INFO);
 }
 
 TEST_F(HciTest, noOpCredits) {

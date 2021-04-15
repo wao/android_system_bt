@@ -95,7 +95,8 @@ void btif_dm_create_bond(const RawAddress bd_addr, int transport) {
   mock_function_count_map[__func__]++;
 }
 void btif_dm_create_bond_out_of_band(const RawAddress bd_addr, int transport,
-                                     const bt_out_of_band_data_t oob_data) {
+                                     const bt_oob_data_t p192_data,
+                                     const bt_oob_data_t p256_data) {
   mock_function_count_map[__func__]++;
 }
 void btif_dm_enable_service(tBTA_SERVICE_ID service_id, bool enable) {
@@ -167,6 +168,6 @@ bool btif_dm_proc_rmt_oob(const RawAddress& bd_addr, Octet16* p_c,
   return false;
 }
 
-void btif_dm_proc_loc_oob(bool valid, const Octet16& c, const Octet16& r) {
+void btif_dm_proc_loc_oob(const Octet16& c, const Octet16& r) {
   mock_function_count_map[__func__]++;
 }

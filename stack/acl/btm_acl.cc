@@ -63,6 +63,7 @@
 #include "stack/include/hcimsgs.h"
 #include "stack/include/l2cap_acl_interface.h"
 #include "stack/include/sco_hci_link_interface.h"
+#include "types/hci_role.h"
 #include "types/raw_address.h"
 
 void gatt_find_in_device_record(const RawAddress& bd_addr,
@@ -1205,7 +1206,7 @@ uint16_t BTM_GetNumAclLinks(void) {
  * Returns          true if connection is up, else false.
  *
  ******************************************************************************/
-uint16_t btm_get_acl_disc_reason_code(void) {
+tHCI_REASON btm_get_acl_disc_reason_code(void) {
   return btm_cb.acl_cb_.get_disconnect_reason();
 }
 
@@ -1233,6 +1234,73 @@ uint16_t BTM_GetHCIConnHandle(const RawAddress& remote_bda,
 
   /* If here, no BD Addr found */
   return HCI_INVALID_HANDLE;
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_IsPhy2mSupported
+ *
+ * Description      This function is called to check PHY 2M support
+ *                  from peer device
+ * Returns          True when PHY 2M supported false otherwise
+ *
+ ******************************************************************************/
+bool BTM_IsPhy2mSupported(const RawAddress& remote_bda, tBT_TRANSPORT transport) {
+  tACL_CONN* p;
+  BTM_TRACE_DEBUG("BTM_IsPhy2mSupported");
+  p = internal_.btm_bda_to_acl(remote_bda, transport);
+  if (p == (tACL_CONN*)NULL) {
+    BTM_TRACE_DEBUG("BTM_IsPhy2mSupported: no connection");
+    return false;
+  }
+
+  if (!p->peer_le_features_valid) {
+    LOG_WARN(
+        "Checking remote features but remote feature read is "
+        "incomplete");
+  }
+  return HCI_LE_2M_PHY_SUPPORTED(p->peer_le_features);
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_RequestPeerSCA
+ *
+ * Description      This function is called to request sleep clock accuracy
+ *                  from peer device
+ *
+ ******************************************************************************/
+void BTM_RequestPeerSCA(const RawAddress& remote_bda, tBT_TRANSPORT transport) {
+  tACL_CONN* p;
+  p = internal_.btm_bda_to_acl(remote_bda, transport);
+  if (p == (tACL_CONN*)NULL) {
+    LOG_WARN("Unable to find active acl");
+    return;
+  }
+
+  btsnd_hcic_req_peer_sca(p->hci_handle);
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_GetPeerSCA
+ *
+ * Description      This function is called to get peer sleep clock accuracy
+ *
+ * Returns          SCA or 0xFF if SCA was never previously requested, request
+ *                  is not supported by peer device or ACL does not exist
+ *
+ ******************************************************************************/
+uint8_t BTM_GetPeerSCA(const RawAddress& remote_bda, tBT_TRANSPORT transport) {
+  tACL_CONN* p;
+  p = internal_.btm_bda_to_acl(remote_bda, transport);
+  if (p != (tACL_CONN*)NULL) {
+    return (p->sca);
+  }
+  LOG_WARN("Unable to find active acl");
+
+  /* If here, no BD Addr found */
+  return (0xFF);
 }
 
 /*******************************************************************************
@@ -1400,22 +1468,14 @@ tBTM_STATUS StackAclBtmAcl::btm_set_packet_types(tACL_CONN* p,
 }
 
 void btm_set_packet_types_from_address(const RawAddress& bd_addr,
-                                       tBT_TRANSPORT transport,
                                        uint16_t pkt_types) {
-  if (transport == BT_TRANSPORT_LE) {
-    LOG_WARN("Unable to set packet types on le transport");
-    return;
-  }
-  tACL_CONN* p_acl_cb = internal_.btm_bda_to_acl(bd_addr, transport);
-  if (p_acl_cb == nullptr) {
+  tACL_CONN* p_acl = internal_.btm_bda_to_acl(bd_addr, BT_TRANSPORT_BR_EDR);
+  if (p_acl == nullptr) {
     LOG_WARN("Unable to find active acl");
     return;
   }
-  if (p_acl_cb->is_transport_ble()) {
-    LOG_DEBUG("Unable to set packet types on provided le acl");
-    return;
-  }
-  tBTM_STATUS status = internal_.btm_set_packet_types(p_acl_cb, pkt_types);
+
+  tBTM_STATUS status = internal_.btm_set_packet_types(p_acl, pkt_types);
   if (status != BTM_CMD_STARTED) {
     LOG_ERROR("Unable to set packet types from address");
   }
