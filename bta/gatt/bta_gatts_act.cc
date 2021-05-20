@@ -209,7 +209,7 @@ void bta_gatts_register(tBTA_GATTS_CB* p_cb, tBTA_GATTS_DATA* p_msg) {
       p_cb->rcb[first_unuse].p_cback = p_msg->api_reg.p_cback;
       p_cb->rcb[first_unuse].app_uuid = p_msg->api_reg.app_uuid;
       cb_data.reg_oper.server_if = p_cb->rcb[first_unuse].gatt_if =
-          GATT_Register(p_msg->api_reg.app_uuid, &bta_gatts_cback,
+          GATT_Register(p_msg->api_reg.app_uuid, "GattServer", &bta_gatts_cback,
                         p_msg->api_reg.eatt_support);
       if (!p_cb->rcb[first_unuse].gatt_if) {
         status = GATT_NO_RESOURCES;
@@ -593,9 +593,9 @@ static void bta_gatts_conn_cback(tGATT_IF gatt_if, const RawAddress& bdaddr,
           << ", conn_id=" << loghex(conn_id) << " connected=" << connected;
 
   if (connected)
-    btif_debug_conn_state(bdaddr, BTIF_DEBUG_CONNECTED, GATT_CONN_UNKNOWN);
+    btif_debug_conn_state(bdaddr, BTIF_DEBUG_CONNECTED, GATT_CONN_OK);
   else
-    btif_debug_conn_state(bdaddr, BTIF_DEBUG_DISCONNECTED, GATT_CONN_UNKNOWN);
+    btif_debug_conn_state(bdaddr, BTIF_DEBUG_DISCONNECTED, GATT_CONN_OK);
 
   p_reg = bta_gatts_find_app_rcb_by_app_if(gatt_if);
 

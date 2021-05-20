@@ -522,8 +522,6 @@ static void btm_get_dynamic_audio_buffer_vsc_cmpl_cback(
  ******************************************************************************/
 static void btm_ble_vendor_capability_vsc_cmpl_cback(
     tBTM_VSC_CMPL* p_vcs_cplt_params) {
-  uint8_t status = 0xFF;
-  uint8_t* p;
 
   BTM_TRACE_DEBUG("%s", __func__);
 
@@ -531,8 +529,10 @@ static void btm_ble_vendor_capability_vsc_cmpl_cback(
   CHECK(p_vcs_cplt_params->opcode == HCI_BLE_VENDOR_CAP);
   CHECK(p_vcs_cplt_params->param_len > 0);
 
-  p = p_vcs_cplt_params->p_param_buf;
-  STREAM_TO_UINT8(status, p);
+  const uint8_t* p = p_vcs_cplt_params->p_param_buf;
+  uint8_t raw_status;
+  STREAM_TO_UINT8(raw_status, p);
+  tHCI_STATUS status = to_hci_status_code(raw_status);
 
   if (status != HCI_SUCCESS) {
     BTM_TRACE_DEBUG("%s: Status = 0x%02x (0 is success)", __func__, status);
@@ -604,7 +604,7 @@ static void btm_ble_vendor_capability_vsc_cmpl_cback(
   if (btm_cb.cmn_ble_vsc_cb.tot_scan_results_strg > 0) btm_ble_batchscan_init();
 
   if (p_ctrl_le_feature_rd_cmpl_cback != NULL)
-    p_ctrl_le_feature_rd_cmpl_cback(status);
+    p_ctrl_le_feature_rd_cmpl_cback(static_cast<tHCI_STATUS>(status));
 }
 #endif /* (BLE_VND_INCLUDED == TRUE) */
 
@@ -1526,6 +1526,10 @@ static void btm_ble_appearance_to_cod(uint16_t appearance, uint8_t* dev_class) {
     case BTM_BLE_APPEARANCE_GENERIC_MEDIA_PLAYER:
       dev_class[1] = BTM_COD_MAJOR_AUDIO;
       dev_class[2] = BTM_COD_MINOR_UNCLASSIFIED;
+      break;
+    case BTM_BLE_APPEARANCE_WEARABLE_AUDIO_DEVICE_EARBUD:
+      dev_class[1] = BTM_COD_MAJOR_AUDIO;
+      dev_class[2] = BTM_COD_MINOR_WEARABLE_HEADSET;
       break;
     case BTM_BLE_APPEARANCE_GENERIC_BARCODE_SCANNER:
     case BTM_BLE_APPEARANCE_HID_BARCODE_SCANNER:
@@ -2503,7 +2507,8 @@ void btm_ble_update_mode_operation(uint8_t link_role, const RawAddress* bd_addr,
             PRIVATE_ADDRESS(bda));
       } else {
         if (!bluetooth::shim::ACL_AcceptLeConnectionFrom(
-                convert_to_address_with_type(bda, btm_find_dev(bda)))) {
+                convert_to_address_with_type(bda, btm_find_dev(bda)),
+                /* is_direct */ false)) {
           LOG_ERROR("Unable to add to acceptlist as it is full:%s",
                     PRIVATE_ADDRESS(bda));
         }

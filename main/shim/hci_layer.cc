@@ -28,6 +28,7 @@
 #include "hci/hci_packets.h"
 #include "hci/include/packet_fragmenter.h"
 #include "hci/le_acl_connection_interface.h"
+#include "hci/vendor_specific_event_manager.h"
 #include "main/shim/hci_layer.h"
 #include "main/shim/shim.h"
 #include "main/shim/stack.h"
@@ -107,8 +108,8 @@ bool is_valid_event_code(bluetooth::hci::EventCode event_code) {
     case bluetooth::hci::EventCode::KEYPRESS_NOTIFICATION:
     case bluetooth::hci::EventCode::REMOTE_HOST_SUPPORTED_FEATURES_NOTIFICATION:
     case bluetooth::hci::EventCode::NUMBER_OF_COMPLETED_DATA_BLOCKS:
-    case bluetooth::hci::EventCode::VENDOR_SPECIFIC:
       return true;
+    case bluetooth::hci::EventCode::VENDOR_SPECIFIC:
     case bluetooth::hci::EventCode::LE_META_EVENT:  // Private to hci
       return false;
   }
@@ -165,9 +166,12 @@ static bool event_already_registered_in_hci_layer(
     case bluetooth::hci::EventCode::COMMAND_STATUS:
     case bluetooth::hci::EventCode::PAGE_SCAN_REPETITION_MODE_CHANGE:
     case bluetooth::hci::EventCode::MAX_SLOTS_CHANGE:
+    case bluetooth::hci::EventCode::LE_META_EVENT:
+      return bluetooth::shim::is_gd_hci_enabled() ||
+             bluetooth::shim::is_gd_acl_enabled() ||
+             bluetooth::shim::is_gd_l2cap_enabled();
     case bluetooth::hci::EventCode::DISCONNECTION_COMPLETE:
     case bluetooth::hci::EventCode::READ_REMOTE_VERSION_INFORMATION_COMPLETE:
-    case bluetooth::hci::EventCode::LE_META_EVENT:
       return bluetooth::shim::is_gd_acl_enabled() ||
              bluetooth::shim::is_gd_l2cap_enabled();
     default:
@@ -336,12 +340,22 @@ static void subevent_callback(
                                                      &le_meta_event_view));
 }
 
+static void vendor_specific_event_callback(
+    bluetooth::hci::VendorSpecificEventView vendor_specific_event_view) {
+  if (!send_data_upwards) {
+    return;
+  }
+  send_data_upwards.Run(
+      FROM_HERE,
+      WrapPacketAndCopy(MSG_HC_TO_STACK_HCI_EVT, &vendor_specific_event_view));
+}
+
 void OnTransmitPacketCommandComplete(command_complete_cb complete_callback,
                                      void* context,
                                      bluetooth::hci::CommandCompleteView view) {
   LOG_DEBUG("Received cmd complete for %s",
             bluetooth::hci::OpCodeText(view.GetCommandOpCode()).c_str());
-  std::vector<const uint8_t> data(view.begin(), view.end());
+  std::vector<uint8_t> data(view.begin(), view.end());
   BT_HDR* response = WrapPacketAndCopy(MSG_HC_TO_STACK_HCI_EVT, &view);
   complete_callback(response, context);
 }
@@ -754,6 +768,12 @@ void bluetooth::shim::hci_on_reset_complete() {
       cpp::register_le_event(subevent_code);
     }
   }
+
+  // TODO handle BQR event in GD
+  auto handler = bluetooth::shim::GetGdShimHandler();
+  bluetooth::shim::GetVendorSpecificEventManager()->RegisterEventHandler(
+      bluetooth::hci::VseSubeventCode::BQR_EVENT,
+      handler->Bind(cpp::vendor_specific_event_callback));
 
   if (bluetooth::shim::is_gd_acl_enabled()) {
     return;

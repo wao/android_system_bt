@@ -28,9 +28,9 @@
 
 #include "gatt_int.h"
 #include "l2c_api.h"
-#include "l2c_int.h"
 #include "osi/include/log.h"
 #include "stack/eatt/eatt.h"
+#include "stack/l2cap/l2c_int.h"
 #define GATT_MTU_REQ_MIN_LEN 2
 
 using base::StringPrintf;
@@ -849,9 +849,9 @@ static void gatts_process_mtu_req(tGATT_TCB& tcb, uint16_t cid, uint16_t len,
  * Returns          void
  *
  ******************************************************************************/
-void gatts_process_read_by_type_req(tGATT_TCB& tcb, uint16_t cid,
-                                    uint8_t op_code, uint16_t len,
-                                    uint8_t* p_data) {
+static void gatts_process_read_by_type_req(tGATT_TCB& tcb, uint16_t cid,
+                                           uint8_t op_code, uint16_t len,
+                                           uint8_t* p_data) {
   Uuid uuid = Uuid::kEmpty;
   uint16_t s_hdl = 0, e_hdl = 0, err_hdl = 0;
   tGATT_STATUS reason =

@@ -38,23 +38,23 @@
 /******************************************************************************/
 /*            L O C A L    F U N C T I O N     P R O T O T Y P E S            */
 /******************************************************************************/
-static void l2c_csm_closed(tL2C_CCB* p_ccb, uint16_t event, void* p_data);
-static void l2c_csm_orig_w4_sec_comp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_closed(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data);
+static void l2c_csm_orig_w4_sec_comp(tL2C_CCB* p_ccb, tL2CEVT event,
                                      void* p_data);
-static void l2c_csm_term_w4_sec_comp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_term_w4_sec_comp(tL2C_CCB* p_ccb, tL2CEVT event,
                                      void* p_data);
-static void l2c_csm_w4_l2cap_connect_rsp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_w4_l2cap_connect_rsp(tL2C_CCB* p_ccb, tL2CEVT event,
                                          void* p_data);
-static void l2c_csm_w4_l2ca_connect_rsp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_w4_l2ca_connect_rsp(tL2C_CCB* p_ccb, tL2CEVT event,
                                         void* p_data);
-static void l2c_csm_config(tL2C_CCB* p_ccb, uint16_t event, void* p_data);
-static void l2c_csm_open(tL2C_CCB* p_ccb, uint16_t event, void* p_data);
-static void l2c_csm_w4_l2cap_disconnect_rsp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_config(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data);
+static void l2c_csm_open(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data);
+static void l2c_csm_w4_l2cap_disconnect_rsp(tL2C_CCB* p_ccb, tL2CEVT event,
                                             void* p_data);
-static void l2c_csm_w4_l2ca_disconnect_rsp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_w4_l2ca_disconnect_rsp(tL2C_CCB* p_ccb, tL2CEVT event,
                                            void* p_data);
 
-static const char* l2c_csm_get_event_name(uint16_t event);
+static const char* l2c_csm_get_event_name(tL2CEVT event);
 
 // Send a connect response with result OK and adjust the state machine
 static void l2c_csm_send_connect_rsp(tL2C_CCB* p_ccb) {
@@ -100,29 +100,6 @@ static void l2c_csm_indicate_connection_open(tL2C_CCB* p_ccb) {
   }
 }
 
-static std::string channel_state_text(const tL2C_CHNL_STATE& state) {
-  switch (state) {
-    case CST_CLOSED: /* Channel is in closed state */
-      return std::string("closed");
-    case CST_ORIG_W4_SEC_COMP: /* Originator waits security clearence */
-      return std::string("security pending(orig)");
-    case CST_TERM_W4_SEC_COMP: /* Acceptor waits security clearence */
-      return std::string("security pending(term)");
-    case CST_W4_L2CAP_CONNECT_RSP: /* Waiting for peer connect response */
-      return std::string("wait connect response from peer");
-    case CST_W4_L2CA_CONNECT_RSP: /* Waiting for upper layer connect rsp */
-      return std::string("wait connect response from upper");
-    case CST_CONFIG: /* Negotiating configuration */
-      return std::string("configuring");
-    case CST_OPEN: /* Data transfer state */
-      return std::string("open");
-    case CST_W4_L2CAP_DISCONNECT_RSP: /* Waiting for peer disconnect rsp */
-      return std::string("wait disconnect response from peer");
-    case CST_W4_L2CA_DISCONNECT_RSP: /* Waiting for upper layer disc rsp */
-      return std::string("wait disconnect response from upper");
-  }
-}
-
 /*******************************************************************************
  *
  * Function         l2c_csm_execute
@@ -132,7 +109,7 @@ static std::string channel_state_text(const tL2C_CHNL_STATE& state) {
  * Returns          void
  *
  ******************************************************************************/
-void l2c_csm_execute(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
+void l2c_csm_execute(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data) {
   if (!l2cu_is_ccb_active(p_ccb)) {
     LOG_WARN("CCB not in use, event (%d) cannot be processed", event);
     return;
@@ -196,7 +173,7 @@ void l2c_csm_execute(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
  * Returns          void
  *
  ******************************************************************************/
-static void l2c_csm_closed(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
+static void l2c_csm_closed(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data) {
   tL2C_CONN_INFO* p_ci = (tL2C_CONN_INFO*)p_data;
   uint16_t local_cid = p_ccb->local_cid;
   tL2CA_DISCONNECT_IND_CB* disconnect_ind;
@@ -347,6 +324,9 @@ static void l2c_csm_closed(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
     case L2CEVT_L2CA_DISCONNECT_REQ: /* Upper wants to disconnect */
       l2cu_release_ccb(p_ccb);
       break;
+
+    default:
+      LOG_ERROR("Handling unexpected event:%s", l2c_csm_get_event_name(event));
   }
   LOG_DEBUG("Exit chnl_state=%s [%d], event=%s [%d]",
             channel_state_text(p_ccb->chnl_state).c_str(), p_ccb->chnl_state,
@@ -363,7 +343,7 @@ static void l2c_csm_closed(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
  * Returns          void
  *
  ******************************************************************************/
-static void l2c_csm_orig_w4_sec_comp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_orig_w4_sec_comp(tL2C_CCB* p_ccb, tL2CEVT event,
                                      void* p_data) {
   tL2CA_DISCONNECT_IND_CB* disconnect_ind =
       p_ccb->p_rcb->api.pL2CA_DisconnectInd_Cb;
@@ -443,6 +423,9 @@ static void l2c_csm_orig_w4_sec_comp(tL2C_CCB* p_ccb, uint16_t event,
 
       l2cu_release_ccb(p_ccb);
       break;
+
+    default:
+      LOG_ERROR("Handling unexpected event:%s", l2c_csm_get_event_name(event));
   }
   LOG_DEBUG("Exit chnl_state=%s [%d], event=%s [%d]",
             channel_state_text(p_ccb->chnl_state).c_str(), p_ccb->chnl_state,
@@ -459,7 +442,7 @@ static void l2c_csm_orig_w4_sec_comp(tL2C_CCB* p_ccb, uint16_t event,
  * Returns          void
  *
  ******************************************************************************/
-static void l2c_csm_term_w4_sec_comp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_term_w4_sec_comp(tL2C_CCB* p_ccb, tL2CEVT event,
                                      void* p_data) {
   LOG_DEBUG("LCID: 0x%04x  st: TERM_W4_SEC_COMP  evt: %s", p_ccb->local_cid,
             l2c_csm_get_event_name(event));
@@ -572,6 +555,9 @@ static void l2c_csm_term_w4_sec_comp(tL2C_CCB* p_ccb, uint16_t event,
       btm_sec_l2cap_access_req(p_ccb->p_lcb->remote_bd_addr, p_ccb->p_rcb->psm,
                                false, &l2c_link_sec_comp, p_ccb);
       break;
+
+    default:
+      LOG_ERROR("Handling unexpected event:%s", l2c_csm_get_event_name(event));
   }
   LOG_DEBUG("Exit chnl_state=%s [%d], event=%s [%d]",
             channel_state_text(p_ccb->chnl_state).c_str(), p_ccb->chnl_state,
@@ -588,7 +574,7 @@ static void l2c_csm_term_w4_sec_comp(tL2C_CCB* p_ccb, uint16_t event,
  * Returns          void
  *
  ******************************************************************************/
-static void l2c_csm_w4_l2cap_connect_rsp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_w4_l2cap_connect_rsp(tL2C_CCB* p_ccb, tL2CEVT event,
                                          void* p_data) {
   tL2C_CONN_INFO* p_ci = (tL2C_CONN_INFO*)p_data;
   tL2CA_DISCONNECT_IND_CB* disconnect_ind =
@@ -729,6 +715,9 @@ static void l2c_csm_w4_l2cap_connect_rsp(tL2C_CCB* p_ccb, uint16_t event,
         l2cu_send_peer_connect_req(p_ccb); /* Start Connection     */
       }
       break;
+
+    default:
+      LOG_ERROR("Handling unexpected event:%s", l2c_csm_get_event_name(event));
   }
   LOG_DEBUG("Exit chnl_state=%s [%d], event=%s [%d]",
             channel_state_text(p_ccb->chnl_state).c_str(), p_ccb->chnl_state,
@@ -745,7 +734,7 @@ static void l2c_csm_w4_l2cap_connect_rsp(tL2C_CCB* p_ccb, uint16_t event,
  * Returns          void
  *
  ******************************************************************************/
-static void l2c_csm_w4_l2ca_connect_rsp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_w4_l2ca_connect_rsp(tL2C_CCB* p_ccb, tL2CEVT event,
                                         void* p_data) {
   tL2C_CONN_INFO* p_ci;
   tL2CA_DISCONNECT_IND_CB* disconnect_ind =
@@ -878,6 +867,8 @@ static void l2c_csm_w4_l2ca_connect_rsp(tL2C_CCB* p_ccb, uint16_t event,
       l2c_csm_send_connect_rsp(p_ccb);
       l2c_csm_send_config_req(p_ccb);
       break;
+    default:
+      LOG_ERROR("Handling unexpected event:%s", l2c_csm_get_event_name(event));
   }
   LOG_DEBUG("Exit chnl_state=%s [%d], event=%s [%d]",
             channel_state_text(p_ccb->chnl_state).c_str(), p_ccb->chnl_state,
@@ -894,7 +885,7 @@ static void l2c_csm_w4_l2ca_connect_rsp(tL2C_CCB* p_ccb, uint16_t event,
  * Returns          void
  *
  ******************************************************************************/
-static void l2c_csm_config(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
+static void l2c_csm_config(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data) {
   tL2CAP_CFG_INFO* p_cfg = (tL2CAP_CFG_INFO*)p_data;
   tL2CA_DISCONNECT_IND_CB* disconnect_ind =
       p_ccb->p_rcb->api.pL2CA_DisconnectInd_Cb;
@@ -1107,16 +1098,19 @@ static void l2c_csm_config(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
           p_ccb->local_cid <= L2CAP_LAST_FIXED_CHNL) {
         if (p_ccb->local_cid < L2CAP_BASE_APPL_CID) {
           if (l2cb.fixed_reg[p_ccb->local_cid - L2CAP_FIRST_FIXED_CHNL]
-                  .pL2CA_FixedData_Cb)
+                  .pL2CA_FixedData_Cb != nullptr) {
+            p_ccb->metrics.rx(static_cast<BT_HDR*>(p_data)->len);
             (*l2cb.fixed_reg[p_ccb->local_cid - L2CAP_FIRST_FIXED_CHNL]
                   .pL2CA_FixedData_Cb)(p_ccb->local_cid,
                                        p_ccb->p_lcb->remote_bd_addr,
                                        (BT_HDR*)p_data);
-          else
-            osi_free(p_data);
+          } else {
+            if (p_data != nullptr) osi_free_and_reset(&p_data);
+          }
           break;
         }
       }
+      if (p_data) p_ccb->metrics.rx(static_cast<BT_HDR*>(p_data)->len);
       (*p_ccb->p_rcb->api.pL2CA_DataInd_Cb)(p_ccb->local_cid, (BT_HDR*)p_data);
       break;
 
@@ -1149,6 +1143,8 @@ static void l2c_csm_config(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
       l2cu_release_ccb(p_ccb);
       (*disconnect_ind)(local_cid, false);
       break;
+    default:
+      LOG_ERROR("Handling unexpected event:%s", l2c_csm_get_event_name(event));
   }
   LOG_DEBUG("Exit chnl_state=%s [%d], event=%s [%d]",
             channel_state_text(p_ccb->chnl_state).c_str(), p_ccb->chnl_state,
@@ -1165,7 +1161,7 @@ static void l2c_csm_config(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
  * Returns          void
  *
  ******************************************************************************/
-static void l2c_csm_open(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
+static void l2c_csm_open(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data) {
   uint16_t local_cid = p_ccb->local_cid;
   tL2CAP_CFG_INFO* p_cfg;
   tL2C_CHNL_STATE tempstate;
@@ -1251,9 +1247,11 @@ static void l2c_csm_open(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
       break;
 
     case L2CEVT_L2CAP_DATA: /* Peer data packet rcvd    */
-      if ((p_ccb->p_rcb) && (p_ccb->p_rcb->api.pL2CA_DataInd_Cb))
+      if ((p_ccb->p_rcb) && (p_ccb->p_rcb->api.pL2CA_DataInd_Cb)) {
+        p_ccb->metrics.rx(static_cast<BT_HDR*>(p_data)->len);
         (*p_ccb->p_rcb->api.pL2CA_DataInd_Cb)(p_ccb->local_cid,
                                               (BT_HDR*)p_data);
+      }
       break;
 
     case L2CEVT_L2CA_DISCONNECT_REQ: /* Upper wants to disconnect */
@@ -1325,6 +1323,8 @@ static void l2c_csm_open(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
         l2c_link_check_send_pkts(p_ccb->p_lcb, 0, NULL);
       }
       break;
+    default:
+      LOG_ERROR("Handling unexpected event:%s", l2c_csm_get_event_name(event));
   }
   LOG_DEBUG("Exit chnl_state=%s [%d], event=%s [%d]",
             channel_state_text(p_ccb->chnl_state).c_str(), p_ccb->chnl_state,
@@ -1341,7 +1341,7 @@ static void l2c_csm_open(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
  * Returns          void
  *
  ******************************************************************************/
-static void l2c_csm_w4_l2cap_disconnect_rsp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_w4_l2cap_disconnect_rsp(tL2C_CCB* p_ccb, tL2CEVT event,
                                             void* p_data) {
   LOG_DEBUG("LCID: 0x%04x  st: W4_L2CAP_DISC_RSP  evt: %s", p_ccb->local_cid,
             l2c_csm_get_event_name(event));
@@ -1366,6 +1366,8 @@ static void l2c_csm_w4_l2cap_disconnect_rsp(tL2C_CCB* p_ccb, uint16_t event,
     case L2CEVT_L2CA_DATA_WRITE: /* Upper layer data to send */
       osi_free(p_data);
       break;
+    default:
+      LOG_ERROR("Handling unexpected event:%s", l2c_csm_get_event_name(event));
   }
   LOG_DEBUG("Exit chnl_state=%s [%d], event=%s [%d]",
             channel_state_text(p_ccb->chnl_state).c_str(), p_ccb->chnl_state,
@@ -1382,7 +1384,7 @@ static void l2c_csm_w4_l2cap_disconnect_rsp(tL2C_CCB* p_ccb, uint16_t event,
  * Returns          void
  *
  ******************************************************************************/
-static void l2c_csm_w4_l2ca_disconnect_rsp(tL2C_CCB* p_ccb, uint16_t event,
+static void l2c_csm_w4_l2ca_disconnect_rsp(tL2C_CCB* p_ccb, tL2CEVT event,
                                            void* p_data) {
   tL2CA_DISCONNECT_IND_CB* disconnect_ind =
       p_ccb->p_rcb->api.pL2CA_DisconnectInd_Cb;
@@ -1419,6 +1421,8 @@ static void l2c_csm_w4_l2ca_disconnect_rsp(tL2C_CCB* p_ccb, uint16_t event,
     case L2CEVT_L2CA_DATA_WRITE: /* Upper layer data to send */
       osi_free(p_data);
       break;
+    default:
+      LOG_ERROR("Handling unexpected event:%s", l2c_csm_get_event_name(event));
   }
   LOG_DEBUG("Exit chnl_state=%s [%d], event=%s [%d]",
             channel_state_text(p_ccb->chnl_state).c_str(), p_ccb->chnl_state,
@@ -1436,7 +1440,7 @@ static void l2c_csm_w4_l2ca_disconnect_rsp(tL2C_CCB* p_ccb, uint16_t event,
  * Returns          pointer to the name
  *
  ******************************************************************************/
-static const char* l2c_csm_get_event_name(uint16_t event) {
+static const char* l2c_csm_get_event_name(tL2CEVT event) {
   switch (event) {
     case L2CEVT_LP_CONNECT_CFM: /* Lower layer connect confirm          */
       return ("LOWER_LAYER_CONNECT_CFM");
@@ -1544,6 +1548,10 @@ static const char* l2c_csm_get_event_name(uint16_t event) {
  *
  ******************************************************************************/
 void l2c_enqueue_peer_data(tL2C_CCB* p_ccb, BT_HDR* p_buf) {
+  CHECK(p_ccb != nullptr);
+
+  p_ccb->metrics.tx(p_buf->len);
+
   uint8_t* p;
 
   if (p_ccb->peer_cfg.fcr.mode != L2CAP_FCR_BASIC_MODE) {

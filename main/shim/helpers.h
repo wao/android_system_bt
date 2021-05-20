@@ -50,8 +50,8 @@ inline hci::Address ToGdAddress(const RawAddress& address) {
   return ret;
 }
 
-inline hci::AddressWithType ToAddressWithType(const RawAddress& legacy_address,
-                                       tBLE_ADDR_TYPE legacy_type) {
+inline hci::AddressWithType ToAddressWithType(
+    const RawAddress& legacy_address, const tBLE_ADDR_TYPE& legacy_type) {
   hci::Address address = ToGdAddress(legacy_address);
 
   hci::AddressType type;
@@ -104,11 +104,12 @@ inline tBLE_BD_ADDR ToLegacyAddressWithType(
 }
 
 inline std::unique_ptr<bluetooth::packet::RawBuilder> MakeUniquePacket(
-    const uint8_t* data, size_t len) {
+    const uint8_t* data, size_t len, bool is_flushable) {
   bluetooth::packet::RawBuilder builder;
   std::vector<uint8_t> bytes(data, data + len);
   auto payload = std::make_unique<bluetooth::packet::RawBuilder>();
   payload->AddOctets(bytes);
+  payload->SetFlushable(is_flushable);
   return payload;
 }
 
@@ -130,7 +131,7 @@ inline tHCI_ROLE ToLegacyRole(hci::Role role) {
   return to_hci_role(static_cast<uint8_t>(role));
 }
 
-inline hci::Role ToHciRole(hci_role_t role) {
+inline hci::Role ToHciRole(const hci_role_t& role) {
   switch (role) {
     case HCI_ROLE_CENTRAL:
       return hci::Role::CENTRAL;
@@ -141,10 +142,8 @@ inline hci::Role ToHciRole(hci_role_t role) {
   }
 }
 
-inline tHCI_STATUS ToLegacyHciErrorCode(hci::ErrorCode reason) {
+inline tHCI_STATUS ToLegacyHciErrorCode(const hci::ErrorCode& reason) {
   switch (reason) {
-    case hci::ErrorCode::STATUS_UNKNOWN:
-      return HCI_ERR_ILLEGAL_COMMAND;
     case hci::ErrorCode::SUCCESS:
       return HCI_SUCCESS;
     case hci::ErrorCode::UNKNOWN_HCI_COMMAND:
@@ -227,17 +226,26 @@ inline tHCI_STATUS ToLegacyHciErrorCode(hci::ErrorCode reason) {
     case hci::ErrorCode::CONTROLLER_BUSY:
       return static_cast<tHCI_STATUS>(hci::ErrorCode::CONTROLLER_BUSY);
     case hci::ErrorCode::CONNECTION_FAILED_ESTABLISHMENT:
-      return static_cast<tHCI_STATUS>(
-          hci::ErrorCode::CONNECTION_FAILED_ESTABLISHMENT);
+      return HCI_ERR_CONN_FAILED_ESTABLISHMENT;
+    case hci::ErrorCode::STATUS_UNKNOWN:
+      return HCI_ERR_UNDEFINED;
+    default:
+      return static_cast<tHCI_REASON>(reason);
   }
 }
 
-inline tHCI_MODE ToLegacyHciMode(hci::Mode mode) {
+inline tHCI_MODE ToLegacyHciMode(const hci::Mode& mode) {
   return static_cast<tHCI_MODE>(mode);
 }
 
-inline hci::DisconnectReason ToDisconnectReasonFromLegacy(tHCI_STATUS reason) {
+inline hci::DisconnectReason ToDisconnectReasonFromLegacy(
+    const tHCI_STATUS& reason) {
   return static_cast<hci::DisconnectReason>(reason);
+}
+
+inline bool IsPacketFlushable(const BT_HDR* p_buf) {
+  ASSERT(p_buf != nullptr);
+  return ToPacketData<const HciDataPreamble>(p_buf)->IsFlushable();
 }
 
 namespace debug {

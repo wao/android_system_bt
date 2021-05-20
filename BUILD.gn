@@ -32,7 +32,8 @@ group("all") {
 group("bluetooth") {
   deps = [
     "//bt/main:bluetooth",
-    "//bt/service:bluetoothtbd",
+    "//bt/main:bluetooth-static",
+    #"//bt/service:bluetoothtbd",
   ]
 }
 
@@ -104,19 +105,23 @@ config("target_defaults") {
     "-Wno-final-dtor-non-final-class",
   ]
 
-  cflags_cc = [ "-std=c++17" ]
+  cflags_cc = [
+    "-std=c++17",
+  ]
 
   defines = [
     "HAS_NO_BDROID_BUILDCFG",
     "OS_GENERIC",
     "OS_LINUX_GENERIC",
+    "TARGET_FLOSS",
+    "USE_LINUX_HCI_SOCKET",
     "EXPORT_SYMBOL=__attribute__((visibility(\"default\")))",
     "FALLTHROUGH_INTENDED=[[clang::fallthrough]]",
   ]
 
   # If not configured as a dynamic library, default to static library
   if (!(defined(use.bt_dynlib) && use.bt_dynlib)) {
-    defines = [
+    defines += [
       "STATIC_LIBBLUETOOTH",
     ]
   }
