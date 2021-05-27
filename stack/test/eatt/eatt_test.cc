@@ -20,7 +20,7 @@
 
 #include <vector>
 
-#include "base/bind_helpers.h"
+#include "bind_helpers.h"
 #include "btm_api.h"
 #include "l2c_api.h"
 #include "mock_btif_storage.h"
@@ -369,5 +369,13 @@ TEST_F(EattTest, ReconfigPeerFailed) {
   }
 
   DisconnectEattDevice();
+}
+
+TEST_F(EattTest, DoubleDisconnect) {
+  ConnectDeviceEattSupported(1);
+  DisconnectEattDevice();
+
+  /* Force second disconnect */
+  eatt_instance_->Disconnect(test_address);
 }
 }  // namespace

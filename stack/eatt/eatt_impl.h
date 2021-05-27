@@ -19,7 +19,7 @@
 #include <queue>
 
 #include "acl_api.h"
-#include "base/bind_helpers.h"
+#include "bind_helpers.h"
 #include "bt_types.h"
 #include "device/include/controller.h"
 #include "eatt.h"
@@ -313,7 +313,7 @@ struct eatt_impl {
               << +connecting_cids.size();
 
     for (uint16_t cid : connecting_cids) {
-      LOG(INFO) << " /n/t cid: " << loghex(cid);
+      LOG(INFO) << " \t cid: " << loghex(cid);
 
       auto chan = std::make_shared<EattChannel>(eatt_dev->bda_, cid, 0,
                                                 eatt_dev->rx_mtu_);
@@ -582,7 +582,16 @@ struct eatt_impl {
     LOG(INFO) << __func__ << " " << bd_addr;
 
     eatt_device* eatt_dev = find_device_by_address(bd_addr);
-    if (!eatt_dev) return;
+    if (!eatt_dev) {
+      LOG(WARNING) << __func__ << " no eatt device found";
+      return;
+    }
+
+    if (!eatt_dev->eatt_tcb_) {
+      LOG_ASSERT(eatt_dev->eatt_channels.size() == 0);
+      LOG(WARNING) << __func__ << " no eatt channels found";
+      return;
+    }
 
     auto iter = eatt_dev->eatt_channels.begin();
     while (iter != eatt_dev->eatt_channels.end()) {

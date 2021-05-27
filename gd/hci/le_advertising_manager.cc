@@ -25,6 +25,7 @@
 #include "module.h"
 #include "os/handler.h"
 #include "os/log.h"
+#include "os/system_properties.h"
 
 namespace bluetooth {
 namespace hci {
@@ -116,9 +117,15 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       advertising_api_type_ = AdvertisingApiType::ANDROID_HCI;
     } else {
       advertising_api_type_ = AdvertisingApiType::LEGACY;
-      hci_layer_->EnqueueCommand(
-          LeReadAdvertisingPhysicalChannelTxPowerBuilder::Create(),
-          handler->BindOnceOn(this, &impl::on_read_advertising_physical_channel_tx_power));
+      int vendor_version = os::GetAndroidVendorReleaseVersion();
+      if (vendor_version != 0 && vendor_version <= 11 && os::IsRootCanalEnabled()) {
+        LOG_INFO("LeReadAdvertisingPhysicalChannelTxPower is not supported on Android R RootCanal, default to 0");
+        le_physical_channel_tx_power_ = 0;
+      } else {
+        hci_layer_->EnqueueCommand(
+            LeReadAdvertisingPhysicalChannelTxPowerBuilder::Create(),
+            handler->BindOnceOn(this, &impl::on_read_advertising_physical_channel_tx_power));
+      }
     }
   }
 
@@ -251,7 +258,13 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
           set_data(id, true, config.scan_response);
         }
         set_data(id, false, config.advertisement);
-        advertising_sets_[id].current_address = le_address_manager_->GetAnotherAddress();
+        auto address_policy = le_address_manager_->GetAddressPolicy();
+        if (address_policy == LeAddressManager::AddressPolicy::USE_NON_RESOLVABLE_ADDRESS ||
+            address_policy == LeAddressManager::AddressPolicy::USE_RESOLVABLE_ADDRESS) {
+          advertising_sets_[id].current_address = le_address_manager_->GetAnotherAddress();
+        } else {
+          advertising_sets_[id].current_address = le_address_manager_->GetCurrentAddress();
+        }
         le_advertising_interface_->EnqueueCommand(
             hci::LeMultiAdvtSetRandomAddrBuilder::Create(advertising_sets_[id].current_address.GetAddress(), id),
             module_handler_->BindOnce(impl::check_status<LeMultiAdvtCompleteView>));
