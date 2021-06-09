@@ -16,6 +16,7 @@ cc_library_static {
     host_supported: true,
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/stack/include",
         "system/bt/gd/rust/shim",
     ],
@@ -51,6 +52,7 @@ cc_test {
     },
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/stack/include",
         "system/bt/gd/rust/shim",
     ],

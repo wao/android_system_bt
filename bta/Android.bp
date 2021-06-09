@@ -23,6 +23,7 @@ cc_defaults {
         "system/bt/btcore/include",
         "system/bt/btif/avrcp",
         "system/bt/btif/include",
+        "system/bt/gd",
         "system/bt/hci/include",
         "system/bt/internal_include",
         "system/bt/stack/include",
@@ -218,6 +219,7 @@ cc_test {
     test_suites: ["device-tests"],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/bta/include",
         "system/bt/bta/sys",
         "system/bt/btif/include",
