@@ -12,6 +12,7 @@ cc_defaults {
     defaults: ["fluoride_defaults"],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
     ],
 }
 
