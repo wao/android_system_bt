@@ -17,6 +17,7 @@ cc_library_static {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/btcore/include",
         "system/bt/hci/include",
         "system/bt/internal_include",

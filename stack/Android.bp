@@ -56,6 +56,7 @@ cc_library_static {
         "external/libldac/inc",
         "external/libldac/abr/inc",
         "system/bt",
+        "system/bt/gd",
         "system/bt/btcore/include",
         "system/bt/vnd/include",
         "system/bt/vnd/ble",
@@ -225,6 +226,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/internal_include",
     ],
     srcs: [
@@ -290,6 +292,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/internal_include",
         "system/bt/btcore/include",
         "system/bt/hci/include",
@@ -345,6 +348,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/internal_include",
         "system/bt/btcore/include",
         "system/bt/hci/include",
@@ -383,6 +387,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/internal_include",
         "system/bt/btcore/include",
         "system/bt/hci/include",
@@ -434,6 +439,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/internal_include",
         "system/bt/btcore/include",
         "system/bt/hci/include",
@@ -467,6 +473,7 @@ cc_test {
     },
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/stack/include",
         "system/bt/stack/eatt",
         "system/bt/stack/l2cap",
@@ -511,6 +518,7 @@ cc_test {
     include_dirs: [
         "external/libldac/inc",
         "system/bt",
+        "system/bt/gd",
         "system/bt/stack/include",
         "system/bt/utils/include",
     ],
@@ -561,6 +569,7 @@ cc_test {
     include_dirs: [
         "external/libldac/inc",
         "system/bt",
+        "system/bt/gd",
         "system/bt/stack/include",
     ],
     srcs: [
@@ -594,6 +603,7 @@ cc_test {
     host_supported: true,
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/stack/btm",
         "system/bt/stack/eatt",
         "system/bt/stack/include",
@@ -639,6 +649,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/btcore/include",
     ],
     srcs: [
@@ -688,12 +699,13 @@ cc_test {
     ],
     include_dirs:[
         "system/bt",
+        "system/bt/gd",
         "system/bt/btcore/include",
     ],
     srcs: [
         "eatt/eatt.cc",
         "test/common/mock_btm_api_layer.cc",
-	"test/common/mock_btif_storage.cc",
+        "test/common/mock_btif_storage.cc",
         "test/common/mock_controller.cc",
         "test/common/mock_gatt_layer.cc",
         "test/common/mock_l2cap_layer.cc",
@@ -818,6 +830,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/vnd/ble",
     ],
     srcs: crypto_toolbox_srcs + [
@@ -859,6 +872,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
     ],
     srcs: crypto_toolbox_srcs + [
         ":TestStackL2cap",

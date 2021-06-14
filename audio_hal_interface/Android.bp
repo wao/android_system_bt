@@ -13,6 +13,7 @@ cc_library_static {
     defaults: ["fluoride_defaults"],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/bta/include",
         "system/bt/bta/sys",
         "system/bt/btif/include",
@@ -60,6 +61,7 @@ cc_test {
     defaults: ["fluoride_defaults"],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/stack/include",
     ],
     srcs: [
