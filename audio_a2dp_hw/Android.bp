@@ -9,12 +9,13 @@ package {
 
 cc_defaults {
     name: "audio_a2dp_hw_defaults",
-    defaults: ["fluoride_defaults"],
+    defaults: ["libchrome_support_defaults"],
     include_dirs: [
         "system/bt",
+        "system/bt/audio_a2dp_hw/include",
         "system/bt/gd",
         "system/bt/include",
-        "system/bt/audio_a2dp_hw/include",
+        "system/bt/types",
     ],
 }
 
