@@ -9,10 +9,12 @@ package {
 
 cc_defaults {
     name: "audio_hearing_aid_hw_defaults",
-    defaults: ["fluoride_defaults"],
+    defaults: ["libchrome_support_defaults"],
     include_dirs: [
         "system/bt",
         "system/bt/gd",
+        "system/bt/include",
+        "system/bt/types",
     ],
 }
 
