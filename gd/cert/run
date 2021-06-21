@@ -324,7 +324,6 @@ function incremental_venv {
     cp {$HOST_LIB,$DEST_LIB_DIR}/libz-host.so
     cp {$HOST_LIB,$DEST_LIB_DIR}/libprotobuf-cpp-full.so
     cp {$HOST_LIB,$DEST_LIB_DIR}/libunwindstack.so
-    cp {$HOST_LIB,$DEST_LIB_DIR}/libdexfile_support.so
     cp {$HOST_LIB,$DEST_LIB_DIR}/liblzma.so
     cp {$HOST_LIB,$DEST_LIB_DIR}/libbacktrace.so
 
@@ -340,6 +339,7 @@ function venv_common {
     $(echo "${CERT_TEST_VENV}/bin/python" "${CERT_TEST_VENV}/acts/setup.py" --quiet build --force)
     if [[ $? -ne 0 ]] ; then
         echo "Error building GD Python libraries"
+        echo -e "${YELLOW}NOTE:${NOCOLOR} To build external libraries the first time, please add --clean option."
         exit 1
     fi
 

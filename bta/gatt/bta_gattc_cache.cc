@@ -61,10 +61,10 @@ static void bta_gattc_explore_srvc_finished(uint16_t conn_id,
                                             tBTA_GATTC_SERV* p_srvc_cb);
 
 static void bta_gattc_read_db_hash_cmpl(tBTA_GATTC_CLCB* p_clcb,
-                                        tBTA_GATTC_OP_CMPL* p_data);
+                                        const tBTA_GATTC_OP_CMPL* p_data);
 
 static void bta_gattc_read_ext_prop_desc_cmpl(tBTA_GATTC_CLCB* p_clcb,
-                                              tBTA_GATTC_OP_CMPL* p_data);
+                                              const tBTA_GATTC_OP_CMPL* p_data);
 
 // define the max retry count for DATABASE_OUT_OF_SYNC
 #define BTA_GATTC_DISCOVER_RETRY_COUNT 2
@@ -95,22 +95,22 @@ typedef struct {
 
 /* debug function to display the server cache */
 static void bta_gattc_display_cache_server(const Database& database) {
-  LOG(INFO) << "<================Start Server Cache =============>";
+  LOG(INFO) << "<=--------------=Start Server Cache =-----------=>";
   std::istringstream iss(database.ToString());
   for (std::string line; std::getline(iss, line);) {
     LOG(INFO) << line;
   }
-  LOG(INFO) << "<================End Server Cache =============>";
+  LOG(INFO) << "<=--------------=End Server Cache =-----------=>";
 }
 
 /** debug function to display the exploration list */
 static void bta_gattc_display_explore_record(const DatabaseBuilder& database) {
-  LOG(INFO) << "<================Start Explore Queue =============>";
+  LOG(INFO) << "<=--------------=Start Explore Queue =-----------=>";
   std::istringstream iss(database.ToString());
   for (std::string line; std::getline(iss, line);) {
     LOG(INFO) << line;
   }
-  LOG(INFO) << "<================ End Explore Queue =============>";
+  LOG(INFO) << "<=--------------= End Explore Queue =-----------=>";
 }
 #endif /* BTA_GATT_DEBUG == TRUE */
 
@@ -175,7 +175,7 @@ static void bta_gattc_explore_next_service(uint16_t conn_id,
     p_clcb->request_during_discovery =
         BTA_GATTC_DISCOVER_REQ_READ_EXT_PROP_DESC;
 
-    if (p_srvc_cb->read_multiple_not_supported) {
+    if (p_srvc_cb->read_multiple_not_supported || descriptors.size() == 1) {
       tGATT_READ_PARAM read_param{
           .by_handle = {.handle = descriptors.front(),
                         .auth_req = GATT_AUTH_REQ_NONE}};
@@ -268,7 +268,7 @@ descriptor_discovery_done:
 }
 
 /* Process the discovery result from sdp */
-void bta_gattc_sdp_callback(uint16_t sdp_status, void* user_data) {
+void bta_gattc_sdp_callback(tSDP_STATUS sdp_status, void* user_data) {
   tBTA_GATTC_CB_DATA* cb_data = (tBTA_GATTC_CB_DATA*)user_data;
   tBTA_GATTC_SERV* p_srvc_cb = bta_gattc_find_scb_by_cid(cb_data->sdp_conn_id);
 
@@ -367,7 +367,7 @@ static tGATT_STATUS bta_gattc_sdp_service_disc(uint16_t conn_id,
 
 /** operation completed */
 void bta_gattc_op_cmpl_during_discovery(tBTA_GATTC_CLCB* p_clcb,
-                                        tBTA_GATTC_DATA* p_data) {
+                                        const tBTA_GATTC_DATA* p_data) {
   // Currently, there are two cases needed to be handled.
   // 1. Read ext prop descriptor value after service discovery
   // 2. Read db hash before starting service discovery
@@ -643,7 +643,7 @@ bool bta_gattc_read_db_hash(tBTA_GATTC_CLCB* p_clcb) {
 
 /* handle response of reading database hash */
 static void bta_gattc_read_db_hash_cmpl(tBTA_GATTC_CLCB* p_clcb,
-                                        tBTA_GATTC_OP_CMPL* p_data) {
+                                        const tBTA_GATTC_OP_CMPL* p_data) {
   uint8_t op = (uint8_t)p_data->op_code;
   if (op != GATTC_OPTYPE_READ) {
     VLOG(1) << __func__ << ": op = " << +p_data->hdr.layer_specific;
@@ -680,8 +680,8 @@ static void bta_gattc_read_db_hash_cmpl(tBTA_GATTC_CLCB* p_clcb,
 }
 
 /* handle response of reading extended properties descriptor */
-static void bta_gattc_read_ext_prop_desc_cmpl(tBTA_GATTC_CLCB* p_clcb,
-                                              tBTA_GATTC_OP_CMPL* p_data) {
+static void bta_gattc_read_ext_prop_desc_cmpl(
+    tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_OP_CMPL* p_data) {
   uint8_t op = (uint8_t)p_data->op_code;
   if (op != GATTC_OPTYPE_READ) {
     VLOG(1) << __func__ << ": op = " << +p_data->hdr.layer_specific;

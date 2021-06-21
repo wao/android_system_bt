@@ -46,7 +46,7 @@
  *  Type definitions and return values
  ******************************************************************************/
 
-typedef enum {
+typedef enum : unsigned {
   BTIF_HH_DISABLED = 0,
   BTIF_HH_ENABLED,
   BTIF_HH_DISABLING,
@@ -56,6 +56,26 @@ typedef enum {
   BTIF_HH_DEV_DISCONNECTED
 } BTIF_HH_STATUS;
 
+#define CASE_RETURN_TEXT(code) \
+  case code:                   \
+    return #code
+
+inline std::string btif_hh_status_text(const BTIF_HH_STATUS& status) {
+  switch (status) {
+    CASE_RETURN_TEXT(BTIF_HH_DISABLED);
+    CASE_RETURN_TEXT(BTIF_HH_ENABLED);
+    CASE_RETURN_TEXT(BTIF_HH_DISABLING);
+    CASE_RETURN_TEXT(BTIF_HH_DEV_UNKNOWN);
+    CASE_RETURN_TEXT(BTIF_HH_DEV_CONNECTING);
+    CASE_RETURN_TEXT(BTIF_HH_DEV_CONNECTED);
+    CASE_RETURN_TEXT(BTIF_HH_DEV_DISCONNECTED);
+    default:
+      return std::string("UNKNOWN[%hhu]", status);
+  }
+}
+#undef CASE_RETURN_TEXT
+
+// Shared with uhid polling thread
 typedef struct {
   bthh_connection_state_t dev_status;
   uint8_t dev_handle;
@@ -66,6 +86,7 @@ typedef struct {
   int fd;
   bool ready_for_data;
   pthread_t hh_poll_thread_id;
+  pid_t pid{-1};
   uint8_t hh_keep_polling;
   alarm_t* vup_timer;
   fixed_queue_t* get_rpt_id_queue;

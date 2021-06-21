@@ -24,6 +24,7 @@
 #include <base/memory/ptr_util.h>
 #include <base/strings/string_number_conversions.h>
 
+#include "notreached.h"
 #include "service/logging_helpers.h"
 
 #include "stack/include/avrc_defs.h"
@@ -213,7 +214,6 @@ void AvrcpControl::CtrlTrackChangedCallback(const RawAddress& bd_addr,
 }
 
 // AvrcpControlFactory implementation
-// ========================================================
 
 AvrcpControlFactory::AvrcpControlFactory() = default;
 AvrcpControlFactory::~AvrcpControlFactory() = default;

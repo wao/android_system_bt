@@ -33,11 +33,8 @@
 #include "bta/sys/bta_sys.h"
 #include "stack/include/bt_types.h"
 
-/* can be moved to bta_api.h */
-#define BTA_HH_MAX_RPT_CHARS 8
-
 /* state machine events, these events are handled by the state machine */
-enum {
+enum tBTA_HH_INT_EVT : uint16_t {
   BTA_HH_API_OPEN_EVT = BTA_SYS_EVT_START(BTA_ID_HH),
   BTA_HH_API_CLOSE_EVT,
   BTA_HH_INT_OPEN_EVT,
@@ -60,18 +57,9 @@ enum {
   BTA_HH_API_ENABLE_EVT,
   BTA_HH_API_DISABLE_EVT,
   BTA_HH_DISC_CMPL_EVT
-};
-typedef uint16_t tBTA_HH_INT_EVT; /* HID host internal events */
+}; /* HID host internal events */
 
 #define BTA_HH_INVALID_EVT (BTA_HH_DISC_CMPL_EVT + 1)
-
-/* event used to map between BTE event and BTA event */
-#define BTA_HH_FST_TRANS_CB_EVT BTA_HH_GET_RPT_EVT
-#define BTA_HH_FST_BTE_TRANS_EVT HID_TRANS_GET_REPORT
-
-/* sub event code used for device maintainence API call */
-#define BTA_HH_ADD_DEV 0
-#define BTA_HH_REMOVE_DEV 1
 
 /* state machine states */
 enum {
@@ -88,7 +76,7 @@ typedef uint8_t tBTA_HH_STATE;
 
 /* data structure used to send a command/data to HID device */
 typedef struct {
-  BT_HDR hdr;
+  BT_HDR_RIGID hdr;
   uint8_t t_type;
   uint8_t param;
   uint8_t rpt_id;
@@ -98,27 +86,27 @@ typedef struct {
 
 /* data type for BTA_HH_API_ENABLE_EVT */
 typedef struct {
-  BT_HDR hdr;
+  BT_HDR_RIGID hdr;
   uint8_t service_name[BTA_SERVICE_NAME_LEN + 1];
   tBTA_HH_CBACK* p_cback;
 } tBTA_HH_API_ENABLE;
 
 typedef struct {
-  BT_HDR hdr;
+  BT_HDR_RIGID hdr;
   RawAddress bd_addr;
   tBTA_HH_PROTO_MODE mode;
 } tBTA_HH_API_CONN;
 
 /* internal event data from BTE HID callback */
 typedef struct {
-  BT_HDR hdr;
+  BT_HDR_RIGID hdr;
   RawAddress addr;
   uint32_t data;
   BT_HDR* p_data;
 } tBTA_HH_CBACK_DATA;
 
 typedef struct {
-  BT_HDR hdr;
+  BT_HDR_RIGID hdr;
   RawAddress bda;
   uint16_t attr_mask;
   uint16_t sub_event;
@@ -128,22 +116,20 @@ typedef struct {
 } tBTA_HH_MAINT_DEV;
 
 typedef struct {
-  BT_HDR hdr;
+  BT_HDR_RIGID hdr;
   uint16_t conn_id;
-  tBTA_GATT_REASON reason; /* disconnect reason code, not useful when connect
-                              event is reported */
-
+  tGATT_DISCONN_REASON reason;
 } tBTA_HH_LE_CLOSE;
 
 typedef struct {
-  BT_HDR hdr;
+  BT_HDR_RIGID hdr;
   uint16_t scan_int;
   uint16_t scan_win;
 } tBTA_HH_SCPP_UPDATE;
 
 /* union of all event data types */
 typedef union {
-  BT_HDR hdr;
+  BT_HDR_RIGID hdr;
   tBTA_HH_API_ENABLE api_enable;
   tBTA_HH_API_CONN api_conn;
   tBTA_HH_CMD_DATA api_sndcmd;
@@ -215,7 +201,6 @@ typedef struct {
   bool in_use;                 /* control block currently in use */
   bool incoming_conn;          /* is incoming connection? */
   uint8_t incoming_hid_handle; /* temporary handle for incoming connection? */
-  bool opened; /* true if device successfully opened HID connection */
   tBTA_HH_PROTO_MODE mode; /* protocol mode */
   tBTA_HH_STATE state;     /* CB state */
 
@@ -226,39 +211,25 @@ typedef struct {
 
   uint8_t disc_active;
   tBTA_HH_STATUS status;
-  tBTA_GATT_REASON reason;
+  tBTM_STATUS btm_status;
   bool is_le_device;
   tBTA_HH_LE_HID_SRVC hid_srvc;
   uint16_t conn_id;
   bool in_bg_conn;
   uint8_t clt_cfg_idx;
-  uint16_t scan_refresh_char_handle;
   bool scps_supported;
 
 #define BTA_HH_LE_SCPS_NOTIFY_NONE 0
 #define BTA_HH_LE_SCPS_NOTIFY_SPT 0x01
 #define BTA_HH_LE_SCPS_NOTIFY_ENB 0x02
   uint8_t scps_notify; /* scan refresh supported/notification enabled */
-
   bool security_pending;
 } tBTA_HH_DEV_CB;
-
-/* key board parsing control block */
-typedef struct {
-  bool mod_key[4]; /* ctrl, shift(upper), Alt, GUI */
-  bool num_lock;
-  bool caps_lock;
-  uint8_t last_report[BTA_HH_MAX_RPT_CHARS];
-} tBTA_HH_KB_CB;
 
 /******************************************************************************
  * Main Control Block
  ******************************************************************************/
 typedef struct {
-  tBTA_HH_KB_CB kb_cb;                    /* key board control block,
-                                             suppose BTA will connect
-                                             to only one keyboard at
-                                              the same time */
   tBTA_HH_DEV_CB kdev[BTA_HH_MAX_DEVICE]; /* device control block */
   tBTA_HH_DEV_CB* p_cur;                  /* current device control
                                                  block idx, used in sdp */
@@ -269,7 +240,6 @@ typedef struct {
   tGATT_IF gatt_if;
   tBTA_HH_CBACK* p_cback; /* Application callbacks */
   tSDP_DISCOVERY_DB* p_disc_db;
-  uint8_t trace_level; /* tracing level */
   uint8_t cnt_num;     /* connected device number */
   bool w4_disable;     /* w4 disable flag */
 } tBTA_HH_CB;
@@ -282,37 +252,41 @@ extern tBTA_HH_CFG* p_bta_hh_cfg;
 /*****************************************************************************
  *  Function prototypes
  ****************************************************************************/
-extern bool bta_hh_hdl_event(BT_HDR* p_msg);
+extern bool bta_hh_hdl_event(BT_HDR_RIGID* p_msg);
 extern void bta_hh_sm_execute(tBTA_HH_DEV_CB* p_cb, uint16_t event,
-                              tBTA_HH_DATA* p_data);
+                              const tBTA_HH_DATA* p_data);
 
 /* action functions */
-extern void bta_hh_api_disc_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_open_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_close_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_data_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_ctrl_dat_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_start_sdp(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_sdp_cmpl(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_write_dev_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_get_dscp_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_handsk_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_maint_dev_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_open_cmpl_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_open_failure(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
+extern void bta_hh_api_disc_act(tBTA_HH_DEV_CB* p_cb,
+                                const tBTA_HH_DATA* p_data);
+extern void bta_hh_open_act(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
+extern void bta_hh_close_act(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
+extern void bta_hh_data_act(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
+extern void bta_hh_ctrl_dat_act(tBTA_HH_DEV_CB* p_cb,
+                                const tBTA_HH_DATA* p_data);
+extern void bta_hh_start_sdp(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
+extern void bta_hh_sdp_cmpl(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
+extern void bta_hh_write_dev_act(tBTA_HH_DEV_CB* p_cb,
+                                 const tBTA_HH_DATA* p_data);
+extern void bta_hh_get_dscp_act(tBTA_HH_DEV_CB* p_cb,
+                                const tBTA_HH_DATA* p_data);
+extern void bta_hh_handsk_act(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
+extern void bta_hh_maint_dev_act(tBTA_HH_DEV_CB* p_cb,
+                                 const tBTA_HH_DATA* p_data);
+extern void bta_hh_open_cmpl_act(tBTA_HH_DEV_CB* p_cb,
+                                 const tBTA_HH_DATA* p_data);
+extern void bta_hh_open_failure(tBTA_HH_DEV_CB* p_cb,
+                                const tBTA_HH_DATA* p_data);
 
 /* utility functions */
 extern uint8_t bta_hh_find_cb(const RawAddress& bda);
-extern void bta_hh_parse_keybd_rpt(tBTA_HH_BOOT_RPT* p_kb_data,
-                                   uint8_t* p_report, uint16_t report_len);
-extern void bta_hh_parse_mice_rpt(tBTA_HH_BOOT_RPT* p_kb_data,
-                                  uint8_t* p_report, uint16_t report_len);
+extern tBTA_HH_DEV_CB* bta_hh_get_cb(const RawAddress& bda);
 extern bool bta_hh_tod_spt(tBTA_HH_DEV_CB* p_cb, uint8_t sub_class);
 extern void bta_hh_clean_up_kdev(tBTA_HH_DEV_CB* p_cb);
 
 extern void bta_hh_add_device_to_list(tBTA_HH_DEV_CB* p_cb, uint8_t handle,
                                       uint16_t attr_mask,
-                                      tHID_DEV_DSCP_INFO* p_dscp_info,
+                                      const tHID_DEV_DSCP_INFO* p_dscp_info,
                                       uint8_t sub_class, uint16_t max_latency,
                                       uint16_t min_tout, uint8_t app_id);
 extern void bta_hh_update_di_info(tBTA_HH_DEV_CB* p_cb, uint16_t vendor_id,
@@ -323,7 +297,7 @@ extern void bta_hh_cleanup_disable(tBTA_HH_STATUS status);
 extern uint8_t bta_hh_dev_handle_to_cb_idx(uint8_t dev_handle);
 
 /* action functions used outside state machine */
-extern void bta_hh_api_enable(tBTA_HH_DATA* p_data);
+extern void bta_hh_api_enable(const tBTA_HH_DATA* p_data);
 extern void bta_hh_api_disable(void);
 extern void bta_hh_disc_cmpl(void);
 
@@ -335,25 +309,28 @@ extern tBTA_HH_STATUS bta_hh_read_ssr_param(const RawAddress& bd_addr,
 extern void bta_hh_le_enable(void);
 extern bool bta_hh_le_is_hh_gatt_if(tGATT_IF client_if);
 extern void bta_hh_le_deregister(void);
-extern bool bta_hh_is_le_device(tBTA_HH_DEV_CB* p_cb,
-                                const RawAddress& remote_bda);
 extern void bta_hh_le_open_conn(tBTA_HH_DEV_CB* p_cb,
                                 const RawAddress& remote_bda);
 extern void bta_hh_le_api_disc_act(tBTA_HH_DEV_CB* p_cb);
 extern void bta_hh_le_get_dscp_act(tBTA_HH_DEV_CB* p_cb);
-extern void bta_hh_le_write_dev_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
+extern void bta_hh_le_write_dev_act(tBTA_HH_DEV_CB* p_cb,
+                                    const tBTA_HH_DATA* p_data);
 extern uint8_t bta_hh_le_add_device(tBTA_HH_DEV_CB* p_cb,
-                                    tBTA_HH_MAINT_DEV* p_dev_info);
+                                    const tBTA_HH_MAINT_DEV* p_dev_info);
 extern void bta_hh_le_remove_dev_bg_conn(tBTA_HH_DEV_CB* p_cb);
-extern void bta_hh_le_open_fail(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_gatt_open(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_gatt_close(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data);
-extern void bta_hh_start_security(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_buf);
+extern void bta_hh_le_open_fail(tBTA_HH_DEV_CB* p_cb,
+                                const tBTA_HH_DATA* p_data);
+extern void bta_hh_gatt_open(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
+extern void bta_hh_gatt_close(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
+extern void bta_hh_start_security(tBTA_HH_DEV_CB* p_cb,
+                                  const tBTA_HH_DATA* p_buf);
 
-extern void bta_hh_start_security(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_buf);
-extern void bta_hh_security_cmpl(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_buf);
+extern void bta_hh_start_security(tBTA_HH_DEV_CB* p_cb,
+                                  const tBTA_HH_DATA* p_buf);
+extern void bta_hh_security_cmpl(tBTA_HH_DEV_CB* p_cb,
+                                 const tBTA_HH_DATA* p_buf);
 extern void bta_hh_le_notify_enc_cmpl(tBTA_HH_DEV_CB* p_cb,
-                                      tBTA_HH_DATA* p_data);
+                                      const tBTA_HH_DATA* p_data);
 
 #if (BTA_HH_DEBUG == TRUE)
 extern void bta_hh_trace_dev_db(void);

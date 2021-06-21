@@ -24,6 +24,7 @@
 
 #include "avrcp/avrcp.h"
 #include "bluetooth/uuid.h"
+#include "bt_transport.h"
 #include "raw_address.h"
 
 /**
@@ -51,6 +52,7 @@
 #define BT_PROFILE_LE_AUDIO_ID "le_audio"
 #define BT_KEYSTORE_ID "bluetooth_keystore"
 #define BT_ACTIVITY_ATTRIBUTION_ID "activity_attribution"
+#define BT_PROFILE_VC_ID "volume_control"
 
 /** Bluetooth Device Name */
 typedef struct { uint8_t name[249]; } __attribute__((packed)) bt_bdname_t;
@@ -332,17 +334,26 @@ typedef struct {
   void* val;
 } bt_property_t;
 
-/** Bluetooth Out Of Band data for bonding */
+/** Represents the actual Out of Band data itself */
 typedef struct {
-  uint8_t le_bt_dev_addr[7]; /* LE Bluetooth Device Address */
-  uint8_t c192[16];          /* Simple Pairing Hash C-192 */
-  uint8_t r192[16];          /* Simple Pairing Randomizer R-192 */
-  uint8_t c256[16];          /* Simple Pairing Hash C-256 */
-  uint8_t r256[16];          /* Simple Pairing Randomizer R-256 */
-  uint8_t sm_tk[16];         /* Security Manager TK Value */
-  uint8_t le_sc_c[16];       /* LE Secure Connections Confirmation Value */
-  uint8_t le_sc_r[16];       /* LE Secure Connections Random Value */
-} bt_out_of_band_data_t;
+  // Both
+  bool is_valid = false; /* Default to invalid data; force caller to verify */
+  uint8_t address[7]; /* Bluetooth Device Address (6) plus Address Type (1) */
+  uint8_t c[16];      /* Simple Pairing Hash C-192/256 (Classic or LE) */
+  uint8_t r[16];      /* Simple Pairing Randomizer R-192/256 (Classic or LE) */
+  uint8_t device_name[256]; /* Name of the device */
+
+  // Classic
+  uint8_t oob_data_length[2]; /* Classic only data Length. Value includes this
+                                 in length */
+  uint8_t class_of_device[2]; /* Class of Device (Classic or LE) */
+
+  // LE
+  uint8_t le_device_role;   /* Supported and preferred role of device */
+  uint8_t sm_tk[16];        /* Security Manager TK Value (LE Only) */
+  uint8_t le_flags;         /* LE Flags for discoverability and features */
+  uint8_t le_appearance[2]; /* For the appearance of the device */
+} bt_oob_data_t;
 
 /** Bluetooth Device Type */
 typedef enum {
@@ -350,6 +361,7 @@ typedef enum {
   BT_DEVICE_DEVTYPE_BLE,
   BT_DEVICE_DEVTYPE_DUAL
 } bt_device_type_t;
+
 /** Bluetooth Bond state */
 typedef enum {
   BT_BOND_STATE_NONE,
@@ -466,6 +478,10 @@ typedef void (*le_test_mode_callback)(bt_status_t status, uint16_t num_packets);
 typedef void (*energy_info_callback)(bt_activity_energy_info* energy_info,
                                      bt_uid_traffic_t* uid_data);
 
+/** Callback invoked when OOB data is returned from the controller */
+typedef void (*generate_local_oob_data_callback)(tBT_TRANSPORT transport,
+                                                 bt_oob_data_t oob_data);
+
 /** TODO: Add callbacks for Link Up/Down and other generic
  *  notifications/callbacks */
 
@@ -487,6 +503,7 @@ typedef struct {
   le_test_mode_callback le_test_mode_cb;
   energy_info_callback energy_info_cb;
   link_quality_report_callback link_quality_report_cb;
+  generate_local_oob_data_callback generate_local_oob_data_cb;
 } bt_callbacks_t;
 
 typedef void (*alarm_cb)(void* data);
@@ -597,7 +614,8 @@ typedef struct {
 
   /** Create Bluetooth Bond using out of band data */
   int (*create_bond_out_of_band)(const RawAddress* bd_addr, int transport,
-                                 const bt_out_of_band_data_t* oob_data);
+                                 const bt_oob_data_t* p192_data,
+                                 const bt_oob_data_t* p256_data);
 
   /** Remove Bond */
   int (*remove_bond)(const RawAddress* bd_addr);
@@ -711,6 +729,11 @@ typedef struct {
    * Set the dynamic audio buffer size to the Controller
    */
   int (*set_dynamic_audio_buffer_size)(int codec, int size);
+
+  /**
+   * Fetches the local Out of Band data.
+   */
+  int (*generate_local_oob_data)(tBT_TRANSPORT transport);
 } bt_interface_t;
 
 #define BLUETOOTH_INTERFACE_STRING "bluetoothInterface"

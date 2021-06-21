@@ -1,36 +1,11 @@
 //! Hci shim
 
+use crate::bridge::ffi;
 use bt_facade_helpers::U8SliceRunnable;
 use bt_hci::facade::HciFacadeService;
-use bt_packets::hci::{AclPacket, CommandPacket, Packet};
+use bt_packets::hci::{AclPacket, CommandPacket, IsoPacket, Packet};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-
-#[cxx::bridge(namespace = bluetooth::shim::rust)]
-mod ffi {
-    extern "C" {
-        include!("callbacks/callbacks.h");
-
-        type u8SliceCallback;
-        fn Run(self: &u8SliceCallback, data: &[u8]);
-
-        type u8SliceOnceCallback;
-        fn Run(self: &u8SliceOnceCallback, data: &[u8]);
-    }
-
-    extern "Rust" {
-        type Hci;
-
-        fn hci_set_acl_callback(hci: &mut Hci, callback: UniquePtr<u8SliceCallback>);
-        fn hci_set_evt_callback(hci: &mut Hci, callback: UniquePtr<u8SliceCallback>);
-        fn hci_set_le_evt_callback(hci: &mut Hci, callback: UniquePtr<u8SliceCallback>);
-
-        fn hci_send_command(hci: &mut Hci, data: &[u8], callback: UniquePtr<u8SliceOnceCallback>);
-        fn hci_send_acl(hci: &mut Hci, data: &[u8]);
-        fn hci_register_event(hci: &mut Hci, event: u8);
-        fn hci_register_le_event(hci: &mut Hci, subevent: u8);
-    }
-}
 
 // we take ownership when we get the callbacks
 unsafe impl Send for ffi::u8SliceCallback {}
@@ -87,6 +62,18 @@ pub fn hci_send_acl(hci: &mut Hci, data: &[u8]) {
     }
 }
 
+pub fn hci_send_iso(hci: &mut Hci, data: &[u8]) {
+    match IsoPacket::parse(data) {
+        Ok(packet) => {
+            let tx = hci.internal.iso_tx.clone();
+            hci.rt.spawn(async move {
+                tx.send(packet).await.unwrap();
+            });
+        }
+        Err(e) => panic!("could not parse iso: {:?} {:02x?}", e, data),
+    }
+}
+
 pub fn hci_register_event(hci: &mut Hci, event: u8) {
     let mut hci_facade = hci.internal.clone();
     hci.rt.spawn(async move {
@@ -103,6 +90,10 @@ pub fn hci_register_le_event(hci: &mut Hci, subevent: u8) {
 
 pub fn hci_set_acl_callback(hci: &mut Hci, cb: cxx::UniquePtr<ffi::u8SliceCallback>) {
     hci.internal.acl_rx.stream_runnable(&hci.rt, CallbackWrapper { cb });
+}
+
+pub fn hci_set_iso_callback(hci: &mut Hci, cb: cxx::UniquePtr<ffi::u8SliceCallback>) {
+    hci.internal.iso_rx.stream_runnable(&hci.rt, CallbackWrapper { cb });
 }
 
 pub fn hci_set_evt_callback(hci: &mut Hci, cb: cxx::UniquePtr<ffi::u8SliceCallback>) {

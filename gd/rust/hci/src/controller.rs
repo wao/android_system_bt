@@ -2,15 +2,16 @@
 
 use crate::{Address, CommandSender};
 use bt_packets::hci::{
-    Enable, ErrorCode, LeMaximumDataLength, LeReadBufferSizeV1Builder, LeReadBufferSizeV2Builder,
-    LeReadConnectListSizeBuilder, LeReadLocalSupportedFeaturesBuilder,
+    Enable, ErrorCode, LeHostFeatureBits, LeMaximumDataLength, LeReadBufferSizeV1Builder,
+    LeReadBufferSizeV2Builder, LeReadConnectListSizeBuilder, LeReadLocalSupportedFeaturesBuilder,
     LeReadMaximumAdvertisingDataLengthBuilder, LeReadMaximumDataLengthBuilder,
     LeReadNumberOfSupportedAdvertisingSetsBuilder, LeReadPeriodicAdvertiserListSizeBuilder,
     LeReadResolvingListSizeBuilder, LeReadSuggestedDefaultDataLengthBuilder,
-    LeReadSupportedStatesBuilder, LeSetEventMaskBuilder, LocalVersionInformation, OpCode,
-    OpCodeIndex, ReadBdAddrBuilder, ReadBufferSizeBuilder, ReadLocalExtendedFeaturesBuilder,
-    ReadLocalNameBuilder, ReadLocalSupportedCommandsBuilder, ReadLocalVersionInformationBuilder,
-    SetEventMaskBuilder, WriteLeHostSupportBuilder, WriteSimplePairingModeBuilder,
+    LeReadSupportedStatesBuilder, LeSetEventMaskBuilder, LeSetHostFeatureBuilder,
+    LocalVersionInformation, OpCode, OpCodeIndex, ReadBdAddrBuilder, ReadBufferSizeBuilder,
+    ReadLocalExtendedFeaturesBuilder, ReadLocalNameBuilder, ReadLocalSupportedCommandsBuilder,
+    ReadLocalVersionInformationBuilder, SetEventMaskBuilder, WriteLeHostSupportBuilder,
+    WriteSimplePairingModeBuilder,
 };
 use gddi::{module, provides, Stoppable};
 use num_traits::ToPrimitive;
@@ -35,7 +36,7 @@ macro_rules! assert_success {
 
 #[provides]
 async fn provide_controller(mut hci: CommandSender) -> Arc<ControllerExports> {
-    assert_success!(hci.send(LeSetEventMaskBuilder { le_event_mask: 0x0000000000021e7f }));
+    assert_success!(hci.send(LeSetEventMaskBuilder { le_event_mask: 0x0000000041021e7f }));
     assert_success!(hci.send(SetEventMaskBuilder { event_mask: 0x3dbfffffffffffff }));
     assert_success!(
         hci.send(WriteSimplePairingModeBuilder { simple_pairing_mode: Enable::Enabled })
@@ -141,6 +142,13 @@ async fn provide_controller(mut hci: CommandSender) -> Arc<ControllerExports> {
         } else {
             0
         };
+
+    if commands.is_supported(OpCode::LeSetHostFeature) {
+        assert_success!(hci.send(LeSetHostFeatureBuilder {
+            bit_number: LeHostFeatureBits::ConnectedIsoStreamHostSupport,
+            bit_value: Enable::Enabled
+        }));
+    }
 
     let address = assert_success!(hci.send(ReadBdAddrBuilder {})).get_bd_addr();
 
@@ -321,7 +329,8 @@ supported_le_features! {
     synchronized_receiver => 31
 }
 
-fn null_terminated_to_string(slice: &[u8]) -> String {
+/// Convert a null terminated C string into a Rust String
+pub fn null_terminated_to_string(slice: &[u8]) -> String {
     let temp = std::str::from_utf8(slice).unwrap();
     temp[0..temp.find('\0').unwrap()].to_string()
 }

@@ -52,6 +52,23 @@ typedef struct {
   track_adv_event_callback track_adv_event_cb;
 } btgatt_scanner_callbacks_t;
 
+class AdvertisingTrackInfo {
+ public:
+  uint8_t scanner_id;
+  uint8_t filter_index;
+  uint8_t advertiser_state;
+  uint8_t advertiser_info_present;
+  RawAddress advertiser_address;
+  uint8_t advertiser_address_type;
+  uint8_t tx_power;
+  int8_t rssi;
+  uint16_t time_stamp;
+  uint8_t adv_packet_len;
+  std::vector<uint8_t> adv_packet;
+  uint8_t scan_response_len;
+  std::vector<uint8_t> scan_response;
+};
+
 /**
  * LE Scanning related callbacks invoked from from the Bluetooth native stack
  * All callbacks are invoked on the JNI thread
@@ -61,6 +78,8 @@ class ScanningCallbacks {
   virtual ~ScanningCallbacks() = default;
   virtual void OnScannerRegistered(const bluetooth::Uuid app_uuid,
                                    uint8_t scannerId, uint8_t status) = 0;
+  virtual void OnSetScannerParameterComplete(uint8_t scannerId,
+                                             uint8_t status) = 0;
   virtual void OnScanResult(uint16_t event_type, uint8_t addr_type,
                             RawAddress bda, uint8_t primary_phy,
                             uint8_t secondary_phy, uint8_t advertising_sid,
@@ -68,10 +87,11 @@ class ScanningCallbacks {
                             uint16_t periodic_adv_int,
                             std::vector<uint8_t> adv_data) = 0;
   virtual void OnTrackAdvFoundLost(
-      btgatt_track_adv_info_t* p_adv_track_info) = 0;
+      AdvertisingTrackInfo advertising_track_info) = 0;
   virtual void OnBatchScanReports(int client_if, int status, int report_format,
                                   int num_records,
                                   std::vector<uint8_t> data) = 0;
+  virtual void OnBatchScanThresholdCrossed(int client_if) = 0;
 };
 
 class BleScannerInterface {
@@ -121,8 +141,8 @@ class BleScannerInterface {
   virtual void ScanFilterEnable(bool enable, EnableCallback cb) = 0;
 
   /** Sets the LE scan interval and window in units of N*0.625 msec */
-  virtual void SetScanParameters(int scan_interval, int scan_window,
-                                 Callback cb) = 0;
+  virtual void SetScanParameters(int scanner_id, int scan_interval,
+                                 int scan_window, Callback cb) = 0;
 
   /* Configure the batchscan storage */
   virtual void BatchscanConfigStorage(int client_if, int batch_scan_full_max,

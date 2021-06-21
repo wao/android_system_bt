@@ -60,6 +60,9 @@ using namespace bluetooth::l2cap;
 
 namespace {
 uint16_t classic_cid_token_counter_ = 0x41;
+constexpr uint64_t kBrEdrNotSupportedMask = 0x0000002000000000;      // Bit 37
+constexpr uint64_t kLeSupportedControllerMask = 0x0000004000000000;  // Bit 38
+constexpr uint64_t kLeSupportedHostMask = 0x0000000000000002;        // Bit 1
 
 std::unordered_map<uint16_t /* token */, uint16_t /* psm */>
     classic_cid_token_to_channel_map_;
@@ -225,9 +228,12 @@ struct ClassicDynamicChannelHelper {
         static_cast<BT_HDR*>(osi_calloc(packet_vector.size() + sizeof(BT_HDR)));
     std::copy(packet_vector.begin(), packet_vector.end(), buffer->data);
     buffer->len = packet_vector.size();
-    do_in_main_thread(FROM_HERE,
-                      base::Bind(appl_info_.pL2CA_DataInd_Cb, cid_token,
-                                 base::Unretained(buffer)));
+    if (do_in_main_thread(FROM_HERE,
+                          base::Bind(appl_info_.pL2CA_DataInd_Cb, cid_token,
+                                     base::Unretained(buffer))) !=
+        BT_STATUS_SUCCESS) {
+      osi_free(buffer);
+    }
   }
 
   void on_outgoing_connection_fail(
@@ -366,6 +372,9 @@ struct RemoteFeature {
   uint8_t raw_remote_features[8];
   bool version_info_received = false;
   bool role_switch_supported = false;
+  bool br_edr_supported = false;
+  bool le_supported_controller = false;
+  bool le_supported_host = false;
   bool ssp_supported = false;
   bool sc_supported = false;
   bool received_page_0 = false;
@@ -406,15 +415,21 @@ struct LinkPropertyListenerShim
     if (page_number == 0) {
       entry.received_page_0 = true;
       if (features & 0x20) entry.role_switch_supported = true;
+      entry.br_edr_supported = !(features & kBrEdrNotSupportedMask);
+      entry.le_supported_controller = features & kLeSupportedControllerMask;
       std::memcpy(entry.raw_remote_features, &features, 8);
     }
     if (page_number == 1) {
       entry.received_page_1 = true;
       if (features & 0x01) entry.ssp_supported = true;
+      entry.le_supported_host = features & kLeSupportedHostMask;
     }
     if (entry.received_page_0 && entry.received_page_1) {
+      const bool le_supported =
+          entry.le_supported_controller && entry.le_supported_host;
       btm_sec_set_peer_sec_caps(address_to_handle_[remote], entry.ssp_supported,
-                                false, entry.role_switch_supported);
+                                false, entry.role_switch_supported,
+                                entry.br_edr_supported, le_supported);
     }
   }
 
@@ -613,7 +628,7 @@ class LeSecurityEnforcementShim
   void Enforce(bluetooth::hci::AddressWithType remote,
                bluetooth::l2cap::le::SecurityPolicy policy,
                ResultCallback result_callback) override {
-    tBTM_BLE_SEC_ACT sec_act = 0;
+    tBTM_BLE_SEC_ACT sec_act = BTM_BLE_SEC_NONE;
     switch (policy) {
       case bluetooth::l2cap::le::SecurityPolicy::
           NO_SECURITY_WHATSOEVER_PLAINTEXT_TRANSPORT_OK:
@@ -762,18 +777,23 @@ bool L2CA_DisconnectReq(uint16_t cid) {
 uint8_t L2CA_DataWrite(uint16_t cid, BT_HDR* p_data) {
   if (classic_cid_token_to_channel_map_.count(cid) == 0) {
     LOG(ERROR) << __func__ << "Invalid cid: " << cid;
+    osi_free(p_data);
     return 0;
   }
   auto psm = classic_cid_token_to_channel_map_[cid];
   if (classic_dynamic_channel_helper_map_.count(psm) == 0) {
     LOG(ERROR) << __func__ << "Not registered psm: " << psm;
+    osi_free(p_data);
     return 0;
   }
   auto len = p_data->len;
   auto* data = p_data->data + p_data->offset;
-  return classic_dynamic_channel_helper_map_[psm]->send(
-             cid, MakeUniquePacket(data, len)) *
-         len;
+  uint8_t sent_length =
+      classic_dynamic_channel_helper_map_[psm]->send(
+          cid, MakeUniquePacket(data, len, IsPacketFlushable(p_data))) *
+      len;
+  osi_free(p_data);
+  return sent_length;
 }
 
 bool L2CA_ReconfigCreditBasedConnsReq(const RawAddress& bd_addr,
@@ -1000,12 +1020,16 @@ uint16_t L2CA_SendFixedChnlData(uint16_t cid, const RawAddress& rem_bda,
                                 BT_HDR* p_buf) {
   if (cid != kAttCid && cid != kSmpCid) {
     LOG(ERROR) << "Invalid cid " << cid;
+    osi_free(p_buf);
     return L2CAP_DW_FAILED;
   }
   auto* helper = &le_fixed_channel_helper_.find(cid)->second;
   auto len = p_buf->len;
   auto* data = p_buf->data + p_buf->offset;
-  bool sent = helper->send(ToGdAddress(rem_bda), MakeUniquePacket(data, len));
+  bool sent =
+      helper->send(ToGdAddress(rem_bda),
+                   MakeUniquePacket(data, len, IsPacketFlushable(p_buf)));
+  osi_free(p_buf);
   return sent ? L2CAP_DW_SUCCESS : L2CAP_DW_FAILED;
 }
 
@@ -1392,9 +1416,12 @@ struct LeDynamicChannelHelper {
         static_cast<BT_HDR*>(osi_calloc(packet_vector.size() + sizeof(BT_HDR)));
     std::copy(packet_vector.begin(), packet_vector.end(), buffer->data);
     buffer->len = packet_vector.size();
-    do_in_main_thread(FROM_HERE,
-                      base::Bind(appl_info_.pL2CA_DataInd_Cb, cid_token,
-                                 base::Unretained(buffer)));
+    if (do_in_main_thread(FROM_HERE,
+                          base::Bind(appl_info_.pL2CA_DataInd_Cb, cid_token,
+                                     base::Unretained(buffer))) !=
+        BT_STATUS_SUCCESS) {
+      osi_free(buffer);
+    }
   }
 
   void on_outgoing_connection_fail(
@@ -1540,18 +1567,23 @@ bool L2CA_DisconnectLECocReq(uint16_t cid) {
 uint8_t L2CA_LECocDataWrite(uint16_t cid, BT_HDR* p_data) {
   if (le_cid_token_to_channel_map_.count(cid) == 0) {
     LOG(ERROR) << __func__ << "Invalid cid: " << cid;
+    osi_free(p_data);
     return 0;
   }
   auto psm = le_cid_token_to_channel_map_[cid];
   if (le_dynamic_channel_helper_map_.count(psm) == 0) {
     LOG(ERROR) << __func__ << "Not registered psm: " << psm;
-    return false;
+    osi_free(p_data);
+    return 0;
   }
   auto len = p_data->len;
   auto* data = p_data->data + p_data->offset;
-  return le_dynamic_channel_helper_map_[psm]->send(
-             cid, MakeUniquePacket(data, len)) *
-         len;
+  uint8_t sent_length =
+      le_dynamic_channel_helper_map_[psm]->send(
+          cid, MakeUniquePacket(data, len, IsPacketFlushable(p_data))) *
+      len;
+  osi_free(p_data);
+  return sent_length;
 }
 
 void L2CA_SwitchRoleToCentral(const RawAddress& addr) {

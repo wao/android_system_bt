@@ -68,7 +68,7 @@ static void bta_dm_service_search_remname_cback(const RawAddress& bd_addr,
 static void bta_dm_remname_cback(void* p);
 static void bta_dm_find_services(const RawAddress& bd_addr);
 static void bta_dm_discover_next_device(void);
-static void bta_dm_sdp_callback(uint16_t sdp_status);
+static void bta_dm_sdp_callback(tSDP_STATUS sdp_status);
 static uint8_t bta_dm_pin_cback(const RawAddress& bd_addr, DEV_CLASS dev_class,
                                 BD_NAME bd_name, bool min_16_digit);
 static uint8_t bta_dm_new_link_key_cback(const RawAddress& bd_addr,
@@ -85,7 +85,7 @@ void BTA_dm_update_policy(tBTA_SYS_CONN_STATUS status, uint8_t id,
                           uint8_t app_id, const RawAddress& peer_addr);
 
 /* Extended Inquiry Response */
-static uint8_t bta_dm_sp_cback(tBTM_SP_EVT event, tBTM_SP_EVT_DATA* p_data);
+static tBTM_STATUS bta_dm_sp_cback(tBTM_SP_EVT event, tBTM_SP_EVT_DATA* p_data);
 
 static void bta_dm_set_eir(char* local_name);
 
@@ -113,7 +113,7 @@ static void bta_dm_cancel_gatt_discovery(const RawAddress& bd_addr);
 static void bta_dm_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data);
 extern tBTA_DM_CONTRL_STATE bta_dm_pm_obtain_controller_state(void);
 #if (BLE_VND_INCLUDED == TRUE)
-static void bta_dm_ctrl_features_rd_cmpl_cback(tBTM_STATUS result);
+static void bta_dm_ctrl_features_rd_cmpl_cback(tHCI_STATUS result);
 #endif
 
 #ifndef BTA_DM_BLE_ADV_CHNL_MAP
@@ -617,7 +617,8 @@ void bta_dm_remove_device(const RawAddress& bd_addr) {
      * disconnected */
     for (int i = 0; i < bta_dm_cb.device_list.count; i++) {
       auto& peer_device = bta_dm_cb.device_list.peer_device[i];
-      if (peer_device.peer_bdaddr == other_address) {
+      if (peer_device.peer_bdaddr == other_address &&
+          peer_device.transport == other_transport) {
         peer_device.conn_state = BTA_DM_UNPAIRING;
 
         /* Make sure device is not in acceptlist before we disconnect */
@@ -1213,7 +1214,7 @@ void bta_dm_sdp_result(tBTA_DM_MSG* p_data) {
       // Piggy back the SCN over result field
       if (scn_found) {
         p_msg->disc_result.result.disc_res.result =
-            (3 + bta_dm_search_cb.peer_scn);
+            static_cast<tBTA_STATUS>((3 + bta_dm_search_cb.peer_scn));
         p_msg->disc_result.result.disc_res.services |= BTA_USER_SERVICE_MASK;
 
         APPL_TRACE_EVENT(" Piggy back the SCN over result field  SCN=%d",
@@ -1740,12 +1741,12 @@ static void bta_dm_discover_device(const RawAddress& remote_bd_addr) {
  * Returns          void
  *
  ******************************************************************************/
-static void bta_dm_sdp_callback(uint16_t sdp_status) {
+static void bta_dm_sdp_callback(tSDP_STATUS sdp_status) {
   tBTA_DM_SDP_RESULT* p_msg =
       (tBTA_DM_SDP_RESULT*)osi_malloc(sizeof(tBTA_DM_SDP_RESULT));
 
   p_msg->hdr.event = BTA_DM_SDP_RESULT_EVT;
-  p_msg->sdp_result = sdp_status;
+  p_msg->sdp_result = static_cast<uint16_t>(sdp_status);
 
   bta_sys_sendmsg(p_msg);
 }
@@ -2107,7 +2108,8 @@ static void bta_dm_authentication_complete_cback(
  * Returns          void
  *
  ******************************************************************************/
-static uint8_t bta_dm_sp_cback(tBTM_SP_EVT event, tBTM_SP_EVT_DATA* p_data) {
+static tBTM_STATUS bta_dm_sp_cback(tBTM_SP_EVT event,
+                                   tBTM_SP_EVT_DATA* p_data) {
   tBTM_STATUS status = BTM_CMD_STARTED;
   tBTA_DM_SEC sec_event;
   tBTA_DM_SEC_EVT pin_evt = BTA_DM_SP_KEY_NOTIF_EVT;
@@ -2218,7 +2220,8 @@ static uint8_t bta_dm_sp_cback(tBTM_SP_EVT event, tBTM_SP_EVT_DATA* p_data) {
 
     case BTM_SP_LOC_OOB_EVT:
 #ifdef BTIF_DM_OOB_TEST
-      btif_dm_proc_loc_oob((bool)(p_data->loc_oob.status == BTM_SUCCESS),
+      btif_dm_proc_loc_oob(BT_TRANSPORT_BR_EDR,
+                           (bool)(p_data->loc_oob.status == BTM_SUCCESS),
                            p_data->loc_oob.c, p_data->loc_oob.r);
 #endif
       break;
@@ -3673,8 +3676,8 @@ static void bta_ble_energy_info_cmpl(tBTM_BLE_TX_TIME_MS tx_time,
                                      tBTM_BLE_RX_TIME_MS rx_time,
                                      tBTM_BLE_IDLE_TIME_MS idle_time,
                                      tBTM_BLE_ENERGY_USED energy_used,
-                                     tBTM_STATUS status) {
-  tBTA_STATUS st = (status == BTM_SUCCESS) ? BTA_SUCCESS : BTA_FAILURE;
+                                     tHCI_STATUS status) {
+  tBTA_STATUS st = (status == HCI_SUCCESS) ? BTA_SUCCESS : BTA_FAILURE;
   tBTA_DM_CONTRL_STATE ctrl_state = 0;
 
   if (BTA_SUCCESS == st) ctrl_state = bta_dm_pm_obtain_controller_state();
@@ -3689,8 +3692,8 @@ void bta_dm_ble_get_energy_info(
     tBTA_BLE_ENERGY_INFO_CBACK* p_energy_info_cback) {
   bta_dm_cb.p_energy_info_cback = p_energy_info_cback;
   tBTM_STATUS btm_status = BTM_BleGetEnergyInfo(bta_ble_energy_info_cmpl);
-  if (BTM_CMD_STARTED != btm_status)
-    bta_ble_energy_info_cmpl(0, 0, 0, 0, btm_status);
+  if (btm_status != BTM_CMD_STARTED)
+    bta_ble_energy_info_cmpl(0, 0, 0, 0, HCI_ERR_UNSPECIFIED);
 }
 
 #ifndef BTA_DM_GATT_CLOSE_DELAY_TOUT
@@ -3876,7 +3879,7 @@ static void bta_dm_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data) {
       break;
 
     case BTA_GATTC_CLOSE_EVT:
-      APPL_TRACE_DEBUG("BTA_GATTC_CLOSE_EVT reason = %d", p_data->close.reason);
+      LOG_DEBUG("BTA_GATTC_CLOSE_EVT reason = %d", p_data->close.reason);
       /* in case of disconnect before search is completed */
       if ((bta_dm_search_cb.state != BTA_DM_SEARCH_IDLE) &&
           (bta_dm_search_cb.state != BTA_DM_SEARCH_ACTIVE) &&
@@ -3901,9 +3904,9 @@ static void bta_dm_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data) {
  * Parameters:
  *
  ******************************************************************************/
-static void bta_dm_ctrl_features_rd_cmpl_cback(tBTM_STATUS result) {
+static void bta_dm_ctrl_features_rd_cmpl_cback(tHCI_STATUS result) {
   APPL_TRACE_DEBUG("%s  status = %d ", __func__, result);
-  if (result == BTM_SUCCESS) {
+  if (result == HCI_SUCCESS) {
     if (bta_dm_cb.p_sec_cback)
       bta_dm_cb.p_sec_cback(BTA_DM_LE_FEATURES_READ, NULL);
   } else {

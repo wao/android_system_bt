@@ -21,6 +21,7 @@
 #include "stack/include/acl_api_types.h"
 #include "stack/include/btm_api_types.h"
 #include "stack/include/btm_ble_api_types.h"
+#include "types/hci_role.h"
 
 namespace bluetooth {
 namespace shim {
@@ -1687,6 +1688,23 @@ bool BTM_BothEndsSupportSecureConnections(const RawAddress& bd_addr);
  *
  ******************************************************************************/
 bool BTM_PeerSupportsSecureConnections(const RawAddress& bd_addr);
+
+/*******************************************************************************
+ *
+ * Function         BTM_GetPeerDeviceTypeFromFeatures
+ *
+ * Description      This function is called to retrieve the peer device type
+ *                  by referencing the remote features.
+ *
+ * Parameters:      bd_addr - address of the peer
+ *
+ * Returns          BT_DEVICE_TYPE_DUMO if both BR/EDR and BLE transports are
+ *                  supported by the peer,
+ *                  BT_DEVICE_TYPE_BREDR if only BR/EDR transport is supported,
+ *                  BT_DEVICE_TYPE_BLE if only BLE transport is supported.
+ *
+ ******************************************************************************/
+tBT_DEVICE_TYPE BTM_GetPeerDeviceTypeFromFeatures(const RawAddress& bd_addr);
 
 /*******************************************************************************
  *

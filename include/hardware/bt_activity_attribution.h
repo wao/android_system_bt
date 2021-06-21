@@ -17,6 +17,8 @@
 #ifndef ANDROID_INCLUDE_BT_ACTIVITY_ATTRIBUTION_H
 #define ANDROID_INCLUDE_BT_ACTIVITY_ATTRIBUTION_H
 
+#include <vector>
+
 #include "raw_address.h"
 
 namespace bluetooth {
@@ -26,18 +28,32 @@ class ActivityAttributionCallbacks {
  public:
   enum class Activity : uint8_t {
     UNKNOWN = 0,
+    ACL,
     ADVERTISE,
     CONNECT,
     CONTROL,
-    SCAN,
     HFP,
-    VENDOR
+    ISO,
+    SCAN,
+    VENDOR,
+  };
+
+  struct BtaaAggregationEntry {
+    RawAddress address;
+    Activity activity;
+    uint16_t wakeup_count;
+    uint32_t byte_count;
+    uint32_t wakelock_duration;
   };
 
   virtual ~ActivityAttributionCallbacks() = default;
 
-  /** Callback when Blutooth woke up the system */
+  /** Callback when Bluetooth woke up the system */
   virtual void OnWakeup(const Activity activity, const RawAddress& address) = 0;
+
+  /** Callback when Bluetooth activity logs are ready to be moved */
+  virtual void OnActivityLogsReady(
+      const std::vector<BtaaAggregationEntry> logs) = 0;
 };
 
 class ActivityAttributionInterface {

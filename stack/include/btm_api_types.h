@@ -74,6 +74,7 @@ typedef void(tBTM_VSC_CMPL_CB)(tBTM_VSC_CMPL* p1);
 
 /* 0x00 is used as unclassified for all minor device classes */
 #define BTM_COD_MINOR_UNCLASSIFIED 0x00
+#define BTM_COD_MINOR_WEARABLE_HEADSET 0x04
 #define BTM_COD_MINOR_CONFM_HANDSFREE 0x08
 #define BTM_COD_MINOR_CAR_AUDIO 0x20
 #define BTM_COD_MINOR_SET_TOP_BOX 0x24
@@ -270,12 +271,13 @@ typedef uint8_t tBTM_EIR_SEARCH_RESULT;
 /* 0x0A */
 #define BTM_EIR_TX_POWER_LEVEL_TYPE HCI_EIR_TX_POWER_LEVEL_TYPE
 
-#define BTM_BLE_SEC_NONE 0
-/* encrypt the link using current key */
-#define BTM_BLE_SEC_ENCRYPT 1
-#define BTM_BLE_SEC_ENCRYPT_NO_MITM 2
-#define BTM_BLE_SEC_ENCRYPT_MITM 3
-typedef uint8_t tBTM_BLE_SEC_ACT;
+typedef enum : uint8_t {
+  BTM_BLE_SEC_NONE = 0,
+  /* encrypt the link using current key */
+  BTM_BLE_SEC_ENCRYPT = 1,
+  BTM_BLE_SEC_ENCRYPT_NO_MITM = 2,
+  BTM_BLE_SEC_ENCRYPT_MITM = 3,
+} tBTM_BLE_SEC_ACT;
 
 /*******************************************************************************
  * BTM Services MACROS handle array of uint32_t bits for more than 32 services
@@ -643,7 +645,14 @@ typedef enum : uint8_t {
 
 typedef uint8_t tBTM_AUTH_REQ;
 
-enum { BTM_OOB_NONE, BTM_OOB_PRESENT, BTM_OOB_UNKNOWN };
+enum {
+  BTM_OOB_NONE,
+  BTM_OOB_PRESENT_192,
+  BTM_OOB_PRESENT_256,
+  BTM_OOB_PRESENT_192_AND_256,
+  BTM_OOB_UNKNOWN
+};
+
 typedef uint8_t tBTM_OOB_DATA;
 
 /* data type for BTM_SP_IO_REQ_EVT */
@@ -720,7 +729,8 @@ typedef union {
 /* Simple Pairing Events.  Called by the stack when Simple Pairing related
  * events occur.
 */
-typedef uint8_t(tBTM_SP_CALLBACK)(tBTM_SP_EVT event, tBTM_SP_EVT_DATA* p_data);
+typedef tBTM_STATUS(tBTM_SP_CALLBACK)(tBTM_SP_EVT event,
+                                      tBTM_SP_EVT_DATA* p_data);
 
 typedef void(tBTM_MKEY_CALLBACK)(const RawAddress& bd_addr, uint8_t status,
                                  uint8_t key_flag);
@@ -763,11 +773,9 @@ typedef void(tBTM_BOND_CANCEL_CMPL_CALLBACK)(tBTM_STATUS result);
 #define BTM_LE_SC_OOB_REQ_EVT SMP_SC_OOB_REQ_EVT
 /* SC OOB local data set is created (as result of SMP_CrLocScOobData(...)) */
 #define BTM_LE_SC_LOC_OOB_EVT SMP_SC_LOC_OOB_DATA_UP_EVT
-/* SMP over BR keys request event */
-#define BTM_LE_BR_KEYS_REQ_EVT SMP_BR_KEYS_REQ_EVT
 /* SMP complete event */
 #define BTM_LE_COMPLT_EVT SMP_COMPLT_EVT
-#define BTM_LE_LAST_FROM_SMP BTM_LE_BR_KEYS_REQ_EVT
+#define BTM_LE_LAST_FROM_SMP SMP_BR_KEYS_REQ_EVT
 /* KEY update event */
 #define BTM_LE_KEY_EVT (BTM_LE_LAST_FROM_SMP + 1)
 #define BTM_LE_CONSENT_REQ_EVT SMP_CONSENT_REQ_EVT
@@ -962,5 +970,18 @@ typedef uint8_t tBTM_CONTRL_STATE;
 
 // Bluetooth Quality Report - Report receiver
 typedef void(tBTM_BT_QUALITY_REPORT_RECEIVER)(uint8_t len, uint8_t* p_stream);
+
+struct tREMOTE_VERSION_INFO {
+  uint8_t lmp_version{0};
+  uint16_t lmp_subversion{0};
+  uint16_t manufacturer{0};
+  bool valid{false};
+  std::string ToString() const {
+    return (valid) ? base::StringPrintf("%02hhu-%05hu-%05hu", lmp_version,
+                                        lmp_subversion, manufacturer)
+                   : std::string("UNKNOWN");
+  }
+};
+using remote_version_info = tREMOTE_VERSION_INFO;
 
 #endif  // BTM_API_TYPES_H

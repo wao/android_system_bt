@@ -667,6 +667,7 @@ void handle_rc_connect(tBTA_AV_RC_OPEN* p_rc_open) {
     BTIF_TRACE_ERROR("%s: Connect failed with error code: %d", __func__,
                      p_rc_open->status);
     p_dev->rc_connected = false;
+    return;
   }
 
   // check if already some RC is connected
@@ -4955,8 +4956,7 @@ static bt_status_t play_item_cmd(const RawAddress& bd_addr, uint8_t scope,
   memcpy(avrc_cmd.play_item.uid, uid, AVRC_UID_SIZE);
   avrc_cmd.play_item.uid_counter = uid_counter;
 
-  return build_and_send_browsing_cmd(&avrc_cmd, p_dev);
-  // return build_and_send_vendor_cmd(&avrc_cmd, AVRC_CMD_CTRL, p_dev);
+  return build_and_send_vendor_cmd(&avrc_cmd, AVRC_CMD_CTRL, p_dev);
 }
 
 /***************************************************************************

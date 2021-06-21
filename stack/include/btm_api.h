@@ -668,6 +668,24 @@ extern bool btm_sec_is_a_bonded_dev(const RawAddress& bda);
 
 /*******************************************************************************
  *
+ * Function         BTM_GetPeerDeviceTypeFromFeatures
+ *
+ * Description      This function is called to retrieve the peer device type
+ *                  by referencing the remote features.
+ *
+ * Parameters:      bd_addr - address of the peer
+ *
+ * Returns          BT_DEVICE_TYPE_DUMO if both BR/EDR and BLE transports are
+ *                  supported by the peer,
+ *                  BT_DEVICE_TYPE_BREDR if only BR/EDR transport is supported,
+ *                  BT_DEVICE_TYPE_BLE if only BLE transport is supported.
+ *
+ ******************************************************************************/
+extern tBT_DEVICE_TYPE BTM_GetPeerDeviceTypeFromFeatures(
+    const RawAddress& bd_addr);
+
+/*******************************************************************************
+ *
  * Function         BTM_SecReadDevName
  *
  * Description      Looks for the device name in the security database for the
@@ -748,6 +766,41 @@ tBTM_STATUS BTM_SetSsrParams(const RawAddress& remote_bda, uint16_t max_lat,
  *
  ******************************************************************************/
 uint16_t BTM_GetHCIConnHandle(const RawAddress& remote_bda,
+                              tBT_TRANSPORT transport);
+
+/*******************************************************************************
+ *
+ * Function         BTM_IsPhy2mSupported
+ *
+ * Description      This function is called to check PHY 2M support
+ *                  from peer device
+ * Returns          True when PHY 2M supported false otherwise
+ *
+ ******************************************************************************/
+bool BTM_IsPhy2mSupported(const RawAddress& remote_bda, tBT_TRANSPORT transport);
+
+/*******************************************************************************
+ *
+ * Function         BTM_RequestPeerSCA
+ *
+ * Description      This function is called to request sleep clock accuracy
+ *                  from peer device
+ *
+ ******************************************************************************/
+extern void BTM_RequestPeerSCA(const RawAddress& remote_bda,
+                               tBT_TRANSPORT transport);
+
+/*******************************************************************************
+ *
+ * Function         BTM_GetPeerSCA
+ *
+ * Description      This function is called to get peer sleep clock accuracy
+ *
+ * Returns          SCA or 0xFF if SCA was never previously requested, request
+ *                  is not supported by peer device or ACL does not exist
+ *
+ ******************************************************************************/
+extern uint8_t BTM_GetPeerSCA(const RawAddress& remote_bda,
                               tBT_TRANSPORT transport);
 
 /*******************************************************************************

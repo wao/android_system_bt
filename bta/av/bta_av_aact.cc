@@ -50,6 +50,7 @@
 #include "stack/include/btm_api.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/l2c_api.h"
+#include "types/hci_role.h"
 
 namespace {
 
@@ -80,8 +81,6 @@ constexpr char kBtmLogTag[] = "A2DP";
 
 /* ACL quota we are letting FW use for A2DP Offload Tx. */
 #define BTA_AV_A2DP_OFFLOAD_XMIT_QUOTA 4
-
-#define BTIF_A2DP_MAX_BITPOOL_MQ 35
 
 static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb,
                                          tBT_A2DP_OFFLOAD* p_a2dp_offload);
@@ -133,7 +132,7 @@ static const uint16_t bta_av_stream_evt_ok[] = {
     BTA_AV_AVDT_RPT_CONN_EVT, /* AVDT_REPORT_CONN_EVT */
     BTA_AV_AVDT_RPT_CONN_EVT, /* AVDT_REPORT_DISCONN_EVT */
     BTA_AV_AVDT_DELAY_RPT_EVT, /* AVDT_DELAY_REPORT_EVT */
-    0                          /* AVDT_DELAY_REPORT_CFM_EVT */
+    BTA_AV_AVDT_DELAY_RPT_CFM_EVT, /* AVDT_DELAY_REPORT_CFM_EVT */
 };
 
 static const uint16_t bta_av_stream_evt_fail[] = {
@@ -158,7 +157,7 @@ static const uint16_t bta_av_stream_evt_fail[] = {
     BTA_AV_AVDT_RPT_CONN_EVT, /* AVDT_REPORT_CONN_EVT */
     BTA_AV_AVDT_RPT_CONN_EVT, /* AVDT_REPORT_DISCONN_EVT */
     BTA_AV_AVDT_DELAY_RPT_EVT, /* AVDT_DELAY_REPORT_EVT */
-    0                          /* AVDT_DELAY_REPORT_CFM_EVT */
+    BTA_AV_AVDT_DELAY_RPT_CFM_EVT, /* AVDT_DELAY_REPORT_CFM_EVT */
 };
 
 /***********************************************
@@ -859,6 +858,8 @@ void bta_av_cleanup(tBTA_AV_SCB* p_scb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
   p_scb->num_disc_snks = 0;
   p_scb->coll_mask = 0;
   alarm_cancel(p_scb->avrc_ct_timer);
+  alarm_cancel(p_scb->link_signalling_timer);
+  alarm_cancel(p_scb->accept_signalling_timer);
 
   /* TODO(eisenbach): RE-IMPLEMENT USING VSC OR HAL EXTENSION
     vendor_get_interface()->send_command(
@@ -934,7 +935,7 @@ void bta_av_config_ind(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
   /* Clear collision mask */
   p_scb->coll_mask = 0;
-  alarm_cancel(bta_av_cb.accept_signalling_timer);
+  alarm_cancel(p_scb->accept_signalling_timer);
 
   /* if no codec parameters in configuration, fail */
   if ((p_evt_cfg->num_codec == 0) ||
@@ -1000,7 +1001,8 @@ void bta_av_disconnect_req(tBTA_AV_SCB* p_scb,
   APPL_TRACE_API("%s: conn_lcb: 0x%x peer_addr: %s", __func__,
                  bta_av_cb.conn_lcb, p_scb->PeerAddress().ToString().c_str());
 
-  alarm_cancel(bta_av_cb.link_signalling_timer);
+  alarm_cancel(p_scb->link_signalling_timer);
+  alarm_cancel(p_scb->accept_signalling_timer);
   alarm_cancel(p_scb->avrc_ct_timer);
 
   // conn_lcb is the index bitmask of all used LCBs, and since LCB and SCB use
@@ -1090,7 +1092,7 @@ void bta_av_setconfig_rsp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   AVDT_ConfigRsp(p_scb->avdt_handle, p_scb->avdt_label,
                  p_data->ci_setconfig.err_code, p_data->ci_setconfig.category);
 
-  alarm_cancel(bta_av_cb.link_signalling_timer);
+  alarm_cancel(p_scb->link_signalling_timer);
 
   if (p_data->ci_setconfig.err_code == AVDT_SUCCESS) {
     p_scb->wait = BTA_AV_WAIT_ACP_CAPS_ON;
@@ -1315,7 +1317,7 @@ void bta_av_do_close(tBTA_AV_SCB* p_scb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
   if (p_scb->co_started) {
     bta_av_str_stopped(p_scb, NULL);
   }
-  alarm_cancel(bta_av_cb.link_signalling_timer);
+  alarm_cancel(p_scb->link_signalling_timer);
 
   /* close stream */
   p_scb->started = false;
@@ -2182,7 +2184,7 @@ void bta_av_start_ok(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   bool initiator = false;
   bool suspend = false;
   uint8_t new_role = p_scb->role;
-  BT_HDR hdr;
+  BT_HDR_RIGID hdr;
   tHCI_ROLE cur_role;
   uint8_t local_tsep = p_scb->seps[p_scb->sep_idx].tsep;
 
@@ -3155,7 +3157,7 @@ static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb,
     case BTAV_A2DP_CODEC_INDEX_SOURCE_SBC:
       codec_type = BTA_AV_CODEC_TYPE_SBC;
       if (A2DP_GetMaxBitpoolSbc(p_scb->cfg.codec_info) <=
-          BTIF_A2DP_MAX_BITPOOL_MQ) {
+          A2DP_SBC_BITPOOL_MIDDLE_QUALITY) {
         APPL_TRACE_WARNING("%s: Restricting streaming MTU size for MQ Bitpool",
                            __func__);
         mtu = MAX_2MBPS_AVDTP_MTU;

@@ -17,28 +17,33 @@
 #include "stack_manager.h"
 
 #include <fcntl.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <chrono>
 #include <future>
 #include <queue>
 
 #include "common/bind.h"
-#include "hal/hci_hal.h"
 #include "module.h"
 #include "os/handler.h"
 #include "os/log.h"
 #include "os/thread.h"
+#include "os/wakelock_manager.h"
 
 using ::bluetooth::os::Handler;
 using ::bluetooth::os::Thread;
+using ::bluetooth::os::WakelockManager;
 
 namespace bluetooth {
 
-constexpr char bluetooth_pid_file[] = "/var/run/bluetooth";
+// Assume we are hci0 for now
+constexpr char bluetooth_pid_file[] = "/var/run/bluetooth/bluetooth0.pid";
 
 void StackManager::StartUp(ModuleList* modules, Thread* stack_thread) {
   management_thread_ = new Thread("management_thread", Thread::Priority::NORMAL);
   handler_ = new Handler(management_thread_);
+
+  WakelockManager::Get().Acquire();
 
   std::promise<void> promise;
   auto future = promise.get_future();
@@ -46,6 +51,9 @@ void StackManager::StartUp(ModuleList* modules, Thread* stack_thread) {
                                   std::move(promise)));
 
   auto init_status = future.wait_for(std::chrono::seconds(3));
+
+  WakelockManager::Get().Release();
+
   ASSERT_LOG(
       init_status == std::future_status::ready,
       "Can't start stack, last instance: %s",
@@ -53,7 +61,7 @@ void StackManager::StartUp(ModuleList* modules, Thread* stack_thread) {
 
   pid_fd_ = open(bluetooth_pid_file, O_WRONLY | O_CREAT, 0644);
   pid_t my_pid = getpid();
-  write(pid_fd_, &my_pid, sizeof(pid_t));
+  dprintf(pid_fd_, "%d\n", my_pid);
 
   LOG_INFO("init complete");
 }
@@ -64,11 +72,17 @@ void StackManager::handle_start_up(ModuleList* modules, Thread* stack_thread, st
 }
 
 void StackManager::ShutDown() {
+  WakelockManager::Get().Acquire();
+
   std::promise<void> promise;
   auto future = promise.get_future();
   handler_->Post(common::BindOnce(&StackManager::handle_shut_down, common::Unretained(this), std::move(promise)));
 
   auto stop_status = future.wait_for(std::chrono::seconds(5));
+
+  WakelockManager::Get().Release();
+  WakelockManager::Get().CleanUp();
+
   ASSERT_LOG(
       stop_status == std::future_status::ready,
       "Can't stop stack, last instance: %s",

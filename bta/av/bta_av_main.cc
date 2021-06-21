@@ -39,6 +39,7 @@
 #include "osi/include/osi.h"  // UNUSED_ATTR
 #include "osi/include/properties.h"
 #include "stack/include/acl_api.h"
+#include "types/hci_role.h"
 
 /*****************************************************************************
  * Constants and types
@@ -158,14 +159,6 @@ static void bta_av_api_enable(tBTA_AV_DATA* p_data) {
     bta_av_cb.rcb[i].handle = BTA_AV_RC_HANDLE_NONE;
 
   bta_av_cb.rc_acp_handle = BTA_AV_RC_HANDLE_NONE;
-
-  /*
-   * TODO: The "disable" event handling is missing - there we need
-   * to alarm_free() the alarms below.
-   */
-  bta_av_cb.link_signalling_timer = alarm_new("bta_av.link_signalling_timer");
-  bta_av_cb.accept_signalling_timer =
-      alarm_new("bta_av.accept_signalling_timer");
 
   /* store parameters */
   bta_av_cb.p_cback = p_data->api_enable.p_cback;
@@ -1211,7 +1204,7 @@ void bta_av_sm_execute(tBTA_AV_CB* p_cb, uint16_t event, tBTA_AV_DATA* p_data) {
  * Returns          bool
  *
  ******************************************************************************/
-bool bta_av_hdl_event(BT_HDR* p_msg) {
+bool bta_av_hdl_event(BT_HDR_RIGID* p_msg) {
   if (p_msg->event > BTA_AV_LAST_EVT) {
     return true; /* to free p_msg */
   }
@@ -1401,14 +1394,6 @@ void bta_debug_av_dump(int fd) {
 
   dprintf(fd, "\nBTA AV State:\n");
   dprintf(fd, "  State Machine State: %s\n", bta_av_st_code(bta_av_cb.state));
-  dprintf(fd, "  Link signalling timer: %s\n",
-          alarm_is_scheduled(bta_av_cb.link_signalling_timer)
-              ? "Scheduled"
-              : "Not scheduled");
-  dprintf(fd, "  Accept signalling timer: %s\n",
-          alarm_is_scheduled(bta_av_cb.accept_signalling_timer)
-              ? "Scheduled"
-              : "Not scheduled");
   dprintf(fd, "  SDP A2DP source handle: %d\n", bta_av_cb.sdp_a2dp_handle);
   dprintf(fd, "  SDP A2DP sink handle: %d\n", bta_av_cb.sdp_a2dp_snk_handle);
   dprintf(fd, "  Features: 0x%x\n", bta_av_cb.features);
@@ -1467,6 +1452,13 @@ void bta_debug_av_dump(int fd) {
             p_scb->open_api.use_rc ? "true" : "false");
     dprintf(fd, "      Switch result: %d\n", p_scb->open_api.switch_res);
     dprintf(fd, "      Initiator UUID: 0x%x\n", p_scb->open_api.uuid);
+    dprintf(fd, "  Link signalling timer: %s\n",
+            alarm_is_scheduled(p_scb->link_signalling_timer) ? "Scheduled"
+                                                             : "Not scheduled");
+    dprintf(fd, "  Accept signalling timer: %s\n",
+            alarm_is_scheduled(p_scb->accept_signalling_timer)
+                ? "Scheduled"
+                : "Not scheduled");
     // TODO: Print p_scb->sep_info[], cfg, avrc_ct_timer, current_codec ?
     dprintf(fd, "    L2CAP Channel ID: %d\n", p_scb->l2c_cid);
     dprintf(fd, "    Stream MTU: %d\n", p_scb->stream_mtu);

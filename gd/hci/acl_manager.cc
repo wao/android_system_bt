@@ -17,6 +17,7 @@
 #include "hci/acl_manager.h"
 
 #include <atomic>
+#include <future>
 #include <set>
 
 #include "common/bidi_queue.h"
@@ -131,6 +132,15 @@ void AclManager::RegisterCallbacks(ConnectionCallbacks* callbacks, os::Handler* 
                                       common::Unretained(handler)));
 }
 
+void AclManager::UnregisterCallbacks(ConnectionCallbacks* callbacks, std::promise<void> promise) {
+  ASSERT(callbacks != nullptr);
+  CallOn(
+      pimpl_->classic_impl_,
+      &classic_impl::handle_unregister_callbacks,
+      common::Unretained(callbacks),
+      std::move(promise));
+}
+
 void AclManager::RegisterLeCallbacks(LeConnectionCallbacks* callbacks, os::Handler* handler) {
   ASSERT(callbacks != nullptr && handler != nullptr);
   CallOn(
@@ -140,12 +150,17 @@ void AclManager::RegisterLeCallbacks(LeConnectionCallbacks* callbacks, os::Handl
       common::Unretained(handler));
 }
 
+void AclManager::UnregisterLeCallbacks(LeConnectionCallbacks* callbacks, std::promise<void> promise) {
+  ASSERT(callbacks != nullptr);
+  CallOn(pimpl_->le_impl_, &le_impl::handle_unregister_le_callbacks, common::Unretained(callbacks), std::move(promise));
+}
+
 void AclManager::CreateConnection(Address address) {
   CallOn(pimpl_->classic_impl_, &classic_impl::create_connection, address);
 }
 
-void AclManager::CreateLeConnection(AddressWithType address_with_type) {
-  CallOn(pimpl_->le_impl_, &le_impl::create_le_connection, address_with_type, true);
+void AclManager::CreateLeConnection(AddressWithType address_with_type, bool is_direct) {
+  CallOn(pimpl_->le_impl_, &le_impl::create_le_connection, address_with_type, true, is_direct);
 }
 
 void AclManager::SetLeSuggestedDefaultDataParameters(uint16_t octets, uint16_t time) {

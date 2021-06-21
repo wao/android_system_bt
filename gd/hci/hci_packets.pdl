@@ -226,6 +226,9 @@ enum OpCode : 16 {
   ENHANCED_FLUSH = 0x0C5F,
   SEND_KEYPRESS_NOTIFICATION = 0x0C60,
 
+  // Allow stacks to disable AMP events
+  SET_EVENT_MASK_PAGE_2 = 0x0C63,
+
   READ_LE_HOST_SUPPORT = 0x0C6C,
   WRITE_LE_HOST_SUPPORT = 0x0C6D,
 
@@ -515,6 +518,7 @@ enum OpCodeIndex : 16 {
   SEND_KEYPRESS_NOTIFICATION = 202,
   IO_CAPABILITY_REQUEST_NEGATIVE_REPLY = 203,
   READ_ENCRYPTION_KEY_SIZE = 204,
+  SET_EVENT_MASK_PAGE_2 = 222,
   READ_DATA_BLOCK_SIZE = 232,
   READ_LE_HOST_SUPPORT = 245,
   WRITE_LE_HOST_SUPPORT = 246,
@@ -779,6 +783,7 @@ enum FeatureFlag : 1 {
 }
 
 enum ErrorCode: 8 {
+  STATUS_UNKNOWN = 0xFF,
   SUCCESS = 0x00,
   UNKNOWN_HCI_COMMAND = 0x01,
   UNKNOWN_CONNECTION = 0x02,
@@ -2309,10 +2314,6 @@ packet WriteExtendedInquiryResponse : Command (op_code = WRITE_EXTENDED_INQUIRY_
   _padding_[240], // Zero padding GapData[] to be 240 octets
 }
 
-test WriteExtendedInquiryResponse {
-  "\x52\x0c\xf1\x01\x0b\x09\x50\x69\x78\x65\x6c\x20\x33\x20\x58\x4c\x19\x03\x05\x11\x0a\x11\x0c\x11\x0e\x11\x12\x11\x15\x11\x16\x11\x1f\x11\x2d\x11\x2f\x11\x00\x12\x32\x11\x01\x05\x81\x07\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
-}
-
 packet WriteExtendedInquiryResponseComplete : CommandComplete (command_op_code = WRITE_EXTENDED_INQUIRY_RESPONSE) {
   status : ErrorCode,
 }
@@ -2498,6 +2499,7 @@ enum HciVersion : 8 {
   V_4_2 = 0x08,
   V_5_0 = 0x09,
   V_5_1 = 0x0a,
+  V_5_2 = 0x0b,
 }
 
 enum LmpVersion : 8 {
@@ -2512,6 +2514,7 @@ enum LmpVersion : 8 {
   V_4_2 = 0x08,
   V_5_0 = 0x09,
   V_5_1 = 0x0a,
+  V_5_2 = 0x0b,
 }
 
 struct LocalVersionInformation {
@@ -3532,6 +3535,11 @@ packet LeSetExtendedAdvertisingLegacyParameters : LeAdvertisingCommand (op_code 
   scan_request_notification_enable : Enable,
 }
 
+test LeSetExtendedAdvertisingLegacyParameters {
+  "\x36\x20\x19\x00\x13\x00\x90\x01\x00\xc2\x01\x00\x07\x01\x00\x00\x00\x00\x00\x00\x00\x00\xf9\x01\x00\x01\x01\x00",
+  "\x36\x20\x19\x01\x13\x00\x90\x01\x00\xc2\x01\x00\x07\x01\x00\x00\x00\x00\x00\x00\x00\x00\xf9\x01\x00\x01\x01\x00",
+}
+
 packet LeSetExtendedAdvertisingParameters : LeAdvertisingCommand (op_code = LE_SET_EXTENDED_ADVERTISING_PARAMETERS) {
   advertising_handle : 8,
   advertising_event_legacy_properties : 4,
@@ -3553,11 +3561,6 @@ packet LeSetExtendedAdvertisingParameters : LeAdvertisingCommand (op_code = LE_S
   secondary_advertising_phy : SecondaryPhyType,
   advertising_sid : 8, // SID subfield from the ADI field of the PDU
   scan_request_notification_enable : Enable,
-}
-
-test LeSetExtendedAdvertisingParameters {
-  "\x36\x20\x19\x00\x13\x00\x90\x01\x00\xc2\x01\x00\x07\x01\x00\x00\x00\x00\x00\x00\x00\x00\xf9\x01\x00\x01\x01\x00",
-  "\x36\x20\x19\x01\x13\x00\x90\x01\x00\xc2\x01\x00\x07\x01\x00\x00\x00\x00\x00\x00\x00\x00\xf9\x01\x00\x01\x01\x00",
 }
 
 packet LeSetExtendedAdvertisingParametersComplete : CommandComplete (command_op_code = LE_SET_EXTENDED_ADVERTISING_PARAMETERS) {
@@ -4266,8 +4269,12 @@ packet LeRemoveIsoDataPathComplete : CommandComplete (command_op_code = LE_REMOV
   _reserved_ : 4,
 }
 
+enum LeHostFeatureBits : 8 {
+  CONNECTED_ISO_STREAM_HOST_SUPPORT = 32,
+}
+
 packet LeSetHostFeature : Command (op_code = LE_SET_HOST_FEATURE) {
-  bit_number : 8,
+  bit_number : LeHostFeatureBits,
   bit_value:  Enable,
 }
 
@@ -4503,7 +4510,8 @@ enum BatchScanOpcode : 8 {
   READ_RESULT_PARAMETERS = 0x04,
 }
 
-packet LeBatchScan : VendorCommand (op_code = LE_BATCH_SCAN) {
+// https://source.android.com/devices/bluetooth/hci_requirements#batching-of-scan-results
+packet LeBatchScan : LeScanningCommand (op_code = LE_BATCH_SCAN) {
   batch_scan_opcode : BatchScanOpcode,
   _body_,
 }
@@ -4548,8 +4556,24 @@ packet LeBatchScanSetScanParameters : LeBatchScan (batch_scan_opcode = SET_SCAN_
 packet LeBatchScanSetScanParametersComplete : LeBatchScanComplete (batch_scan_opcode = SET_SCAN_PARAMETERS) {
 }
 
-packet LeBatchScanReadTruncatedResultParameters : LeBatchScan (batch_scan_opcode = READ_RESULT_PARAMETERS) {
-  _fixed_ = 0x01 : 8,
+enum BatchScanDataRead : 8 {
+  TRUNCATED_MODE_DATA = 0x01,
+  FULL_MODE_DATA = 0x02,
+}
+
+packet LeBatchScanReadResultParameters : LeBatchScan (batch_scan_opcode = READ_RESULT_PARAMETERS) {
+  batch_scan_data_read : BatchScanDataRead,
+}
+
+packet LeBatchScanReadResultParametersCompleteRaw : LeBatchScanComplete (batch_scan_opcode = READ_RESULT_PARAMETERS) {
+  batch_scan_data_read : BatchScanDataRead,
+  num_of_records : 8,
+  raw_data : 8[],
+}
+
+packet LeBatchScanReadResultParametersComplete : LeBatchScanComplete (batch_scan_opcode = READ_RESULT_PARAMETERS) {
+  batch_scan_data_read : BatchScanDataRead,
+  _body_,
 }
 
 struct TruncatedResult {
@@ -4560,12 +4584,7 @@ struct TruncatedResult {
   timestamp : 16,
 }
 
-packet LeBatchScanReadTruncatedResultParametersComplete : LeBatchScanComplete (batch_scan_opcode = READ_RESULT_PARAMETERS) {
-  _fixed_ = 0x01 : 8,
-}
-
-packet LeBatchScanReadFullResultParameters : LeBatchScan (batch_scan_opcode = READ_RESULT_PARAMETERS) {
-  _fixed_ = 0x02 : 8,
+packet LeBatchScanReadTruncatedResultParametersComplete : LeBatchScanReadResultParametersComplete (batch_scan_data_read = TRUNCATED_MODE_DATA) {
   _count_(results) : 8,
   results : TruncatedResult[],
 }
@@ -4582,8 +4601,7 @@ struct FullResult {
   scan_response : 8[],
 }
 
-packet LeBatchScanReadFullResultParametersComplete : LeBatchScanComplete (batch_scan_opcode = READ_RESULT_PARAMETERS) {
-  _fixed_ = 0x02 : 8,
+packet LeBatchScanReadFullResultParametersComplete : LeBatchScanReadResultParametersComplete (batch_scan_data_read = FULL_MODE_DATA) {
   _count_(results) : 8,
   results : FullResult[],
 }
@@ -4776,11 +4794,10 @@ packet LeExtendedScanParamsComplete : CommandComplete (command_op_code = LE_EXTE
 }
 
 packet ControllerDebugInfo : VendorCommand (op_code = CONTROLLER_DEBUG_INFO) {
-  _payload_,  // placeholder (unimplemented)
 }
 
 packet ControllerDebugInfoComplete : CommandComplete (command_op_code = CONTROLLER_DEBUG_INFO) {
-  _payload_,  // placeholder (unimplemented)
+  status : ErrorCode,
 }
 
 packet ControllerA2DPOpcode : VendorCommand (op_code = CONTROLLER_A2DP_OPCODE) {
@@ -4852,6 +4869,7 @@ packet ConnectionComplete : Event (event_code = CONNECTION_COMPLETE) {
 }
 
 enum ConnectionRequestLinkType : 8 {
+  UNKNOWN = 0xFF,
   SCO = 0x00,
   ACL = 0x01,
   ESCO = 0x02,
@@ -5612,6 +5630,33 @@ packet LeBigInfoAdvertisingReport : LeMetaEvent (subevent_code = BIG_INFO_ADVERT
 packet VendorSpecificEvent : Event (event_code = VENDOR_SPECIFIC) {
   subevent_code : VseSubeventCode,
   _payload_,
+}
+
+packet StorageThresholdBreachEvent : VendorSpecificEvent (subevent_code = BLE_THRESHOLD) {
+}
+
+enum AdvtInfoPresent : 8 {
+  ADVT_INFO_PRESENT = 0x00,
+  NO_ADVT_INFO_PRESENT = 0x01,
+}
+
+packet LEAdvertisementTrackingEvent : VendorSpecificEvent (subevent_code = BLE_TRACKING) {
+  apcf_filter_index : 8,
+  advertiser_state : 8,
+  advt_info_present : AdvtInfoPresent,
+  advertiser_address : Address,
+  advertiser_address_type : 8,
+  _body_,
+}
+
+packet LEAdvertisementTrackingWithInfoEvent : LEAdvertisementTrackingEvent {
+  tx_power : 8,
+  rssi : 8,
+  timestamp : 16,
+  _size_(adv_packet) : 8,
+  adv_packet : 8[],
+  _size_(scan_response) : 8,
+  scan_response : 8[],
 }
 
 enum QualityReportId : 8 {

@@ -32,6 +32,7 @@
 #include "device/include/controller.h"
 #include "gd/common/init_flags.h"
 #include "types/bt_transport.h"
+#include "types/hci_role.h"
 #include "types/raw_address.h"
 
 static uint8_t ble_acceptlist_size() {
@@ -321,7 +322,7 @@ tBTA_GATTC_SERV* bta_gattc_srcb_alloc(const RawAddress& bda) {
  * Returns          success or failure.
  *
  ******************************************************************************/
-bool bta_gattc_enqueue(tBTA_GATTC_CLCB* p_clcb, tBTA_GATTC_DATA* p_data) {
+bool bta_gattc_enqueue(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
   if (p_clcb->p_q_cmd == NULL) {
     p_clcb->p_q_cmd = p_data;
     return true;
@@ -525,7 +526,7 @@ tBTA_GATTC_CONN* bta_gattc_conn_alloc(const RawAddress& remote_bda) {
   uint8_t i_conn = 0;
   tBTA_GATTC_CONN* p_conn = &bta_gattc_cb.conn_track[0];
 
-  for (i_conn = 0; i_conn < BTA_GATTC_CONN_MAX; i_conn++, p_conn++) {
+  for (i_conn = 0; i_conn < GATT_MAX_PHY_CHANNEL; i_conn++, p_conn++) {
     if (!p_conn->in_use) {
 #if (BTA_GATT_DEBUG == TRUE)
       VLOG(1) << __func__ << ": found conn_track:" << +i_conn << " available";
@@ -551,7 +552,7 @@ tBTA_GATTC_CONN* bta_gattc_conn_find(const RawAddress& remote_bda) {
   uint8_t i_conn = 0;
   tBTA_GATTC_CONN* p_conn = &bta_gattc_cb.conn_track[0];
 
-  for (i_conn = 0; i_conn < BTA_GATTC_CONN_MAX; i_conn++, p_conn++) {
+  for (i_conn = 0; i_conn < GATT_MAX_PHY_CHANNEL; i_conn++, p_conn++) {
     if (p_conn->in_use && remote_bda == p_conn->remote_bda) {
 #if (BTA_GATT_DEBUG == TRUE)
       VLOG(1) << __func__ << ": found conn_track:" << +i_conn << " matched";

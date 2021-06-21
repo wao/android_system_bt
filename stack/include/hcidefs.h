@@ -674,56 +674,29 @@ constexpr uint8_t HCI_LE_STATES_INIT_CENTRAL_PERIPHERAL_BIT = 41;
 /*
  * Definitions for packet type masks (BT1.2 and BT2.0 definitions)
 */
-#define HCI_PKT_TYPES_MASK_NO_2_DH1 0x0002
-#define HCI_PKT_TYPES_MASK_NO_3_DH1 0x0004
-#define HCI_PKT_TYPES_MASK_DM1 0x0008
-#define HCI_PKT_TYPES_MASK_DH1 0x0010
-#define HCI_PKT_TYPES_MASK_HV1 0x0020
-#define HCI_PKT_TYPES_MASK_HV2 0x0040
-#define HCI_PKT_TYPES_MASK_HV3 0x0080
-#define HCI_PKT_TYPES_MASK_NO_2_DH3 0x0100
-#define HCI_PKT_TYPES_MASK_NO_3_DH3 0x0200
-#define HCI_PKT_TYPES_MASK_DM3 0x0400
-#define HCI_PKT_TYPES_MASK_DH3 0x0800
-#define HCI_PKT_TYPES_MASK_NO_2_DH5 0x1000
-#define HCI_PKT_TYPES_MASK_NO_3_DH5 0x2000
-#define HCI_PKT_TYPES_MASK_DM5 0x4000
-#define HCI_PKT_TYPES_MASK_DH5 0x8000
+typedef enum : uint16_t {
+  HCI_PKT_TYPES_MASK_NO_2_DH1 = 0x0002,
+  HCI_PKT_TYPES_MASK_NO_3_DH1 = 0x0004,
+  HCI_PKT_TYPES_MASK_DM1 = 0x0008,
+  HCI_PKT_TYPES_MASK_DH1 = 0x0010,
+  HCI_PKT_TYPES_MASK_HV1 = 0x0020,
+  HCI_PKT_TYPES_MASK_HV2 = 0x0040,
+  HCI_PKT_TYPES_MASK_HV3 = 0x0080,
+  HCI_PKT_TYPES_MASK_NO_2_DH3 = 0x0100,
+  HCI_PKT_TYPES_MASK_NO_3_DH3 = 0x0200,
+  HCI_PKT_TYPES_MASK_DM3 = 0x0400,
+  HCI_PKT_TYPES_MASK_DH3 = 0x0800,
+  HCI_PKT_TYPES_MASK_NO_2_DH5 = 0x1000,
+  HCI_PKT_TYPES_MASK_NO_3_DH5 = 0x2000,
+  HCI_PKT_TYPES_MASK_DM5 = 0x4000,
+  HCI_PKT_TYPES_MASK_DH5 = 0x8000,
+} tHCI_PKT_TYPE_BITMASK;
 
 /*
  * Define parameters to allow role switch during create connection
 */
 #define HCI_CR_CONN_NOT_ALLOW_SWITCH 0x00
 #define HCI_CR_CONN_ALLOW_SWITCH 0x01
-
-/* HCI role defenitions */
-enum : uint8_t {
-  HCI_ROLE_CENTRAL = 0x00,
-  HCI_ROLE_PERIPHERAL = 0x01,
-  HCI_ROLE_UNKNOWN = 0xff,
-};
-typedef uint8_t hci_role_t;
-typedef hci_role_t tHCI_ROLE;
-inline std::string RoleText(hci_role_t role) {
-  switch (role) {
-    case HCI_ROLE_CENTRAL:
-      return std::string("central");
-    case HCI_ROLE_PERIPHERAL:
-      return std::string("peripheral");
-    default:
-      return std::string("unknown");
-  }
-}
-const auto hci_role_text = RoleText;
-
-inline tHCI_ROLE to_hci_role(const uint8_t& role) {
-  if (role == 0)
-    return HCI_ROLE_CENTRAL;
-  else if (role == 1)
-    return HCI_ROLE_PERIPHERAL;
-  else
-    return HCI_ROLE_UNKNOWN;
-}
 
 /* HCI mode defenitions */
 typedef enum : uint8_t {
@@ -887,7 +860,40 @@ typedef enum : uint8_t {
 */
 #define HCIE_PREAMBLE_SIZE 2
 #define HCI_SCO_PREAMBLE_SIZE 3
-#define HCI_DATA_PREAMBLE_SIZE 4
+
+// Packet boundary flags
+constexpr uint8_t kFIRST_NON_AUTOMATICALLY_FLUSHABLE = 0x0;
+constexpr uint8_t kCONTINUING_FRAGMENT = 0x1;
+constexpr uint8_t kHCI_FIRST_AUTOMATICALLY_FLUSHABLE = 0x2;
+
+struct HciDataPreambleBits {
+  uint16_t handle : 12;
+  uint16_t boundary : 2;
+  uint16_t broadcast : 1;
+  uint16_t unused15 : 1;
+  uint16_t length;
+};
+struct HciDataPreambleRaw {
+  uint16_t word0;
+  uint16_t word1;
+};
+union HciDataPreamble {
+  HciDataPreambleBits bits;
+  HciDataPreambleRaw raw;
+  void Serialize(uint8_t* data) {
+    *data++ = ((raw.word0) & 0xff);
+    *data++ = (((raw.word0) >> 8) & 0xff);
+    *data++ = ((raw.word1) & 0xff);
+    *data++ = (((raw.word1 >> 8)) & 0xff);
+  }
+  bool IsFlushable() const {
+    return bits.boundary == kHCI_FIRST_AUTOMATICALLY_FLUSHABLE;
+  }
+  void SetFlushable() { bits.boundary = kHCI_FIRST_AUTOMATICALLY_FLUSHABLE; }
+};
+#define HCI_DATA_PREAMBLE_SIZE sizeof(HciDataPreamble)
+static_assert(HCI_DATA_PREAMBLE_SIZE == 4);
+static_assert(sizeof(HciDataPreambleRaw) == sizeof(HciDataPreambleBits));
 
 /* local Bluetooth controller id for AMP HCI */
 #define LOCAL_BR_EDR_CONTROLLER_ID 0

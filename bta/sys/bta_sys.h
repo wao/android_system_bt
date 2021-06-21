@@ -31,7 +31,7 @@
 
 #include "osi/include/alarm.h"
 #include "stack/include/hci_error_code.h"
-#include "stack/include/hcidefs.h"
+#include "types/hci_role.h"
 
 /*****************************************************************************
  *  Constants and data types
@@ -41,7 +41,10 @@
 typedef bool(tBTA_SYS_VS_EVT_HDLR)(uint16_t evt, void* p);
 
 /* event handler function type */
-typedef bool(tBTA_SYS_EVT_HDLR)(BT_HDR* p_msg);
+typedef bool(tBTA_SYS_EVT_HDLR)(BT_HDR_RIGID* p_msg);
+static_assert(
+    sizeof(BT_HDR) == sizeof(BT_HDR_RIGID),
+    "Rigid replacement should be same size struct with flexible member");
 
 /* disable function type */
 typedef void(tBTA_SYS_DISABLE)(void);
@@ -97,19 +100,21 @@ typedef uint8_t tBTA_SYS_ID;
 
 inline std::string BtaIdSysText(tBTA_SYS_ID sys_id) {
   switch (sys_id) {
-    case BTA_ID_DM_SEARCH:
+    case BTA_ID_DM_SEARCH:  // 2
       return std::string("Scanner");
-    case BTA_ID_AG:
+    case BTA_ID_AG:  // 5
       return std::string("Audio gateway");
-    case BTA_ID_PAN:
+    case BTA_ID_PAN:  // 14
       return std::string("PAN Personal area network");
-    case BTA_ID_AV:
+    case BTA_ID_AV:  // 18
       return std::string("Advanced audio/video");
-    case BTA_ID_HD:
+    case BTA_ID_HD:  // 20
       return std::string("HID Human interface device");
-    case BTA_ID_GATTC:
+    case BTA_ID_HH:  // 23
+      return std::string("HID Human interface host");
+    case BTA_ID_GATTC:  // 31
       return std::string("GATT client");
-    case BTA_ID_GATTS:
+    case BTA_ID_GATTS:  // 32
       return std::string("GATT server");
     default:
       return std::string("Unknown");

@@ -39,6 +39,7 @@
 #include "btif_a2dp_source.h"
 #include "btif_av.h"
 #include "btif_av_co.h"
+#include "btif_metrics_logging.h"
 #include "btif_util.h"
 #include "common/message_loop_thread.h"
 #include "common/metrics.h"
@@ -827,15 +828,14 @@ static void btif_a2dp_source_audio_tx_stop_event(void) {
                                     &btif_a2dp_source_cb.accumulated_stats);
 
   uint8_t p_buf[AUDIO_STREAM_OUTPUT_BUFFER_SZ * 2];
-  uint16_t event;
 
   // Keep track of audio data still left in the pipe
   if (bluetooth::audio::a2dp::is_hal_2_0_enabled()) {
     btif_a2dp_control_log_bytes_read(
         bluetooth::audio::a2dp::read(p_buf, sizeof(p_buf)));
   } else if (a2dp_uipc != nullptr) {
-    btif_a2dp_control_log_bytes_read(UIPC_Read(*a2dp_uipc, UIPC_CH_ID_AV_AUDIO,
-                                               &event, p_buf, sizeof(p_buf)));
+    btif_a2dp_control_log_bytes_read(
+        UIPC_Read(*a2dp_uipc, UIPC_CH_ID_AV_AUDIO, p_buf, sizeof(p_buf)));
   }
 
   /* Stop the timer first */
@@ -900,13 +900,12 @@ static void btif_a2dp_source_audio_handle_timer(void) {
 }
 
 static uint32_t btif_a2dp_source_read_callback(uint8_t* p_buf, uint32_t len) {
-  uint16_t event;
   uint32_t bytes_read = 0;
 
   if (bluetooth::audio::a2dp::is_hal_2_0_enabled()) {
     bytes_read = bluetooth::audio::a2dp::read(p_buf, len);
   } else if (a2dp_uipc != nullptr) {
-    bytes_read = UIPC_Read(*a2dp_uipc, UIPC_CH_ID_AV_AUDIO, &event, p_buf, len);
+    bytes_read = UIPC_Read(*a2dp_uipc, UIPC_CH_ID_AV_AUDIO, p_buf, len);
   }
 
   if (bytes_read < len) {
@@ -917,9 +916,9 @@ static uint32_t btif_a2dp_source_read_callback(uint8_t* p_buf, uint32_t len) {
     btif_a2dp_source_cb.stats.media_read_total_underflow_count++;
     btif_a2dp_source_cb.stats.media_read_last_underflow_us =
         bluetooth::common::time_get_os_boottime_us();
-    bluetooth::common::LogA2dpAudioUnderrunEvent(
-        btif_av_source_active_peer(), btif_a2dp_source_cb.encoder_interval_ms,
-        len - bytes_read);
+    log_a2dp_audio_underrun_event(btif_av_source_active_peer(),
+                                  btif_a2dp_source_cb.encoder_interval_ms,
+                                  len - bytes_read);
   }
 
   return bytes_read;
@@ -977,10 +976,10 @@ static bool btif_a2dp_source_enqueue_callback(BT_HDR* p_buf, size_t frames_n,
         osi_free(p_data);
       }
     }
-    bluetooth::common::LogA2dpAudioOverrunEvent(
-        btif_av_source_active_peer(), drop_n,
-        btif_a2dp_source_cb.encoder_interval_ms, num_dropped_encoded_frames,
-        num_dropped_encoded_bytes);
+    log_a2dp_audio_overrun_event(btif_av_source_active_peer(), drop_n,
+                                 btif_a2dp_source_cb.encoder_interval_ms,
+                                 num_dropped_encoded_frames,
+                                 num_dropped_encoded_bytes);
 
     // Request additional debug info if we had to flush buffers
     RawAddress peer_bda = btif_av_source_active_peer();
@@ -1333,9 +1332,10 @@ static void btm_read_rssi_cb(void* data) {
               result->status);
     return;
   }
-  bluetooth::common::LogReadRssiResult(
-      result->rem_bda, bluetooth::common::kUnknownConnectionHandle,
-      result->hci_status, result->rssi);
+
+  log_read_rssi_result(result->rem_bda,
+                       bluetooth::common::kUnknownConnectionHandle,
+                       result->hci_status, result->rssi);
 
   LOG_WARN("%s: device: %s, rssi: %d", __func__,
            result->rem_bda.ToString().c_str(), result->rssi);
@@ -1354,7 +1354,7 @@ static void btm_read_failed_contact_counter_cb(void* data) {
               result->status);
     return;
   }
-  bluetooth::common::LogReadFailedContactCounterResult(
+  log_read_failed_contact_counter_result(
       result->rem_bda, bluetooth::common::kUnknownConnectionHandle,
       result->hci_status, result->failed_contact_counter);
 
@@ -1374,9 +1374,9 @@ static void btm_read_tx_power_cb(void* data) {
               result->status);
     return;
   }
-  bluetooth::common::LogReadTxPowerLevelResult(
-      result->rem_bda, bluetooth::common::kUnknownConnectionHandle,
-      result->hci_status, result->tx_power);
+  log_read_tx_power_level_result(result->rem_bda,
+                                 bluetooth::common::kUnknownConnectionHandle,
+                                 result->hci_status, result->tx_power);
 
   LOG_WARN("%s: device: %s, Tx Power: %d", __func__,
            result->rem_bda.ToString().c_str(), result->tx_power);

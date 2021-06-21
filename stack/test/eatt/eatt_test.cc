@@ -20,7 +20,7 @@
 
 #include <vector>
 
-#include "base/bind_helpers.h"
+#include "bind_helpers.h"
 #include "btm_api.h"
 #include "l2c_api.h"
 #include "mock_btif_storage.h"
@@ -43,6 +43,8 @@ using testing::StrictMock;
 using bluetooth::eatt::EattChannel;
 using bluetooth::eatt::EattChannelState;
 
+#define BLE_GATT_SVR_SUP_FEAT_EATT_BITMASK 0x01
+
 /* Needed for testing context */
 static tGATT_TCB test_tcb;
 void btif_storage_add_eatt_supported(const RawAddress& addr) { return; }
@@ -59,13 +61,15 @@ const RawAddress test_address({0x11, 0x11, 0x11, 0x11, 0x11, 0x11});
 class EattTest : public testing::Test {
  protected:
   void ConnectDeviceEattSupported(int num_of_accepted_connections) {
-    ON_CALL(gatt_interface_, GetEattSupport)
+    ON_CALL(gatt_interface_, ClientReadSupportedFeatures)
         .WillByDefault(
             [](const RawAddress& addr,
-               base::OnceCallback<void(const RawAddress&, bool)> cb) {
-              std::move(cb).Run(addr, true);
+               base::OnceCallback<void(const RawAddress&, uint8_t)> cb) {
+              std::move(cb).Run(addr, BLE_GATT_SVR_SUP_FEAT_EATT_BITMASK);
               return true;
             });
+    ON_CALL(gatt_interface_, GetEattSupport)
+        .WillByDefault([](const RawAddress& addr) { return true; });
 
     std::vector<uint16_t> test_local_cids{61, 62, 63, 64, 65};
     EXPECT_CALL(l2cap_interface_,
@@ -100,13 +104,16 @@ class EattTest : public testing::Test {
     ASSERT_TRUE(test_tcb.eatt == num_of_accepted_connections);
   }
 
+  void DisconnectEattByPeer(void) {
+    for (uint16_t cid : connected_cids_)
+      l2cap_app_info_.pL2CA_DisconnectInd_Cb(cid, true);
+    ASSERT_TRUE(test_tcb.eatt == 0);
+  }
+
   void DisconnectEattDevice(void) {
     EXPECT_CALL(l2cap_interface_, DisconnectRequest(_))
         .Times(connected_cids_.size());
     eatt_instance_->Disconnect(test_address);
-
-    for (uint16_t cid : connected_cids_)
-      l2cap_app_info_.pL2CA_DisconnectInd_Cb(cid, true);
 
     ASSERT_TRUE(test_tcb.eatt == 0);
   }
@@ -179,12 +186,15 @@ TEST_F(EattTest, ConnectSucceedMultipleChannels) {
 }
 
 TEST_F(EattTest, ConnectFailedEattNotSupported) {
+  ON_CALL(gatt_interface_, ClientReadSupportedFeatures)
+      .WillByDefault(
+          [](const RawAddress& addr,
+             base::OnceCallback<void(const RawAddress&, uint8_t)> cb) {
+            std::move(cb).Run(addr, 0);
+            return true;
+          });
   ON_CALL(gatt_interface_, GetEattSupport)
-      .WillByDefault([](const RawAddress& addr,
-                        base::OnceCallback<void(const RawAddress&, bool)> cb) {
-        std::move(cb).Run(addr, false);
-        return true;
-      });
+      .WillByDefault([](const RawAddress& addr) { return false; });
 
   EXPECT_CALL(l2cap_interface_,
               ConnectCreditBasedReq(BT_PSM_EATT, test_address, _))
@@ -206,14 +216,14 @@ TEST_F(EattTest, ConnectFailedSlaveOnTheLink) {
 }
 
 TEST_F(EattTest, DisonnectByPeerSucceed) {
-  ConnectDeviceEattSupported(1);
+  ConnectDeviceEattSupported(2);
 
   uint16_t cid = connected_cids_[0];
   EattChannel* channel =
       eatt_instance_->FindEattChannelByCid(test_address, cid);
   ASSERT_TRUE(channel->state_ == EattChannelState::EATT_CHANNEL_OPENED);
 
-  l2cap_app_info_.pL2CA_DisconnectInd_Cb(cid, true);
+  DisconnectEattByPeer();
 
   channel = eatt_instance_->FindEattChannelByCid(test_address, cid);
   ASSERT_TRUE(channel == nullptr);
@@ -366,5 +376,13 @@ TEST_F(EattTest, ReconfigPeerFailed) {
   }
 
   DisconnectEattDevice();
+}
+
+TEST_F(EattTest, DoubleDisconnect) {
+  ConnectDeviceEattSupported(1);
+  DisconnectEattDevice();
+
+  /* Force second disconnect */
+  eatt_instance_->Disconnect(test_address);
 }
 }  // namespace

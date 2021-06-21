@@ -22,9 +22,10 @@
 #include "stack/include/hcidefs.h"
 
 #include <base/bind.h>
-#include <base/bind_helpers.h>
 #include <base/callback.h>
 #include <base/logging.h>
+
+#include "bind_helpers.h"
 
 using std::lock_guard;
 using std::mutex;
@@ -118,7 +119,6 @@ void GetAdvertiseParams(const AdvertiseSettings& settings, bool has_scan_rsp,
 }  // namespace
 
 // LowEnergyAdvertiser implementation
-// ========================================================
 
 LowEnergyAdvertiser::LowEnergyAdvertiser(const Uuid& uuid, int advertiser_id)
     : app_identifier_(uuid),
@@ -286,7 +286,6 @@ void LowEnergyAdvertiser::InvokeAndClearStopCallback(BLEStatus status) {
 }
 
 // LowEnergyAdvertiserFactory implementation
-// ========================================================
 
 LowEnergyAdvertiserFactory::LowEnergyAdvertiserFactory() {}
 

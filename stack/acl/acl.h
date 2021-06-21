@@ -27,6 +27,7 @@
 #include "stack/include/hcidefs.h"
 #include "stack/include/hcimsgs.h"
 #include "types/bt_transport.h"
+#include "types/hci_role.h"
 #include "types/raw_address.h"
 
 enum btm_acl_encrypt_state_t {
@@ -230,12 +231,7 @@ struct tACL_CONN {
   tHCI_ROLE link_role;
   uint8_t switch_role_failed_attempts;
 
-  struct {
-    uint8_t lmp_version{0};
-    uint16_t lmp_subversion{0};
-    uint16_t manufacturer{0};
-    bool valid{false};
-  } remote_version_info;
+  tREMOTE_VERSION_INFO remote_version_info;
 
 #define BTM_SEC_RS_NOT_PENDING 0 /* Role Switch not in progress */
 #define BTM_SEC_RS_PENDING 1     /* Role Switch in progress */
@@ -374,6 +370,10 @@ struct controller_t;
 /****************************************************
  **      ACL Management API
  ****************************************************/
+constexpr uint16_t kDefaultPacketTypeMask =
+    HCI_PKT_TYPES_MASK_DH1 | HCI_PKT_TYPES_MASK_DM1 | HCI_PKT_TYPES_MASK_DH3 |
+    HCI_PKT_TYPES_MASK_DM3 | HCI_PKT_TYPES_MASK_DH5 | HCI_PKT_TYPES_MASK_DM5;
+
 struct tACL_CB {
  private:
   friend uint8_t btm_handle_to_acl_index(uint16_t hci_handle);
@@ -387,13 +387,15 @@ struct tACL_CB {
 
   tACL_CONN acl_db[MAX_L2CAP_LINKS];
   tBTM_ROLE_SWITCH_CMPL switch_role_ref_data;
-  uint16_t btm_acl_pkt_types_supported =
-      HCI_PKT_TYPES_MASK_DH1 + HCI_PKT_TYPES_MASK_DM1 + HCI_PKT_TYPES_MASK_DH3 +
-      HCI_PKT_TYPES_MASK_DM3 + HCI_PKT_TYPES_MASK_DH5 + HCI_PKT_TYPES_MASK_DM5;
+  uint16_t btm_acl_pkt_types_supported = kDefaultPacketTypeMask;
   uint16_t btm_def_link_policy;
   tHCI_STATUS acl_disc_reason = HCI_ERR_UNDEFINED;
 
  public:
+  void SetDefaultPacketTypeMask(uint16_t packet_type_mask) {
+    btm_acl_pkt_types_supported = packet_type_mask;
+  }
+
   tHCI_STATUS get_disconnect_reason() const { return acl_disc_reason; }
   void set_disconnect_reason(tHCI_STATUS reason) { acl_disc_reason = reason; }
   uint16_t DefaultPacketTypes() const { return btm_acl_pkt_types_supported; }
@@ -410,12 +412,4 @@ struct tACL_CB {
     }
     return cnt;
   }
-
- private:
-  std::unordered_set<RawAddress> ignore_auto_connect_after_disconnect_set_;
-
- public:
-  void AddToIgnoreAutoConnectAfterDisconnect(const RawAddress& bd_addr);
-  bool CheckAndClearIgnoreAutoConnectAfterDisconnect(const RawAddress& bd_addr);
-  void ClearAllIgnoreAutoConnectAfterDisconnect();
 };

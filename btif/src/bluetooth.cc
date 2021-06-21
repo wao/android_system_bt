@@ -40,6 +40,7 @@
 #include <hardware/bt_rc.h>
 #include <hardware/bt_sdp.h>
 #include <hardware/bt_sock.h>
+#include <hardware/bt_vc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,6 +50,7 @@
 #include "bta/include/bta_hearing_aid_api.h"
 #include "bta/include/bta_hf_client_api.h"
 #include "btif/avrcp/avrcp_service.h"
+#include "btif/include/stack_manager.h"
 #include "btif_a2dp.h"
 #include "btif_activity_attribution.h"
 #include "btif_api.h"
@@ -60,6 +62,7 @@
 #include "btif_debug_conn.h"
 #include "btif_hf.h"
 #include "btif_keystore.h"
+#include "btif_metrics_logging.h"
 #include "btif_storage.h"
 #include "btsnoop.h"
 #include "btsnoop_mem.h"
@@ -79,10 +82,10 @@
 #include "stack/gatt/connection_manager.h"
 #include "stack/include/avdt_api.h"
 #include "stack/include/btu.h"
-#include "stack_manager.h"
 
 using bluetooth::hearing_aid::HearingAidInterface;
 using bluetooth::le_audio::LeAudioClientInterface;
+using bluetooth::vc::VolumeControlInterface;
 
 /*******************************************************************************
  *  Static variables
@@ -126,12 +129,15 @@ extern const btsdp_interface_t* btif_sdp_get_interface();
 extern HearingAidInterface* btif_hearing_aid_get_interface();
 /* LeAudio testi client */
 extern LeAudioClientInterface* btif_le_audio_get_interface();
+/* Volume Control client */
+extern VolumeControlInterface* btif_volume_control_get_interface();
 
 /*******************************************************************************
  *  Functions
  ******************************************************************************/
 
 static bool interface_ready(void) { return bt_hal_cbacks != NULL; }
+void set_hal_cbacks(bt_callbacks_t* callbacks) { bt_hal_cbacks = callbacks; }
 
 static bool is_profile(const char* p1, const char* p2) {
   CHECK(p1);
@@ -162,7 +168,8 @@ static int init(bt_callbacks_t* callbacks, bool start_restricted,
   allocation_tracker_init();
 #endif
 
-  bt_hal_cbacks = callbacks;
+  set_hal_cbacks(callbacks);
+
   restricted_mode = start_restricted;
   common_criteria_mode = is_common_criteria_mode;
   common_criteria_config_compare_result = config_compare_result;
@@ -307,13 +314,23 @@ static int create_bond(const RawAddress* bd_addr, int transport) {
 }
 
 static int create_bond_out_of_band(const RawAddress* bd_addr, int transport,
-                                   const bt_out_of_band_data_t* oob_data) {
+                                   const bt_oob_data_t* p192_data,
+                                   const bt_oob_data_t* p256_data) {
   if (!interface_ready()) return BT_STATUS_NOT_READY;
   if (btif_dm_pairing_is_busy()) return BT_STATUS_BUSY;
 
-  do_in_main_thread(FROM_HERE, base::BindOnce(btif_dm_create_bond_out_of_band,
-                                              *bd_addr, transport, *oob_data));
+  do_in_main_thread(FROM_HERE,
+                    base::BindOnce(btif_dm_create_bond_out_of_band, *bd_addr,
+                                   transport, *p192_data, *p256_data));
   return BT_STATUS_SUCCESS;
+}
+
+static int generate_local_oob_data(tBT_TRANSPORT transport) {
+  LOG_INFO("%s", __func__);
+  if (!interface_ready()) return BT_STATUS_NOT_READY;
+
+  return do_in_main_thread(
+      FROM_HERE, base::BindOnce(btif_dm_generate_local_oob_data, transport));
 }
 
 static int cancel_bond(const RawAddress* bd_addr) {
@@ -451,6 +468,9 @@ static const void* get_profile_interface(const char* profile_id) {
   if (is_profile(profile_id, BT_PROFILE_LE_AUDIO_ID))
     return btif_le_audio_get_interface();
 
+  if (is_profile(profile_id, BT_PROFILE_VC_ID))
+    return btif_volume_control_get_interface();
+
   return NULL;
 }
 
@@ -506,14 +526,14 @@ int le_test_mode(uint16_t opcode, uint8_t* buf, uint8_t len) {
 static bt_os_callouts_t* wakelock_os_callouts_saved = nullptr;
 
 static int acquire_wake_lock_cb(const char* lock_name) {
-  return do_in_main_thread(
+  return do_in_jni_thread(
       FROM_HERE, base::Bind(base::IgnoreResult(
                                 wakelock_os_callouts_saved->acquire_wake_lock),
                             lock_name));
 }
 
 static int release_wake_lock_cb(const char* lock_name) {
-  return do_in_main_thread(
+  return do_in_jni_thread(
       FROM_HERE, base::Bind(base::IgnoreResult(
                                 wakelock_os_callouts_saved->release_wake_lock),
                             lock_name));
@@ -547,8 +567,7 @@ static std::string obfuscate_address(const RawAddress& address) {
 }
 
 static int get_metric_id(const RawAddress& address) {
-  return bluetooth::common::MetricIdAllocator::GetInstance().AllocateId(
-      address);
+  return allocate_metric_id_from_metric_id_allocator(address);
 }
 
 static int set_dynamic_audio_buffer_size(int codec, int size) {
@@ -593,7 +612,7 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
     obfuscate_address,
     get_metric_id,
     set_dynamic_audio_buffer_size,
-};
+    generate_local_oob_data};
 
 // callback reporting helpers
 
@@ -717,6 +736,46 @@ void invoke_ssp_request_cb(RawAddress bd_addr, bt_bdname_t bd_name,
                                    &bd_name, cod, pairing_variant, pass_key);
                        },
                        bd_addr, bd_name, cod, pairing_variant, pass_key));
+}
+
+void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c,
+                                Octet16 r, RawAddress raw_address) {
+  LOG_INFO("%s", __func__);
+  bt_oob_data_t oob_data = {};
+
+  // Set the local address
+  int j = 5;
+  for (int i = 0; i < 6; i++) {
+    oob_data.address[i] = raw_address.address[j];
+    j--;
+  }
+  // Set type always public
+  oob_data.address[6] = 0;
+
+  // Each value (for C and R) is 16 octets in length
+  bool c_empty = true;
+  for (int i = 0; i < 16; i++) {
+    // C cannot be all 0s, if so then we want to fail
+    if (c[i] != 0) c_empty = false;
+    oob_data.c[i] = c[i];
+    // R is optional and may be empty
+    oob_data.r[i] = r[i];
+  }
+  oob_data.is_valid = valid && !c_empty;
+  // The oob_data_length is 2 octects in length.  The value includes the length
+  // of itself. 16 + 16 + 2 = 34 Data 0x0022 Little Endian order 0x2200
+  oob_data.oob_data_length[0] = 0;
+  oob_data.oob_data_length[1] = 34;
+  bt_status_t status = do_in_jni_thread(
+      FROM_HERE, base::BindOnce(
+                     [](tBT_TRANSPORT t, bt_oob_data_t oob_data) {
+                       HAL_CBACK(bt_hal_cbacks, generate_local_oob_data_cb, t,
+                                 oob_data);
+                     },
+                     t, oob_data));
+  if (status != BT_STATUS_SUCCESS) {
+    LOG_ERROR("%s: Failed to call callback!", __func__);
+  }
 }
 
 void invoke_bond_state_changed_cb(bt_status_t status, RawAddress bd_addr,

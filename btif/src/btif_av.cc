@@ -20,6 +20,7 @@
 
 #include <base/bind.h>
 #include <base/strings/stringprintf.h>
+#include <frameworks/proto_logging/stats/enums/bluetooth/a2dp/enums.pb.h>
 #include <cstdint>
 #include <future>
 #include <memory>
@@ -27,7 +28,6 @@
 #include <vector>
 
 #include "audio_hal_interface/a2dp_encoding.h"
-#include "audio_hal_interface/hearing_aid_software_encoding.h"
 #include "bta/av/bta_av_int.h"
 #include "btif/include/btif_a2dp.h"
 #include "btif/include/btif_a2dp_control.h"
@@ -39,7 +39,10 @@
 #include "btif/include/btif_profile_queue.h"
 #include "btif/include/btif_rc.h"
 #include "btif/include/btif_util.h"
+#include "btif_metrics_logging.h"
+#include "common/metrics.h"
 #include "common/state_machine.h"
+#include "hardware/bt_av.h"
 #include "include/hardware/bt_rc.h"
 #include "main/shim/dumpsys.h"
 #include "osi/include/properties.h"
@@ -533,6 +536,7 @@ class BtifAvSource {
   std::set<RawAddress> silenced_peers_;
   RawAddress active_peer_;
   std::map<uint8_t, tBTA_AV_HNDL> peer_id2bta_handle_;
+  std::mutex mutex_;
 };
 
 class BtifAvSink {
@@ -651,6 +655,7 @@ class BtifAvSink {
   std::map<RawAddress, BtifAvPeer*> peers_;
   RawAddress active_peer_;
   std::map<uint8_t, tBTA_AV_HNDL> peer_id2bta_handle_;
+  std::mutex mutex_;
 };
 
 /*****************************************************************************
@@ -1038,6 +1043,7 @@ BtifAvPeer* BtifAvSource::FindPeerByPeerId(uint8_t peer_id) {
 
 BtifAvPeer* BtifAvSource::FindOrCreatePeer(const RawAddress& peer_address,
                                            tBTA_AV_HNDL bta_handle) {
+  std::unique_lock<std::mutex> lock(mutex_);
   BTIF_TRACE_DEBUG("%s: peer_address=%s bta_handle=0x%x", __PRETTY_FUNCTION__,
                    peer_address.ToString().c_str(), bta_handle);
 
@@ -1142,6 +1148,7 @@ void BtifAvSource::RegisterAllBtaHandles() {
 }
 
 void BtifAvSource::DeregisterAllBtaHandles() {
+  std::unique_lock<std::mutex> lock(mutex_);
   for (auto it : peer_id2bta_handle_) {
     tBTA_AV_HNDL bta_handle = it.second;
     BTA_AvDeregister(bta_handle);
@@ -1151,6 +1158,7 @@ void BtifAvSource::DeregisterAllBtaHandles() {
 
 void BtifAvSource::BtaHandleRegistered(uint8_t peer_id,
                                        tBTA_AV_HNDL bta_handle) {
+  std::unique_lock<std::mutex> lock(mutex_);
   peer_id2bta_handle_.insert(std::make_pair(peer_id, bta_handle));
 
   // Set the BTA Handle for the Peer (if exists)
@@ -1243,6 +1251,7 @@ BtifAvPeer* BtifAvSink::FindPeerByPeerId(uint8_t peer_id) {
 
 BtifAvPeer* BtifAvSink::FindOrCreatePeer(const RawAddress& peer_address,
                                          tBTA_AV_HNDL bta_handle) {
+  std::unique_lock<std::mutex> lock(mutex_);
   BTIF_TRACE_DEBUG("%s: peer_address=%s bta_handle=0x%x", __PRETTY_FUNCTION__,
                    peer_address.ToString().c_str(), bta_handle);
 
@@ -1350,6 +1359,7 @@ void BtifAvSink::RegisterAllBtaHandles() {
 }
 
 void BtifAvSink::DeregisterAllBtaHandles() {
+  std::unique_lock<std::mutex> lock(mutex_);
   for (auto it : peer_id2bta_handle_) {
     tBTA_AV_HNDL bta_handle = it.second;
     BTA_AvDeregister(bta_handle);
@@ -1358,6 +1368,7 @@ void BtifAvSink::DeregisterAllBtaHandles() {
 }
 
 void BtifAvSink::BtaHandleRegistered(uint8_t peer_id, tBTA_AV_HNDL bta_handle) {
+  std::unique_lock<std::mutex> lock(mutex_);
   peer_id2bta_handle_.insert(std::make_pair(peer_id, bta_handle));
 
   // Set the BTA Handle for the Peer (if exists)
@@ -2411,6 +2422,26 @@ static void btif_report_audio_state(const RawAddress& peer_address,
                      base::Bind(btif_av_sink.Callbacks()->audio_state_cb,
                                 peer_address, state));
   }
+
+  using android::bluetooth::a2dp::AudioCodingModeEnum;
+  using android::bluetooth::a2dp::PlaybackStateEnum;
+  PlaybackStateEnum playback_state = PlaybackStateEnum::PLAYBACK_STATE_UNKNOWN;
+  switch (state) {
+    case BTAV_AUDIO_STATE_STARTED:
+      playback_state = PlaybackStateEnum::PLAYBACK_STATE_PLAYING;
+      break;
+    case BTAV_AUDIO_STATE_STOPPED:
+      playback_state = PlaybackStateEnum::PLAYBACK_STATE_NOT_PLAYING;
+      break;
+    default:
+      break;
+  }
+  AudioCodingModeEnum audio_coding_mode =
+      btif_av_is_a2dp_offload_running()
+          ? AudioCodingModeEnum::AUDIO_CODING_MODE_HARDWARE
+          : AudioCodingModeEnum::AUDIO_CODING_MODE_SOFTWARE;
+
+  log_a2dp_playback_event(peer_address, playback_state, audio_coding_mode);
 }
 
 void btif_av_report_source_codec_state(
@@ -2457,18 +2488,23 @@ static void btif_av_report_sink_audio_config_state(
 static void btif_av_query_mandatory_codec_priority(
     const RawAddress& peer_address) {
   auto query_priority = [](const RawAddress& peer_address) {
-    auto apply_priority = [](const RawAddress& peer_address, bool preferred) {
-      BtifAvPeer* peer = btif_av_source_find_peer(peer_address);
-      if (peer == nullptr) {
-        BTIF_TRACE_WARNING(
-            "btif_av_query_mandatory_codec_priority: peer is null");
-        return;
-      }
-      peer->SetMandatoryCodecPreferred(preferred);
-    };
-    bool preferred =
-        btif_av_source.Callbacks()->mandatory_codec_preferred_cb(peer_address);
+    if (!btif_av_source.Enabled()) {
+      LOG_WARN("BTIF AV Source is not enabled");
+      return;
+    }
+    btav_source_callbacks_t* callbacks = btif_av_source.Callbacks();
+    bool preferred = callbacks != nullptr &&
+                     callbacks->mandatory_codec_preferred_cb(peer_address);
     if (preferred) {
+      auto apply_priority = [](const RawAddress& peer_address, bool preferred) {
+        BtifAvPeer* peer = btif_av_find_peer(peer_address);
+        if (peer == nullptr) {
+          BTIF_TRACE_WARNING(
+              "btif_av_query_mandatory_codec_priority: peer is null");
+          return;
+        }
+        peer->SetMandatoryCodecPreferred(preferred);
+      };
       do_in_main_thread(
           FROM_HERE, base::BindOnce(apply_priority, peer_address, preferred));
     }
@@ -3203,6 +3239,11 @@ bt_status_t btif_av_sink_execute_service(bool enable) {
                             BTA_AV_FEAT_METADATA | BTA_AV_FEAT_VENDOR |
                             BTA_AV_FEAT_ADV_CTRL | BTA_AV_FEAT_RCTG |
                             BTA_AV_FEAT_BROWSE | BTA_AV_FEAT_COVER_ARTWORK;
+
+    if (delay_reporting_enabled()) {
+      features |= BTA_AV_FEAT_DELAY_RPT;
+    }
+
     BTA_AvEnable(features, bta_av_sink_callback);
     btif_av_sink.RegisterAllBtaHandles();
     return BT_STATUS_SUCCESS;
@@ -3254,16 +3295,19 @@ uint8_t btif_av_get_peer_sep(void) {
 }
 
 void btif_av_clear_remote_suspend_flag(void) {
-  BtifAvPeer* peer = btif_av_find_active_peer();
-  if (peer == nullptr) {
-    BTIF_TRACE_WARNING("%s: No active peer found", __func__);
-    return;
-  }
-
-  BTIF_TRACE_DEBUG("%s: Peer %s : flags=%s are cleared", __func__,
-                   peer->PeerAddress().ToString().c_str(),
-                   peer->FlagsToString().c_str());
-  peer->ClearFlags(BtifAvPeer::kFlagRemoteSuspend);
+  auto clear_remote_suspend_flag = []() {
+    BtifAvPeer* peer = btif_av_find_active_peer();
+    if (peer == nullptr) {
+      BTIF_TRACE_WARNING("%s: No active peer found", __func__);
+      return;
+    }
+    BTIF_TRACE_DEBUG("%s: Peer %s : flags=%s are cleared", __func__,
+                     peer->PeerAddress().ToString().c_str(),
+                     peer->FlagsToString().c_str());
+    peer->ClearFlags(BtifAvPeer::kFlagRemoteSuspend);
+  };
+  // switch to main thread to prevent a race condition of accessing peers
+  do_in_main_thread(FROM_HERE, base::Bind(clear_remote_suspend_flag));
 }
 
 bool btif_av_is_peer_edr(const RawAddress& peer_address) {
@@ -3362,7 +3406,7 @@ static void btif_debug_av_peer_dump(int fd, const BtifAvPeer& peer) {
   dprintf(fd, "    Support 3Mbps: %s\n", peer.Is3Mbps() ? "true" : "false");
   dprintf(fd, "    Self Initiated Connection: %s\n",
           peer.SelfInitiatedConnection() ? "true" : "false");
-  dprintf(fd, "    Delay Reporting: %u\n", peer.GetDelayReport());
+  dprintf(fd, "    Delay Reporting: %u (in 1/10 milliseconds) \n", peer.GetDelayReport());
   dprintf(fd, "    Codec Preferred: %s\n",
           peer.IsMandatoryCodecPreferred() ? "Mandatory" : "Optional");
 }
