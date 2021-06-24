@@ -143,7 +143,7 @@ void BTA_DmDiscover(const RawAddress& bd_addr, tBTA_DM_SEARCH_CBACK* p_cback,
 
 /** This function initiates a bonding procedure with a peer device */
 void BTA_DmBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                tBT_TRANSPORT transport, int device_type) {
+                tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type) {
   do_in_main_thread(FROM_HERE, base::Bind(bta_dm_bond, bd_addr, addr_type,
                                           transport, device_type));
 }
@@ -359,7 +359,7 @@ bool BTA_DmGetConnectionState(const RawAddress& bd_addr) {
  * Returns          BTA_SUCCESS if record set sucessfully, otherwise error code.
  *
  ******************************************************************************/
-tBTA_STATUS BTA_DmSetLocalDiRecord(tBTA_DI_RECORD* p_device_info,
+tBTA_STATUS BTA_DmSetLocalDiRecord(tSDP_DI_RECORD* p_device_info,
                                    uint32_t* p_handle) {
   tBTA_STATUS status = BTA_FAILURE;
 

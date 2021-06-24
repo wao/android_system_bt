@@ -43,7 +43,7 @@ static const char* bta_hh_evt_code(tBTA_HH_INT_EVT evt_code);
 static const char* bta_hh_state_code(tBTA_HH_STATE state_code);
 
 static void bta_hh_better_state_machine(tBTA_HH_DEV_CB* p_cb, uint16_t event,
-                                        tBTA_HH_DATA* p_data) {
+                                        const tBTA_HH_DATA* p_data) {
   switch (p_cb->state) {
     case BTA_HH_IDLE_ST:
       switch (event) {
@@ -185,11 +185,11 @@ static void bta_hh_better_state_machine(tBTA_HH_DEV_CB* p_cb, uint16_t event,
  *
  ******************************************************************************/
 void bta_hh_sm_execute(tBTA_HH_DEV_CB* p_cb, uint16_t event,
-                       tBTA_HH_DATA* p_data) {
+                       const tBTA_HH_DATA* p_data) {
   tBTA_HH cback_data;
   tBTA_HH_EVT cback_event = 0;
   tBTA_HH_STATE in_state;
-  uint16_t debug_event = event;
+  tBTA_HH_INT_EVT debug_event = static_cast<tBTA_HH_INT_EVT>(event);
 
   memset(&cback_data, 0, sizeof(tBTA_HH));
 
@@ -221,8 +221,8 @@ void bta_hh_sm_execute(tBTA_HH_DEV_CB* p_cb, uint16_t event,
           }
           break;
         case BTA_HH_API_WRITE_DEV_EVT:
-          cback_event = (p_data->api_sndcmd.t_type - BTA_HH_FST_BTE_TRANS_EVT) +
-                        BTA_HH_FST_TRANS_CB_EVT;
+          cback_event = (p_data->api_sndcmd.t_type - HID_TRANS_GET_REPORT) +
+                        BTA_HH_GET_RPT_EVT;
           osi_free_and_reset((void**)&p_data->api_sndcmd.p_data);
           if (p_data->api_sndcmd.t_type == HID_TRANS_SET_PROTOCOL ||
               p_data->api_sndcmd.t_type == HID_TRANS_SET_REPORT ||
@@ -282,15 +282,13 @@ void bta_hh_sm_execute(tBTA_HH_DEV_CB* p_cb, uint16_t event,
     bta_hh_better_state_machine(p_cb, event, p_data);
 
     if (in_state != p_cb->state) {
-      APPL_TRACE_DEBUG("HH State Change: [%s] -> [%s] after Event [%s]",
-                       bta_hh_state_code(in_state),
-                       bta_hh_state_code(p_cb->state),
-                       bta_hh_evt_code(debug_event));
+      LOG_DEBUG("HHID State Change: [%s] -> [%s] after Event [%s]",
+                bta_hh_state_code(in_state), bta_hh_state_code(p_cb->state),
+                bta_hh_evt_code(debug_event));
     }
   }
-
-  return;
 }
+
 /*******************************************************************************
  *
  * Function         bta_hh_hdl_event
@@ -301,7 +299,7 @@ void bta_hh_sm_execute(tBTA_HH_DEV_CB* p_cb, uint16_t event,
  * Returns          void
  *
  ******************************************************************************/
-bool bta_hh_hdl_event(BT_HDR* p_msg) {
+bool bta_hh_hdl_event(BT_HDR_RIGID* p_msg) {
   uint8_t index = BTA_HH_IDX_INVALID;
   tBTA_HH_DEV_CB* p_cb = NULL;
 

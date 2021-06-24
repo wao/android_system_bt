@@ -26,11 +26,12 @@ namespace shim {
 
 void ACL_CreateClassicConnection(const RawAddress& raw_address);
 void ACL_CancelClassicConnection(const RawAddress& raw_address);
-bool ACL_AcceptLeConnectionFrom(const tBLE_BD_ADDR& legacy_address_with_type);
+bool ACL_AcceptLeConnectionFrom(const tBLE_BD_ADDR& legacy_address_with_type,
+                                bool is_direct);
 void ACL_IgnoreLeConnectionFrom(const tBLE_BD_ADDR& legacy_address_with_type);
 
 void ACL_Disconnect(uint16_t handle, bool is_classic, tHCI_STATUS reason);
-void ACL_WriteData(uint16_t handle, const BT_HDR* p_buf);
+void ACL_WriteData(uint16_t handle, BT_HDR* p_buf);
 void ACL_ConfigureLePrivacy(bool is_le_privacy_enabled);
 void ACL_Shutdown();
 void ACL_IgnoreAllLeConnections();

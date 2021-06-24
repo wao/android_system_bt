@@ -374,6 +374,20 @@ inline bool BTM_LE_STATES_SUPPORTED(const uint8_t* x, uint8_t bit_num) {
   return ((x)[offset] & mask);
 }
 
+void BTM_BleOpportunisticObserve(bool enable,
+                                 tBTM_INQ_RESULTS_CB* p_results_cb) {
+  if (bluetooth::shim::is_gd_shim_enabled()) {
+    bluetooth::shim::BTM_BleOpportunisticObserve(enable, p_results_cb);
+    return;
+  }
+
+  if (enable) {
+    btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb = p_results_cb;
+  } else {
+    btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb = NULL;
+  }
+}
+
 /*******************************************************************************
  *
  * Function         BTM_BleObserve
@@ -522,8 +536,6 @@ static void btm_get_dynamic_audio_buffer_vsc_cmpl_cback(
  ******************************************************************************/
 static void btm_ble_vendor_capability_vsc_cmpl_cback(
     tBTM_VSC_CMPL* p_vcs_cplt_params) {
-  uint8_t status = 0xFF;
-  uint8_t* p;
 
   BTM_TRACE_DEBUG("%s", __func__);
 
@@ -531,8 +543,10 @@ static void btm_ble_vendor_capability_vsc_cmpl_cback(
   CHECK(p_vcs_cplt_params->opcode == HCI_BLE_VENDOR_CAP);
   CHECK(p_vcs_cplt_params->param_len > 0);
 
-  p = p_vcs_cplt_params->p_param_buf;
-  STREAM_TO_UINT8(status, p);
+  const uint8_t* p = p_vcs_cplt_params->p_param_buf;
+  uint8_t raw_status;
+  STREAM_TO_UINT8(raw_status, p);
+  tHCI_STATUS status = to_hci_status_code(raw_status);
 
   if (status != HCI_SUCCESS) {
     BTM_TRACE_DEBUG("%s: Status = 0x%02x (0 is success)", __func__, status);
@@ -604,7 +618,7 @@ static void btm_ble_vendor_capability_vsc_cmpl_cback(
   if (btm_cb.cmn_ble_vsc_cb.tot_scan_results_strg > 0) btm_ble_batchscan_init();
 
   if (p_ctrl_le_feature_rd_cmpl_cback != NULL)
-    p_ctrl_le_feature_rd_cmpl_cback(status);
+    p_ctrl_le_feature_rd_cmpl_cback(static_cast<tHCI_STATUS>(status));
 }
 #endif /* (BLE_VND_INCLUDED == TRUE) */
 
@@ -1527,6 +1541,10 @@ static void btm_ble_appearance_to_cod(uint16_t appearance, uint8_t* dev_class) {
       dev_class[1] = BTM_COD_MAJOR_AUDIO;
       dev_class[2] = BTM_COD_MINOR_UNCLASSIFIED;
       break;
+    case BTM_BLE_APPEARANCE_WEARABLE_AUDIO_DEVICE_EARBUD:
+      dev_class[1] = BTM_COD_MAJOR_AUDIO;
+      dev_class[2] = BTM_COD_MINOR_WEARABLE_HEADSET;
+      break;
     case BTM_BLE_APPEARANCE_GENERIC_BARCODE_SCANNER:
     case BTM_BLE_APPEARANCE_HID_BARCODE_SCANNER:
     case BTM_BLE_APPEARANCE_GENERIC_HID:
@@ -1984,6 +2002,14 @@ void btm_ble_process_adv_pkt_cont(uint16_t evt_type, uint8_t addr_type,
                        const_cast<uint8_t*>(adv_data.data()), adv_data.size());
   }
 
+  tBTM_INQ_RESULTS_CB* p_opportunistic_obs_results_cb =
+      btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb;
+  if (p_opportunistic_obs_results_cb) {
+    (p_opportunistic_obs_results_cb)((tBTM_INQ_RESULTS*)&p_i->inq_info.results,
+                                     const_cast<uint8_t*>(adv_data.data()),
+                                     adv_data.size());
+  }
+
   cache.Clear(addr_type, bda);
 }
 
@@ -2049,6 +2075,14 @@ void btm_ble_process_adv_pkt_cont_for_inquiry(
     (p_inq_results_cb)((tBTM_INQ_RESULTS*)&p_i->inq_info.results,
                        const_cast<uint8_t*>(advertising_data.data()),
                        advertising_data.size());
+  }
+
+  tBTM_INQ_RESULTS_CB* p_opportunistic_obs_results_cb =
+      btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb;
+  if (p_opportunistic_obs_results_cb) {
+    (p_opportunistic_obs_results_cb)(
+        (tBTM_INQ_RESULTS*)&p_i->inq_info.results,
+        const_cast<uint8_t*>(advertising_data.data()), advertising_data.size());
   }
 }
 
@@ -2496,18 +2530,7 @@ void btm_ble_update_mode_operation(uint8_t link_role, const RawAddress* bd_addr,
   if (bd_addr != nullptr) {
     const RawAddress bda(*bd_addr);
     if (bluetooth::shim::is_gd_acl_enabled()) {
-      if (acl_check_and_clear_ignore_auto_connect_after_disconnect(bda)) {
-        LOG_DEBUG(
-            "Local disconnect initiated so skipping re-add to acceptlist "
-            "device:%s",
-            PRIVATE_ADDRESS(bda));
-      } else {
-        if (!bluetooth::shim::ACL_AcceptLeConnectionFrom(
-                convert_to_address_with_type(bda, btm_find_dev(bda)))) {
-          LOG_ERROR("Unable to add to acceptlist as it is full:%s",
-                    PRIVATE_ADDRESS(bda));
-        }
-      }
+      LOG_DEBUG("gd_acl enabled so skip background connection logic");
     } else {
       btm_ble_bgconn_cancel_if_disconnected(bda);
     }

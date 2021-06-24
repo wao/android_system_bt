@@ -90,38 +90,37 @@ static void acceptlist_command_complete(tHCI_STATUS status, const char* msg) {
 }
 
 static void acceptlist_add_command_complete(uint8_t* p_data, uint16_t evt_len) {
-  if (evt_len > sizeof(uint8_t)) {
-    uint8_t status;
-    STREAM_TO_UINT8(status, p_data);
-    acceptlist_command_complete(static_cast<tHCI_STATUS>(status),
-                                kAcceptlistAdd);
-  } else {
+  if (evt_len < sizeof(uint8_t)) {
     LOG_ERROR("Received bogus acceptlist add complete length:%hu", evt_len);
+    return;
   }
+  uint8_t status;
+  STREAM_TO_UINT8(status, p_data);
+  acceptlist_command_complete(static_cast<tHCI_STATUS>(status), kAcceptlistAdd);
 }
 
 static void acceptlist_remove_command_complete(uint8_t* p_data,
                                                uint16_t evt_len) {
-  if (evt_len > sizeof(uint8_t)) {
-    uint8_t status;
-    STREAM_TO_UINT8(status, p_data);
-    acceptlist_command_complete(static_cast<tHCI_STATUS>(status),
-                                kAcceptlistRemove);
-  } else {
+  if (evt_len < sizeof(uint8_t)) {
     LOG_ERROR("Received bogus acceptlist remove complete length:%hu", evt_len);
+    return;
   }
+  uint8_t status;
+  STREAM_TO_UINT8(status, p_data);
+  acceptlist_command_complete(static_cast<tHCI_STATUS>(status),
+                              kAcceptlistRemove);
 }
 
 static void acceptlist_clear_command_complete(uint8_t* p_data,
                                               uint16_t evt_len) {
-  if (evt_len > sizeof(uint8_t)) {
-    uint8_t status;
-    STREAM_TO_UINT8(status, p_data);
-    acceptlist_command_complete(static_cast<tHCI_STATUS>(status),
-                                kAcceptlistClear);
-  } else {
+  if (evt_len < sizeof(uint8_t)) {
     LOG_ERROR("Received bogus acceptlist remove complete length:%hu", evt_len);
+    return;
   }
+  uint8_t status;
+  STREAM_TO_UINT8(status, p_data);
+  acceptlist_command_complete(static_cast<tHCI_STATUS>(status),
+                              kAcceptlistClear);
 }
 
 /** This function is to stop auto connection procedure */
@@ -140,7 +139,7 @@ static bool btm_ble_stop_auto_conn() {
   return true;
 }
 
-static void background_connection_add(uint8_t addr_type,
+static void background_connection_add(tBLE_ADDR_TYPE addr_type,
                                       const RawAddress& address) {
   auto map_iter = background_connections.find(address);
   if (map_iter == background_connections.end()) {
@@ -272,10 +271,11 @@ static bool btm_add_dev_to_controller(bool to_add, const RawAddress& bd_addr) {
   } else {
     /* not a known device, i.e. attempt to connect to device never seen before
      */
-    if (to_add)
+    if (to_add) {
       background_connection_add(BLE_ADDR_PUBLIC, bd_addr);
-    else
+    } else {
       background_connection_remove(bd_addr);
+    }
   }
 
   return true;
@@ -336,8 +336,8 @@ static bool btm_ble_start_auto_conn() {
   const uint16_t scan_win = (p_cb->scan_win == BTM_BLE_SCAN_PARAM_UNDEF)
                                 ? BTM_BLE_SCAN_SLOW_WIN_1
                                 : p_cb->scan_win;
-  uint8_t own_addr_type = p_cb->addr_mgnt_cb.own_addr_type;
-  uint8_t peer_addr_type = BLE_ADDR_PUBLIC;
+  tBLE_ADDR_TYPE own_addr_type = p_cb->addr_mgnt_cb.own_addr_type;
+  tBLE_ADDR_TYPE peer_addr_type = BLE_ADDR_PUBLIC;
 
   uint8_t phy = PHY_LE_1M;
   if (controller_get_interface()->supports_ble_2m_phy()) phy |= PHY_LE_2M;
@@ -534,14 +534,9 @@ bool BTM_AcceptlistAdd(const RawAddress& address) {
   }
 
   if (bluetooth::shim::is_gd_acl_enabled()) {
-    if (acl_check_and_clear_ignore_auto_connect_after_disconnect(address)) {
-      LOG_WARN(
-          "Unexpectedly found device address already in ignore auto connect "
-          "device:%s",
-          PRIVATE_ADDRESS(address));
-    }
     return bluetooth::shim::ACL_AcceptLeConnectionFrom(
-        convert_to_address_with_type(address, btm_find_dev(address)));
+        convert_to_address_with_type(address, btm_find_dev(address)),
+        /* is_direct */ false);
   }
 
   if (background_connections_count() ==
@@ -588,7 +583,6 @@ void BTM_AcceptlistClear() {
   }
 
   if (bluetooth::shim::is_gd_acl_enabled()) {
-    acl_clear_all_ignore_auto_connect_after_disconnect();
     bluetooth::shim::ACL_IgnoreAllLeConnections();
     return;
   }

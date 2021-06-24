@@ -32,7 +32,6 @@ LOCAL_host_libraries := \
 	$(HOST_OUT_SHARED_LIBRARIES)/libz-host.so \
 	$(HOST_OUT_SHARED_LIBRARIES)/libprotobuf-cpp-full.so \
 	$(HOST_OUT_SHARED_LIBRARIES)/libunwindstack.so \
-	$(HOST_OUT_SHARED_LIBRARIES)/libdexfile_support.so \
 	$(HOST_OUT_SHARED_LIBRARIES)/liblzma.so \
 	$(HOST_OUT_SHARED_LIBRARIES)/libbacktrace.so
 
@@ -40,9 +39,13 @@ LOCAL_target_executables := \
 	$(TARGET_OUT_EXECUTABLES)/bluetooth_stack_with_facade
 
 LOCAL_target_libraries := \
+	$(TARGET_OUT_SHARED_LIBRARIES)/android.system.suspend.control-V1-ndk.so \
 	$(TARGET_OUT_SHARED_LIBRARIES)/libcrypto.so \
 	$(TARGET_OUT_SHARED_LIBRARIES)/libbluetooth_gd.so \
-	$(TARGET_OUT_SHARED_LIBRARIES)/libgrpc++_unsecure.so
+	$(TARGET_OUT_SHARED_LIBRARIES)/libgrpc++_unsecure.so \
+	$(TARGET_OUT_SHARED_LIBRARIES)/libgrpc++.so \
+	$(TARGET_OUT_SHARED_LIBRARIES)/libgrpc_wrap.so \
+	$(TARGET_OUT_SHARED_LIBRARIES)/libstatslog.so
 #LINT.ThenChange(cert/run)
 
 bluetooth_cert_src_and_bin_zip := \
@@ -98,6 +101,7 @@ $(bluetooth_cert_tests_py_package_zip): $(SOONG_ZIP) $(LOCAL_acts_zip) \
 	$(hide) $(SOONG_ZIP) -d -o $@ -C $(dir $@)bluetooth_cert_tests -D $(dir $@)bluetooth_cert_tests \
 		-P acts_framework \
 		-C $(dir $@)acts/tools/test/connectivity/acts/framework -D $(dir $@)acts/tools/test/connectivity/acts/framework \
+		-P blueberry -C system/bt/blueberry -D system/bt/blueberry \
 		-P llvm_binutils -C $(LLVM_PREBUILTS_BASE)/linux-x86/$(LLVM_PREBUILTS_VERSION) \
 		-f $(LLVM_PREBUILTS_BASE)/linux-x86/$(LLVM_PREBUILTS_VERSION)/bin/llvm-cov \
 		-f $(LLVM_PREBUILTS_BASE)/linux-x86/$(LLVM_PREBUILTS_VERSION)/bin/llvm-profdata \

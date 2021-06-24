@@ -231,12 +231,7 @@ struct tACL_CONN {
   tHCI_ROLE link_role;
   uint8_t switch_role_failed_attempts;
 
-  struct {
-    uint8_t lmp_version{0};
-    uint16_t lmp_subversion{0};
-    uint16_t manufacturer{0};
-    bool valid{false};
-  } remote_version_info;
+  tREMOTE_VERSION_INFO remote_version_info;
 
 #define BTM_SEC_RS_NOT_PENDING 0 /* Role Switch not in progress */
 #define BTM_SEC_RS_PENDING 1     /* Role Switch in progress */
@@ -417,12 +412,4 @@ struct tACL_CB {
     }
     return cnt;
   }
-
- private:
-  std::unordered_set<RawAddress> ignore_auto_connect_after_disconnect_set_;
-
- public:
-  void AddToIgnoreAutoConnectAfterDisconnect(const RawAddress& bd_addr);
-  bool CheckAndClearIgnoreAutoConnectAfterDisconnect(const RawAddress& bd_addr);
-  void ClearAllIgnoreAutoConnectAfterDisconnect();
 };

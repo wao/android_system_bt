@@ -548,7 +548,7 @@ tBTM_STATUS bluetooth::shim::BTM_StartInquiry(tBTM_INQ_RESULTS_CB* p_results_cb,
   uint8_t classic_mode = inqparms.mode & 0x0f;
   if (!Stack::GetInstance()->GetBtm()->StartInquiry(
           classic_mode, inqparms.duration, 0,
-          [](uint16_t status, uint8_t inquiry_mode) {
+          [](tBTM_STATUS status, uint8_t inquiry_mode) {
             LOG_INFO("%s Inquiry is complete status:%hd inquiry_mode:%hhd",
                      __func__, status, inquiry_mode);
             btm_cb.btm_inq_vars.inqparms.mode &= ~(inquiry_mode);
@@ -720,6 +720,15 @@ tBTM_STATUS bluetooth::shim::BTM_BleObserve(bool start, uint8_t duration_sec,
   return BTM_CMD_STARTED;
 }
 
+void bluetooth::shim::BTM_BleOpportunisticObserve(
+    bool enable, tBTM_INQ_RESULTS_CB* p_results_cb) {
+  if (enable) {
+    btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb = p_results_cb;
+  } else {
+    btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb = nullptr;
+  }
+}
+
 void bluetooth::shim::BTM_EnableInterlacedPageScan() {
   Stack::GetInstance()->GetBtm()->SetInterlacedPageScan();
 }
@@ -877,6 +886,7 @@ tBTM_STATUS bluetooth::shim::BTM_ClearInqDb(const RawAddress* p_bda) {
 tBTM_STATUS bluetooth::shim::BTM_WriteEIR(BT_HDR* p_buff) {
   LOG_INFO("UNIMPLEMENTED %s", __func__);
   CHECK(p_buff != nullptr);
+  osi_free(p_buff);
   return BTM_NO_RESOURCES;
 }
 
@@ -1187,7 +1197,7 @@ bool bluetooth::shim::BTM_BleLocalPrivacyEnabled(void) {
 tBTM_STATUS bluetooth::shim::BTM_SecBond(const RawAddress& bd_addr,
                                          tBLE_ADDR_TYPE addr_type,
                                          tBT_TRANSPORT transport,
-                                         int device_type) {
+                                         tBT_DEVICE_TYPE device_type) {
   return Stack::GetInstance()->GetBtm()->CreateBond(bd_addr, addr_type,
                                                     transport, device_type);
 }
@@ -1341,8 +1351,9 @@ bool bluetooth::shim::BTM_SecDeleteRmtNameNotifyCallback(
   return true;
 }
 
-void bluetooth::shim::BTM_PINCodeReply(const RawAddress& bd_addr, uint8_t res,
-                                       uint8_t pin_len, uint8_t* p_pin) {
+void bluetooth::shim::BTM_PINCodeReply(const RawAddress& bd_addr,
+                                       tBTM_STATUS res, uint8_t pin_len,
+                                       uint8_t* p_pin) {
   ASSERT_LOG(!bluetooth::shim::is_gd_shim_enabled(), "Unreachable code path");
 }
 

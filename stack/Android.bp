@@ -25,7 +25,6 @@ cc_test_library {
 }
 
 // Bluetooth stack static library for target
-// ========================================================
 cc_library_static {
     name: "libbt-stack",
     defaults: ["fluoride_defaults"],
@@ -57,6 +56,7 @@ cc_library_static {
         "external/libldac/inc",
         "external/libldac/abr/inc",
         "system/bt",
+        "system/bt/gd",
         "system/bt/btcore/include",
         "system/bt/vnd/include",
         "system/bt/vnd/ble",
@@ -207,6 +207,7 @@ cc_library_static {
     shared_libs: [
         "libcutils",
         "liblog",
+        "libcrypto",
     ],
     required: [
         "libldacBT_enc",
@@ -216,7 +217,6 @@ cc_library_static {
 }
 
 // Bluetooth stack unit tests for target
-// ========================================================
 cc_test {
     name: "net_test_stack",
     defaults: ["fluoride_defaults"],
@@ -226,6 +226,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/internal_include",
     ],
     srcs: [
@@ -291,6 +292,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/internal_include",
         "system/bt/btcore/include",
         "system/bt/hci/include",
@@ -334,10 +336,10 @@ cc_test {
 }
 
 // Bluetooth stack smp unit tests for target
-// ========================================================
 cc_test {
     name: "net_test_stack_smp",
     defaults: ["fluoride_defaults"],
+    host_supported: true,
     test_suites: ["device-tests"],
     local_include_dirs: [
         "include",
@@ -347,24 +349,46 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/internal_include",
         "system/bt/btcore/include",
         "system/bt/hci/include",
         "system/bt/utils/include",
     ],
     srcs: crypto_toolbox_srcs + [
-        "smp/smp_keys.cc",
+        ":TestCommonMainHandler",
+        ":TestMockBtif",
+        ":TestMockCommon",
+        ":TestMockDevice",
+        ":TestMockLegacyHciCommands",
+        ":TestMockMainShim",
+        ":TestMockStackAcl",
+        ":TestMockStackBtm",
+        ":TestMockStackL2cap",
+        ":TestMockStackMetrics",
         "smp/p_256_curvepara.cc",
         "smp/p_256_ecc_pp.cc",
         "smp/p_256_multprecision.cc",
+        "smp/smp_act.cc",
         "smp/smp_api.cc",
+        "smp/smp_br_main.cc",
+        "smp/smp_keys.cc",
+        "smp/smp_l2c.cc",
         "smp/smp_main.cc",
         "smp/smp_utils.cc",
         "test/crypto_toolbox_test.cc",
         "test/stack_smp_test.cc",
     ],
+    generated_headers: [
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysDataSchema_h",
+        "BluetoothGeneratedDumpsysBundledSchema_h",
+        "BluetoothGeneratedPackets_h",
+    ],
     shared_libs: [
+        "libcrypto",
         "libcutils",
+        "libflatbuffers-cpp",
     ],
     static_libs: [
         "liblog",
@@ -374,7 +398,6 @@ cc_test {
 }
 
 // Bluetooth stack multi-advertising unit tests for target
-// ========================================================
 cc_test {
     name: "net_test_stack_multi_adv",
     defaults: ["fluoride_defaults"],
@@ -385,6 +408,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/internal_include",
         "system/bt/btcore/include",
         "system/bt/hci/include",
@@ -409,7 +433,6 @@ cc_test {
 }
 
 // Bluetooth stack advertise data parsing unit tests for target
-// =============================================================
 cc_test {
     name: "net_test_stack_ad_parser",
     defaults: ["fluoride_defaults"],
@@ -428,7 +451,6 @@ cc_test {
 }
 
 // Bluetooth stack connection multiplexing
-// ========================================================
 cc_test {
     name: "net_test_gatt_conn_multiplexing",
     defaults: ["fluoride_defaults"],
@@ -438,6 +460,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/internal_include",
         "system/bt/btcore/include",
         "system/bt/hci/include",
@@ -471,6 +494,7 @@ cc_test {
     },
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/stack/include",
         "system/bt/stack/eatt",
         "system/bt/stack/l2cap",
@@ -479,7 +503,6 @@ cc_test {
     ],
     srcs: [
         "gatt/gatt_utils.cc",
-        "test/common/mock_acl.cc",
         "test/common/mock_eatt.cc",
         "test/common/mock_gatt_layer.cc",
         "test/common/mock_main_shim.cc",
@@ -506,6 +529,57 @@ cc_test {
 }
 
 cc_test {
+    name: "net_test_stack_avdtp",
+    defaults: ["fluoride_defaults"],
+    test_suites: ["device-tests"],
+    host_supported: true,
+    test_options: {
+        unit_test: true,
+    },
+    include_dirs: [
+        "external/libldac/inc",
+        "system/bt",
+        "system/bt/gd",
+        "system/bt/stack/include",
+        "system/bt/utils/include",
+    ],
+    srcs: [
+        "test/stack_avdtp_test.cc",
+        "avdt/avdt_ad.cc",
+        "avdt/avdt_api.cc",
+        "avdt/avdt_ccb.cc",
+        "avdt/avdt_ccb_act.cc",
+        "avdt/avdt_l2c.cc",
+        "avdt/avdt_scb.cc",
+        "avdt/avdt_scb_act.cc",
+        "test/common/mock_btu_layer.cc",
+        "test/common/mock_stack_avdt_msg.cc",
+        ":TestMockStackL2cap",
+        ":TestMockStackAcl",
+        ":TestMockStackA2dp",
+        ":TestMockBta",
+        ":TestMockDevice",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "libcutils",
+        "libprotobuf-cpp-lite",
+    ],
+    static_libs: [
+        "libbt-common",
+        "libbt-protos-lite",
+        "liblog",
+        "libosi",
+        "libosi-AllocationTestHarness",
+    ],
+    sanitize: {
+        address: true,
+        cfi: true,
+        misc_undefined: ["bounds"],
+    },
+}
+
+cc_test {
     name: "net_test_stack_a2dp_native",
     defaults: ["fluoride_defaults"],
     test_suites: ["device-tests"],
@@ -516,6 +590,7 @@ cc_test {
     include_dirs: [
         "external/libldac/inc",
         "system/bt",
+        "system/bt/gd",
         "system/bt/stack/include",
     ],
     srcs: [
@@ -549,6 +624,7 @@ cc_test {
     host_supported: true,
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/stack/btm",
         "system/bt/stack/eatt",
         "system/bt/stack/include",
@@ -558,7 +634,6 @@ cc_test {
         "gatt/gatt_db.cc",
         "gatt/gatt_sr_hash.cc",
         "gatt/gatt_utils.cc",
-        "test/common/mock_acl.cc",
         "test/common/mock_eatt.cc",
         "test/common/mock_gatt_layer.cc",
         "test/common/mock_main_shim.cc",
@@ -595,6 +670,7 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/btcore/include",
     ],
     srcs: [
@@ -644,12 +720,13 @@ cc_test {
     ],
     include_dirs:[
         "system/bt",
+        "system/bt/gd",
         "system/bt/btcore/include",
     ],
     srcs: [
         "eatt/eatt.cc",
         "test/common/mock_btm_api_layer.cc",
-	"test/common/mock_btif_storage.cc",
+        "test/common/mock_btif_storage.cc",
         "test/common/mock_controller.cc",
         "test/common/mock_gatt_layer.cc",
         "test/common/mock_l2cap_layer.cc",
@@ -685,9 +762,30 @@ cc_test {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/vnd/ble",
     ],
+    generated_headers: [
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysDataSchema_h",
+        "BluetoothGeneratedPackets_h",
+    ],
     srcs: crypto_toolbox_srcs + [
+        ":BluetoothBtaaSources_host",
+        ":BluetoothHalSources_hci_host",
+        ":BluetoothOsSources_host",
+        ":TestCommonMainHandler",
+        ":TestMockBta",
+        ":TestMockBtif",
+        ":TestMockDevice",
+        ":TestMockLegacyHciCommands",
+        ":TestMockMainBte",
+        ":TestMockMainShim",
+        ":TestMockStackBtu",
+        ":TestMockStackGap",
+        ":TestMockStackGatt",
+        ":TestMockStackL2cap",
+        ":TestMockStackSmp",
         "acl/acl.cc",
         "acl/ble_acl.cc",
         "acl/btm_acl.cc",
@@ -714,33 +812,50 @@ cc_test {
         "btm/btm_sec.cc",
         "metrics/stack_metrics_logging.cc",
         "test/btm/stack_btm_test.cc",
-        "test/common/mock_bta_dm_act.cc",
-        "test/common/mock_bta_sys_conn.cc",
-        "test/common/mock_btif_bqr.cc",
-        "test/common/mock_btif_dm.cc",
-        "test/common/mock_btif_storage.cc",
-        "test/common/mock_btu_hcif.cc",
-        "test/common/mock_gap_gap_ble.cc",
-        "test/common/mock_gatt_connection_manager.cc",
-        "test/common/mock_gatt_gatt_auth.cc",
-        "test/common/mock_gatt_main.cc",
-        "test/common/mock_hci_packet_parser.cc",
-        "test/common/mock_hcic_hciblecmds.cc",
-        "test/common/mock_hcic_hcicmds.cc",
-        "test/common/mock_l2cap_l2c_api.cc",
-        "test/common/mock_l2cap_l2c_ble.cc",
-        "test/common/mock_l2cap_l2c_link.cc",
-        "test/common/mock_l2cap_l2c_main.cc",
-        "test/common/mock_l2cap_l2c_utils.cc",
-        "test/common/mock_main_bte_main.cc",
-        "test/common/mock_main_shim.cc",
-        "test/common/mock_main_shim_acl_api.cc",
-        "test/common/mock_main_shim_l2c_api.cc",
-        "test/common/mock_main_shim_btm_api.cc",
-        "test/common/mock_main_shim_controller.cc",
-        "test/common/mock_main_shim_link_policy.cc",
-        "test/common/mock_smp_smp_act.cc",
-        "test/common/mock_smp_smp_api.cc",
+        "test/btm/peer_packet_types_test.cc",
+    ],
+    static_libs: [
+        "libbt-common",
+        "libbt-protos-lite",
+        "libbtdevice",
+        "libgmock",
+        "liblog",
+        "libosi",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "libflatbuffers-cpp",
+        "libprotobuf-cpp-lite",
+    ],
+    sanitize: {
+        address: true,
+        all_undefined: true,
+        cfi: true,
+        integer_overflow: true,
+        scs: true,
+        diag: {
+            undefined : true
+        },
+    },
+}
+
+cc_test {
+    name: "net_test_stack_hci",
+    test_suites: ["device-tests"],
+    host_supported: true,
+    defaults: ["fluoride_defaults"],
+    local_include_dirs: [
+        "include",
+        "btm",
+        "test/common",
+    ],
+    include_dirs: [
+        "system/bt",
+        "system/bt/gd",
+        "system/bt/vnd/ble",
+    ],
+    srcs: crypto_toolbox_srcs + [
+        "test/hci/stack_hci_test.cc",
     ],
     static_libs: [
         "libbt-common",
@@ -754,6 +869,185 @@ cc_test {
     shared_libs: [
         "libprotobuf-cpp-lite",
         "libcrypto",
+    ],
+    sanitize: {
+        address: true,
+        all_undefined: true,
+        cfi: true,
+        integer_overflow: true,
+        scs: true,
+        diag: {
+            undefined : true
+        },
+    },
+}
+
+cc_test {
+    name: "net_test_stack_hid",
+    test_suites: ["device-tests"],
+    host_supported: true,
+    defaults: ["fluoride_defaults"],
+    local_include_dirs: [
+        "include",
+        "test/common",
+    ],
+    include_dirs: [
+        "system/bt",
+        "system/bt/gd",
+    ],
+    srcs: crypto_toolbox_srcs + [
+        ":TestMockStackL2cap",
+        ":TestMockStackSdp",
+        ":TestMockStackBtm",
+        ":TestStubLegacyTrace",
+        "hid/hidd_api.cc",
+        "hid/hidd_conn.cc",
+        "hid/hidh_api.cc",
+        "hid/hidh_conn.cc",
+        "test/hid/stack_hid_test.cc",
+    ],
+    static_libs: [
+        "libbt-common",
+        "libbt-protos-lite",
+        "libbtdevice",
+        "libbte",
+        "libgmock",
+        "liblog",
+        "libosi",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "libprotobuf-cpp-lite",
+    ],
+    sanitize: {
+        address: true,
+        all_undefined: true,
+        cfi: true,
+        integer_overflow: true,
+        scs: true,
+        diag: {
+            undefined : true
+        },
+    },
+}
+
+cc_test {
+    name: "net_test_stack_btu",
+    test_suites: ["device-tests"],
+    host_supported: true,
+    defaults: ["fluoride_defaults"],
+    local_include_dirs: [
+        "include",
+        "test/common",
+    ],
+    include_dirs: [
+        "system/bt",
+        "system/bt/gd",
+    ],
+    generated_headers: [
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysDataSchema_h",
+        "BluetoothGeneratedPackets_h",
+    ],
+    srcs: [
+        ":TestMockBta",
+        ":TestMockBtif",
+        ":TestMockHci",
+        ":TestMockLegacyHciCommands",
+        ":TestMockMainShim",
+        ":TestMockStackAcl",
+        ":TestMockStackBtm",
+        ":TestMockStackL2cap",
+        ":TestMockStackMetrics",
+        ":TestMockStackSmp",
+        "btu/btu_hcif.cc",
+        "btu/btu_task.cc",
+        "test/stack_btu_test.cc",
+    ],
+    static_libs: [
+        "libbt-common",
+        "libbt-protos-lite",
+        "libbtdevice",
+        "libgmock",
+        "liblog",
+        "libosi",
+    ],
+    shared_libs: [
+        "libbinder_ndk",
+        "libcrypto",
+        "libflatbuffers-cpp",
+        "libprotobuf-cpp-lite",
+    ],
+    sanitize: {
+        address: true,
+        all_undefined: true,
+        cfi: true,
+        integer_overflow: true,
+        scs: true,
+        diag: {
+            undefined : true
+        },
+    },
+}
+
+cc_test {
+    name: "net_test_stack_gatt",
+    test_suites: ["device-tests"],
+    host_supported: true,
+    defaults: ["fluoride_defaults"],
+    local_include_dirs: [
+        "include",
+        "test/common",
+    ],
+    include_dirs: [
+        "system/bt",
+        "system/bt/gd",
+        "system/bt/utils/include",
+    ],
+    generated_headers: [
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysDataSchema_h",
+        "BluetoothGeneratedPackets_h",
+    ],
+    srcs: [
+        ":TestMockBta",
+        ":TestMockBtif",
+        ":TestMockHci",
+        ":TestMockLegacyHciCommands",
+        ":TestMockMainShim",
+        ":TestMockStackAcl",
+        ":TestMockStackBtm",
+        ":TestMockStackCryptotoolbox",
+        ":TestMockStackL2cap",
+        ":TestMockStackSdp",
+        ":TestMockStackSmp",
+        "eatt/eatt.cc",
+        "gatt/att_protocol.cc",
+        "gatt/connection_manager.cc",
+        "gatt/gatt_api.cc",
+        "gatt/gatt_attr.cc",
+        "gatt/gatt_auth.cc",
+        "gatt/gatt_cl.cc",
+        "gatt/gatt_db.cc",
+        "gatt/gatt_main.cc",
+        "gatt/gatt_sr.cc",
+        "gatt/gatt_sr_hash.cc",
+        "gatt/gatt_utils.cc",
+        "test/gatt/stack_gatt_test.cc",
+    ],
+    static_libs: [
+        "libbt-common",
+        "libbt-protos-lite",
+        "libbtdevice",
+        "libgmock",
+        "liblog",
+        "libosi",
+    ],
+    shared_libs: [
+        "libbinder_ndk",
+        "libcrypto",
+        "libflatbuffers-cpp",
+        "libprotobuf-cpp-lite",
     ],
     sanitize: {
         address: true,

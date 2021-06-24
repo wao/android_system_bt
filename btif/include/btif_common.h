@@ -25,7 +25,7 @@
 #include <base/bind.h>
 #include <base/location.h>
 #include <hardware/bluetooth.h>
-
+#include <functional>
 #include "abstract_message_loop.h"
 #include "bt_types.h"
 #include "bta/include/bta_api.h"
@@ -138,7 +138,7 @@ typedef void(tBTIF_COPY_CBACK)(uint16_t event, char* p_dest, char* p_src);
 
 /* this type handles all btif context switches between BTU and HAL */
 typedef struct {
-  BT_HDR hdr;
+  BT_HDR_RIGID hdr;
   tBTIF_CBACK* p_cb; /* context switch callback */
 
   /* parameters passed to callback */
@@ -155,6 +155,10 @@ extern bt_status_t do_in_jni_thread(const base::Location& from_here,
                                     base::OnceClosure task);
 extern bool is_on_jni_thread();
 extern btbase::AbstractMessageLoop* get_jni_message_loop();
+
+using BtJniClosure = std::function<void()>;
+void post_on_bt_jni(BtJniClosure closure);
+
 /**
  * This template wraps callback into callback that will be executed on jni
  * thread
@@ -207,6 +211,8 @@ void invoke_pin_request_cb(RawAddress bd_addr, bt_bdname_t bd_name,
 void invoke_ssp_request_cb(RawAddress bd_addr, bt_bdname_t bd_name,
                            uint32_t cod, bt_ssp_variant_t pairing_variant,
                            uint32_t pass_key);
+void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c,
+                                Octet16 r, RawAddress raw_address);
 void invoke_bond_state_changed_cb(bt_status_t status, RawAddress bd_addr,
                                   bt_bond_state_t state);
 void invoke_acl_state_changed_cb(bt_status_t status, RawAddress bd_addr,

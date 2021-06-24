@@ -40,7 +40,7 @@ extern void btm_ble_process_periodic_adv_pkt(uint8_t len, uint8_t* p);
 extern void btm_ble_process_periodic_adv_sync_lost_evt(uint8_t len, uint8_t* p);
 extern void btm_send_hci_set_scan_params(uint8_t scan_type, uint16_t scan_int,
                                          uint16_t scan_win,
-                                         uint8_t addr_type_own,
+                                         tBLE_ADDR_TYPE addr_type_own,
                                          uint8_t scan_filter_policy);
 extern void btm_ble_stop_scan(void);
 extern void btm_clear_all_pending_le_entry(void);
@@ -64,8 +64,8 @@ extern void btm_ble_link_sec_check(const RawAddress& bd_addr,
                                    tBTM_BLE_SEC_REQ_ACT* p_sec_req_act);
 extern void btm_ble_ltk_request_reply(const RawAddress& bda, bool use_stk,
                                       const Octet16& stk);
-extern uint8_t btm_proc_smp_cback(tSMP_EVT event, const RawAddress& bd_addr,
-                                  tSMP_EVT_DATA* p_data);
+extern tBTM_STATUS btm_proc_smp_cback(tSMP_EVT event, const RawAddress& bd_addr,
+                                      tSMP_EVT_DATA* p_data);
 extern tBTM_STATUS btm_ble_set_encryption(const RawAddress& bd_addr,
                                           tBTM_BLE_SEC_ACT sec_act,
                                           uint8_t link_role);

@@ -68,7 +68,7 @@ static constexpr uint8_t kPhyConnectionLe2M = 0x02;
 static constexpr uint8_t kPhyConnectionLeCoded = 0x03;
 
 using LegacyInquiryCompleteCallback =
-    std::function<void(uint16_t status, uint8_t inquiry_mode)>;
+    std::function<void(tBTM_STATUS status, uint8_t inquiry_mode)>;
 
 using DiscoverabilityState = struct {
   int mode;
@@ -79,34 +79,10 @@ using ConnectabilityState = DiscoverabilityState;
 
 using HACK_ScoDisconnectCallback = std::function<void(uint16_t, uint8_t)>;
 
+using BtmStatus = tBTM_STATUS;
+
 namespace bluetooth {
 namespace shim {
-
-using BtmStatus = enum : uint8_t {
-  BTM_SUCCESS = 0,              /* Command succeeded                 */
-  BTM_CMD_STARTED = 1,          /* Command started OK.               */
-  BTM_BUSY = 2,                 /* Device busy with another command  */
-  BTM_NO_RESOURCES = 3,         /* No resources to issue command     */
-  BTM_MODE_UNSUPPORTED = 4,     /* Request for 1 or more unsupported modes */
-  BTM_ILLEGAL_VALUE = 5,        /* Illegal parameter value           */
-  BTM_WRONG_MODE = 6,           /* Device in wrong mode for request  */
-  BTM_UNKNOWN_ADDR = 7,         /* Unknown remote BD address         */
-  BTM_DEVICE_TIMEOUT = 8,       /* Device timeout                    */
-  BTM_BAD_VALUE_RET = 9,        /* A bad value was received from HCI */
-  BTM_ERR_PROCESSING = 10,      /* Generic error                     */
-  BTM_NOT_AUTHORIZED = 11,      /* Authorization failed              */
-  BTM_DEV_RESET = 12,           /* Device has been reset             */
-  BTM_CMD_STORED = 13,          /* request is stored in control block */
-  BTM_ILLEGAL_ACTION = 14,      /* state machine gets illegal command */
-  BTM_DELAY_CHECK = 15,         /* delay the check on encryption */
-  BTM_SCO_BAD_LENGTH = 16,      /* Bad SCO over HCI data length */
-  BTM_SUCCESS_NO_SECURITY = 17, /* security passed, no security set  */
-  BTM_FAILED_ON_SECURITY = 18,  /* security failed                   */
-  BTM_REPEATED_ATTEMPTS = 19,   /* repeated attempts for LE security requests */
-  BTM_MODE4_LEVEL4_NOT_SUPPORTED = 20, /* Secure Connections Only Mode can't be
-                                     supported */
-  BTM_DEV_RESTRICT_LISTED = 21,        /* The device is restrict listed */
-};
 
 class Btm {
  public:
@@ -239,15 +215,19 @@ class Btm {
     void OnScannerRegistered(const bluetooth::hci::Uuid app_uuid,
                              bluetooth::hci::ScannerId scanner_id,
                              ScanningStatus status);
+    void OnSetScannerParameterComplete(bluetooth::hci::ScannerId scanner_id,
+                                       ScanningStatus status);
     void OnScanResult(uint16_t event_type, uint8_t address_type,
                       bluetooth::hci::Address address, uint8_t primary_phy,
                       uint8_t secondary_phy, uint8_t advertising_sid,
                       int8_t tx_power, int8_t rssi,
                       uint16_t periodic_advertising_interval,
                       std::vector<uint8_t> advertising_data);
-    void OnTrackAdvFoundLost();
+    void OnTrackAdvFoundLost(bluetooth::hci::AdvertisingFilterOnFoundOnLostInfo
+                                 on_found_on_lost_info);
     void OnBatchScanReports(int client_if, int status, int report_format,
                             int num_records, std::vector<uint8_t> data);
+    void OnBatchScanThresholdCrossed(int client_if);
     void OnTimeout();
     void OnFilterEnable(bluetooth::hci::Enable enable, uint8_t status);
     void OnFilterParamSetup(uint8_t available_spaces,

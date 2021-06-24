@@ -1,5 +1,4 @@
 // Utils static library for target
-// ========================================================
 package {
     // See: http://go/android-license-faq
     // A large-scale-change added 'default_applicable_licenses' to import
@@ -17,6 +16,7 @@ cc_library_static {
     ],
     include_dirs: [
         "system/bt",
+        "system/bt/gd",
         "system/bt/btcore/include",
         "system/bt/stack/include",
     ],

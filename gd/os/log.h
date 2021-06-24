@@ -30,6 +30,8 @@ static_assert(LOG_TAG != nullptr, "LOG_TAG should never be NULL");
 
 #include <log/log.h>
 
+#include "common/init_flags.h"
+
 #ifdef FUZZ_TARGET
 #define LOG_VERBOSE(...)
 #define LOG_DEBUG(...)
@@ -84,8 +86,18 @@ static_assert(LOG_TAG != nullptr, "LOG_TAG is null after header inclusion");
 #define LOG_INFO(...)
 #define LOG_WARN(...)
 #else
-#define LOG_VERBOSE(...) LOGWRAPPER(__VA_ARGS__)
-#define LOG_DEBUG(...) LOGWRAPPER(__VA_ARGS__)
+#define LOG_VERBOSE(fmt, args...)                                             \
+  do {                                                                        \
+    if (bluetooth::common::InitFlags::IsDebugLoggingEnabledForTag(LOG_TAG)) { \
+      LOGWRAPPER(fmt, ##args);                                                \
+    }                                                                         \
+  } while (false)
+#define LOG_DEBUG(fmt, args...)                                               \
+  do {                                                                        \
+    if (bluetooth::common::InitFlags::IsDebugLoggingEnabledForTag(LOG_TAG)) { \
+      LOGWRAPPER(fmt, ##args);                                                \
+    }                                                                         \
+  } while (false)
 #define LOG_INFO(...) LOGWRAPPER(__VA_ARGS__)
 #define LOG_WARN(...) LOGWRAPPER(__VA_ARGS__)
 #endif /* FUZZ_TARGET */

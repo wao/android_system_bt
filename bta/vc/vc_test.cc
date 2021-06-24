@@ -16,10 +16,10 @@
  */
 
 #include <base/bind.h>
-#include <base/bind_helpers.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "bind_helpers.h"
 #include "bta_gatt_api_mock.h"
 #include "bta_gatt_queue_mock.h"
 #include "bta_vc_api.h"
@@ -344,7 +344,7 @@ class VolumeControlTest : public ::testing::Test {
         .conn_id = conn_id,
         .client_if = gatt_if,
         .remote_bda = address,
-        .reason = HCI_ERR_PEER_USER,
+        .reason = GATT_CONN_TERMINATE_PEER_USER,
     };
 
     gatt_callback(BTA_GATTC_CLOSE_EVT, (tBTA_GATTC*)&event_data);

@@ -23,26 +23,15 @@
 #include "bta/include/bta_hf_client_api.h"
 #include "bta/test/common/fake_osi.h"
 #include "common/message_loop_thread.h"
+#include "test/mock/mock_stack_acl.h"
 
 std::map<std::string, int> mock_function_count_map;
-
-bt_status_t do_in_main_thread_delayed(const base::Location& from_here,
-                                      base::OnceClosure task,
-                                      const base::TimeDelta& delay) {
-  return BT_STATUS_SUCCESS;
-}
-
-bt_status_t do_in_main_thread(const base::Location& from_here,
-                              base::OnceClosure task) {
-  return BT_STATUS_SUCCESS;
-}
 
 void LogMsg(uint32_t trace_set_mask, const char* fmt_str, ...) {}
 
 namespace base {
 class MessageLoop;
 }  // namespace base
-bluetooth::common::MessageLoopThread* get_main_thread() { return nullptr; }
 
 namespace {
 constexpr uint8_t kUnusedTimer = BTA_ID_MAX;
@@ -86,28 +75,37 @@ TEST_F(BtaDmTest, disable_no_acl_links) {
   ASSERT_TRUE(!bta_dm_cb.disabling);
 }
 
-extern uint16_t mock_stack_acl_num_links;
 TEST_F(BtaDmTest, disable_first_pass_with_acl_links) {
+  uint16_t links_up = 1;
+  test::mock::stack_acl::BTM_GetNumAclLinks.body = [&links_up]() {
+    return links_up;
+  };
   bta_dm_cb.disabling = true;
   // ACL link is open
-  mock_stack_acl_num_links = bta_dm_cb.device_list.count = 1;
+  bta_dm_cb.device_list.count = 1;
 
   bta_dm_disable();              // Waiting for all ACL connections to drain
-  mock_stack_acl_num_links = 0;  // ACL link has closed
   ASSERT_EQ(1, mock_function_count_map["alarm_set_on_mloop"]);
   ASSERT_EQ(0, mock_function_count_map["BTIF_dm_disable"]);
 
+  links_up = 0;
   // First disable pass
   fake_osi_alarm_set_on_mloop_.cb(fake_osi_alarm_set_on_mloop_.data);
   ASSERT_EQ(1, mock_function_count_map["alarm_set_on_mloop"]);
   ASSERT_EQ(1, mock_function_count_map["BTIF_dm_disable"]);
   ASSERT_TRUE(!bta_dm_cb.disabling);
+
+  test::mock::stack_acl::BTM_GetNumAclLinks = {};
 }
 
 TEST_F(BtaDmTest, disable_second_pass_with_acl_links) {
+  uint16_t links_up = 1;
+  test::mock::stack_acl::BTM_GetNumAclLinks.body = [&links_up]() {
+    return links_up;
+  };
   bta_dm_cb.disabling = true;
   // ACL link is open
-  mock_stack_acl_num_links = bta_dm_cb.device_list.count = 1;
+  bta_dm_cb.device_list.count = 1;
 
   bta_dm_disable();  // Waiting for all ACL connections to drain
   ASSERT_EQ(1, mock_function_count_map["alarm_set_on_mloop"]);
@@ -123,4 +121,6 @@ TEST_F(BtaDmTest, disable_second_pass_with_acl_links) {
   fake_osi_alarm_set_on_mloop_.cb(fake_osi_alarm_set_on_mloop_.data);
   ASSERT_EQ(1, mock_function_count_map["BTIF_dm_disable"]);
   ASSERT_TRUE(!bta_dm_cb.disabling);
+
+  test::mock::stack_acl::BTM_GetNumAclLinks = {};
 }

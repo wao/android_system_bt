@@ -41,14 +41,35 @@
 #define GATT_TRANS_ID_MAX 0x0fffffff /* 4 MSB is reserved */
 
 /* security action for GATT write and read request */
-#define GATT_SEC_NONE 0
-#define GATT_SEC_OK 1
-#define GATT_SEC_SIGN_DATA 2       /* compute the signature for the write cmd */
-#define GATT_SEC_ENCRYPT 3         /* encrypt the link with current key */
-#define GATT_SEC_ENCRYPT_NO_MITM 4 /* unauthenticated encryption or better */
-#define GATT_SEC_ENCRYPT_MITM 5    /* authenticated encryption */
-#define GATT_SEC_ENC_PENDING 6     /* wait for link encryption pending */
-typedef uint8_t tGATT_SEC_ACTION;
+typedef enum : uint8_t {
+  GATT_SEC_NONE = 0,
+  GATT_SEC_OK = 1,
+  GATT_SEC_SIGN_DATA = 2,       /* compute the signature for the write cmd */
+  GATT_SEC_ENCRYPT = 3,         /* encrypt the link with current key */
+  GATT_SEC_ENCRYPT_NO_MITM = 4, /* unauthenticated encryption or better */
+  GATT_SEC_ENCRYPT_MITM = 5,    /* authenticated encryption */
+  GATT_SEC_ENC_PENDING = 6,     /* wait for link encryption pending */
+} tGATT_SEC_ACTION;
+
+#define CASE_RETURN_TEXT(code) \
+  case code:                   \
+    return #code
+
+inline std::string gatt_security_action_text(const tGATT_SEC_ACTION& action) {
+  switch (action) {
+    CASE_RETURN_TEXT(GATT_SEC_NONE);
+    CASE_RETURN_TEXT(GATT_SEC_OK);
+    CASE_RETURN_TEXT(GATT_SEC_SIGN_DATA);
+    CASE_RETURN_TEXT(GATT_SEC_ENCRYPT);
+    CASE_RETURN_TEXT(GATT_SEC_ENCRYPT_NO_MITM);
+    CASE_RETURN_TEXT(GATT_SEC_ENCRYPT_MITM);
+    CASE_RETURN_TEXT(GATT_SEC_ENC_PENDING);
+    default:
+      return std::string("UNKNOWN[%hhu]", action);
+  }
+}
+
+#undef CASE_RETURN_TEXT
 
 #define GATT_INDEX_INVALID 0xff
 
@@ -167,11 +188,12 @@ typedef struct {
 
 typedef struct {
   bluetooth::Uuid app_uuid128;
-  tGATT_CBACK app_cb;
-  tGATT_IF gatt_if; /* one based */
-  bool in_use;
-  uint8_t listening; /* if adv for all has been enabled */
-  bool eatt_support;
+  tGATT_CBACK app_cb{};
+  tGATT_IF gatt_if{0}; /* one based */
+  bool in_use{false};
+  uint8_t listening{0}; /* if adv for all has been enabled */
+  bool eatt_support{false};
+  std::string name;
 } tGATT_REG;
 
 struct tGATT_CLCB;
@@ -213,6 +235,23 @@ typedef enum : uint8_t {
   GATT_CH_CFG = 3,
   GATT_CH_OPEN = 4,
 } tGATT_CH_STATE;
+
+#define CASE_RETURN_TEXT(code) \
+  case code:                   \
+    return #code
+
+inline std::string gatt_channel_state_text(const tGATT_CH_STATE& state) {
+  switch (state) {
+    CASE_RETURN_TEXT(GATT_CH_CLOSE);
+    CASE_RETURN_TEXT(GATT_CH_CLOSING);
+    CASE_RETURN_TEXT(GATT_CH_CONN);
+    CASE_RETURN_TEXT(GATT_CH_CFG);
+    CASE_RETURN_TEXT(GATT_CH_OPEN);
+    default:
+      return std::string("UNKNOWN[%hhu]", state);
+  }
+}
+#undef CASE_RETURN_TEXT
 
 #define GATT_GATT_START_HANDLE 1
 #define GATT_GAP_START_HANDLE 20
@@ -258,7 +297,6 @@ typedef struct {
   uint16_t payload_size;
 
   tGATT_CH_STATE ch_state;
-  uint8_t ch_flags;
 
   std::unordered_set<uint8_t> app_hold_link;
 
@@ -279,6 +317,8 @@ typedef struct {
   // TODO(hylo): support byte array data
   /* Client supported feature*/
   uint8_t cl_supp_feat;
+  /* Server supported features */
+  uint8_t sr_supp_feat;
   /* Use for server. if false, should handle database out of sync. */
   bool is_robust_cache_change_aware;
 
@@ -305,7 +345,7 @@ struct tGATT_CLCB {
   uint16_t counter; /* used as offset, attribute length, num of prepare write */
   uint16_t start_offset;
   tGATT_AUTH_REQ auth_req; /* authentication requirement */
-  uint8_t operation;       /* one logic channel can have one operation active */
+  tGATTC_OPTYPE operation; /* one logic channel can have one operation active */
   uint8_t op_subtype;      /* operation subtype */
   tGATT_STATUS status;     /* operation status */
   bool first_read_blob_after_read;
@@ -421,9 +461,11 @@ extern void gatt_add_a_bonded_dev_for_srv_chg(const RawAddress& bda);
 /* from gatt_attr.cc */
 extern uint16_t gatt_profile_find_conn_id_by_bd_addr(const RawAddress& bda);
 
-extern bool gatt_profile_get_eatt_support(
-    const RawAddress& remote_bda,
-    base::OnceCallback<void(const RawAddress&, bool)> cb);
+extern bool gatt_profile_get_eatt_support(const RawAddress& remote_bda);
+extern void gatt_cl_init_sr_status(tGATT_TCB& tcb);
+extern bool gatt_cl_read_sr_supp_feat_req(
+    const RawAddress& peer_bda,
+    base::OnceCallback<void(const RawAddress&, uint8_t)> cb);
 
 extern bool gatt_sr_is_cl_change_aware(tGATT_TCB& tcb);
 extern void gatt_sr_init_cl_status(tGATT_TCB& tcb);

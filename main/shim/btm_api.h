@@ -98,6 +98,26 @@ tBTM_STATUS BTM_BleObserve(bool start, uint8_t duration,
                            tBTM_INQ_RESULTS_CB* p_results_cb,
                            tBTM_CMPL_CB* p_cmpl_cb);
 
+/*******************************************************************************
+ *
+ * Function         BTM_BleOpportunisticObserve
+ *
+ * Description      Register/unregister opportunistic scan callback. This method
+ *                  does not trigger scan start/stop, but if scan is ever started,
+ *                  this callback would get called with scan results. Additionally,
+ *                  this callback is not reset on each scan start/stop. It's
+ *                  intended to be used by LE Audio related profiles, that would
+ *                  find yet unpaired members of CSIS set, or broadcasts.
+ *
+ * Parameters       enable: enable/disable observing.
+ *                  p_results_cb: callback for results.
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTM_BleOpportunisticObserve(bool enable,
+                                 tBTM_INQ_RESULTS_CB* p_results_cb);
+
 void BTM_EnableInterlacedInquiryScan();
 
 void BTM_EnableInterlacedPageScan();
@@ -351,8 +371,8 @@ void BTM_RemoveEirService(uint32_t* p_eir_uuid, uint16_t uuid16);
  *                  max_num_uuid16 - max number of UUID can be written in EIR
  *                  num_uuid16 - number of UUID have been written in EIR
  *
- * Returns          BTM_EIR_MORE_16BITS_UUID_TYPE, if it has more than max
- *                  BTM_EIR_COMPLETE_16BITS_UUID_TYPE, otherwise
+ * Returns          HCI_EIR_MORE_16BITS_UUID_TYPE, if it has more than max
+ *                  HCI_EIR_COMPLETE_16BITS_UUID_TYPE, otherwise
  *
  ******************************************************************************/
 uint8_t BTM_GetEirSupportedServices(uint32_t* p_eir_uuid, uint8_t** p,
@@ -374,12 +394,12 @@ uint8_t BTM_GetEirSupportedServices(uint32_t* p_eir_uuid, uint8_t** p,
  *                  max_num_uuid - maximum number of UUID to be returned
  *
  * Returns          0 - if not found
- *                  BTM_EIR_COMPLETE_16BITS_UUID_TYPE
- *                  BTM_EIR_MORE_16BITS_UUID_TYPE
- *                  BTM_EIR_COMPLETE_32BITS_UUID_TYPE
- *                  BTM_EIR_MORE_32BITS_UUID_TYPE
- *                  BTM_EIR_COMPLETE_128BITS_UUID_TYPE
- *                  BTM_EIR_MORE_128BITS_UUID_TYPE
+ *                  HCI_EIR_COMPLETE_16BITS_UUID_TYPE
+ *                  HCI_EIR_MORE_16BITS_UUID_TYPE
+ *                  HCI_EIR_COMPLETE_32BITS_UUID_TYPE
+ *                  HCI_EIR_MORE_32BITS_UUID_TYPE
+ *                  HCI_EIR_COMPLETE_128BITS_UUID_TYPE
+ *                  HCI_EIR_MORE_128BITS_UUID_TYPE
  *
  ******************************************************************************/
 uint8_t BTM_GetEirUuidList(uint8_t* p_eir, size_t eir_len, uint8_t uuid_size,
@@ -1375,17 +1395,6 @@ bool BTM_SecDeleteRmtNameNotifyCallback(tBTM_RMT_NAME_CALLBACK* p_callback);
 
 /*******************************************************************************
  *
- * Function         BTM_GetSecurityFlags
- *
- * Description      Get security flags for the device
- *
- * Returns          bool    true or false is device found
- *
- ******************************************************************************/
-bool BTM_GetSecurityFlags(const RawAddress& bd_addr, uint8_t* p_sec_flags);
-
-/*******************************************************************************
- *
  * Function         BTM_GetSecurityFlagsByTransport
  *
  * Description      Get security flags for the device on a particular transport
@@ -1516,8 +1525,8 @@ tBTM_LINK_KEY_TYPE BTM_SecGetDeviceLinkKeyType(const RawAddress& bd_addr);
  * Returns          void
  *
  ******************************************************************************/
-void BTM_PINCodeReply(const RawAddress& bd_addr, uint8_t res, uint8_t pin_len,
-                      uint8_t* p_pin);
+void BTM_PINCodeReply(const RawAddress& bd_addr, tBTM_STATUS res,
+                      uint8_t pin_len, uint8_t* p_pin);
 
 /*******************************************************************************
  *
@@ -1536,7 +1545,7 @@ void BTM_PINCodeReply(const RawAddress& bd_addr, uint8_t res, uint8_t pin_len,
  *
  ******************************************************************************/
 tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                        tBT_TRANSPORT transport, int device_type);
+                        tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type);
 
 /*******************************************************************************
  *
@@ -1688,6 +1697,23 @@ bool BTM_BothEndsSupportSecureConnections(const RawAddress& bd_addr);
  *
  ******************************************************************************/
 bool BTM_PeerSupportsSecureConnections(const RawAddress& bd_addr);
+
+/*******************************************************************************
+ *
+ * Function         BTM_GetPeerDeviceTypeFromFeatures
+ *
+ * Description      This function is called to retrieve the peer device type
+ *                  by referencing the remote features.
+ *
+ * Parameters:      bd_addr - address of the peer
+ *
+ * Returns          BT_DEVICE_TYPE_DUMO if both BR/EDR and BLE transports are
+ *                  supported by the peer,
+ *                  BT_DEVICE_TYPE_BREDR if only BR/EDR transport is supported,
+ *                  BT_DEVICE_TYPE_BLE if only BLE transport is supported.
+ *
+ ******************************************************************************/
+tBT_DEVICE_TYPE BTM_GetPeerDeviceTypeFromFeatures(const RawAddress& bd_addr);
 
 /*******************************************************************************
  *

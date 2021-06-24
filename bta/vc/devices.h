@@ -17,13 +17,14 @@
 
 #pragma once
 
-#include <hardware/bt_vc.h>
-
+#include <cstdint>
 #include <unordered_set>
 #include <vector>
 
-#include "bta_gatt_api.h"
-#include "types.h"
+#include "bta/include/bta_gatt_api.h"
+#include "bta/vc/types.h"
+#include "include/hardware/bt_vc.h"
+#include "types/raw_address.h"
 
 namespace bluetooth {
 namespace vc {
@@ -68,6 +69,7 @@ class VolumeControlDevice {
         volume(0),
         change_counter(0),
         mute(false),
+        flags(0),
         connection_id(GATT_INVALID_CONN_ID),
         volume_state_handle(0),
         volume_state_ccc_handle(0),

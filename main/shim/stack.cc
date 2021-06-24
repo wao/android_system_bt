@@ -27,6 +27,7 @@
 #include "gd/hci/hci_layer.h"
 #include "gd/hci/le_advertising_manager.h"
 #include "gd/hci/le_scanning_manager.h"
+#include "gd/hci/vendor_specific_event_manager.h"
 #include "gd/l2cap/classic/l2cap_classic_module.h"
 #include "gd/l2cap/le/l2cap_le_module.h"
 #include "gd/neighbor/connectability.h"
@@ -98,6 +99,7 @@ void Stack::StartEverything() {
     modules.add<hci::HciLayer>();
     modules.add<storage::StorageModule>();
     modules.add<shim::Dumpsys>();
+    modules.add<hci::VendorSpecificEventManager>();
   }
   if (common::init_flags::gd_controller_is_enabled()) {
     modules.add<hci::Controller>();
@@ -232,6 +234,12 @@ StackManager* Stack::GetStackManager() {
   return &stack_manager_;
 }
 
+const StackManager* Stack::GetStackManager() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  ASSERT(is_running_);
+  return &stack_manager_;
+}
+
 legacy::Acl* Stack::GetAcl() {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   ASSERT(is_running_);
@@ -256,6 +264,11 @@ os::Handler* Stack::GetHandler() {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   ASSERT(is_running_);
   return stack_handler_;
+}
+
+bool Stack::IsDumpsysModuleStarted() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  return GetStackManager()->IsStarted<Dumpsys>();
 }
 
 }  // namespace shim

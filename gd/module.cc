@@ -13,22 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#define LOG_TAG "BtGdModule"
 
 #include "module.h"
+#include "common/init_flags.h"
 #include "dumpsys/init_flags.h"
+#include "os/wakelock_manager.h"
 
 using ::bluetooth::os::Handler;
 using ::bluetooth::os::Thread;
+using ::bluetooth::os::WakelockManager;
 
 namespace bluetooth {
 
 constexpr std::chrono::milliseconds kModuleStopTimeout = std::chrono::milliseconds(2000);
 
 ModuleFactory::ModuleFactory(std::function<Module*()> ctor) : ctor_(ctor) {
-}
-
-std::string Module::ToString() const {
-  return "Module";
 }
 
 Handler* Module::GetHandler() const {
@@ -82,16 +82,21 @@ Module* ModuleRegistry::Start(const ModuleFactory* module, Thread* thread) {
     return started_instance->second;
   }
 
+  LOG_DEBUG("Constructing next module");
   Module* instance = module->ctor_();
   last_instance_ = "starting " + instance->ToString();
   set_registry_and_handler(instance, thread);
 
+  LOG_DEBUG("Starting dependencies of %s", instance->ToString().c_str());
   instance->ListDependencies(&instance->dependencies_);
   Start(&instance->dependencies_, thread);
+
+  LOG_DEBUG("Finished starting dependencies and calling Start() of %s", instance->ToString().c_str());
 
   instance->Start();
   start_order_.push_back(module);
   started_modules_[module] = instance;
+  LOG_DEBUG("Started %s", instance->ToString().c_str());
   return instance;
 }
 
@@ -136,6 +141,7 @@ void ModuleDumper::DumpState(std::string* output) const {
   auto title = builder.CreateString(title_);
 
   auto init_flags_offset = dumpsys::InitFlags::Dump(&builder);
+  auto wakelock_offset = WakelockManager::Get().GetDumpsysData(&builder);
 
   std::queue<DumpsysDataFinisher> queue;
   for (auto it = module_registry_.start_order_.rbegin(); it != module_registry_.start_order_.rend(); it++) {
@@ -147,6 +153,7 @@ void ModuleDumper::DumpState(std::string* output) const {
   DumpsysDataBuilder data_builder(builder);
   data_builder.add_title(title);
   data_builder.add_init_flags(init_flags_offset);
+  data_builder.add_wakelock_manager_data(wakelock_offset);
 
   while (!queue.empty()) {
     queue.front()(&data_builder);

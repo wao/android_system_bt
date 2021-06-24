@@ -234,6 +234,7 @@ enum {
   AVDT_SCB_SND_SETCONFIG_REQ,
   AVDT_SCB_SND_SETCONFIG_REJ,
   AVDT_SCB_SND_SETCONFIG_RSP,
+  AVDT_SCB_SND_SNK_DELAY_RPT_REQ,
   AVDT_SCB_SND_TC_CLOSE,
   AVDT_SCB_CB_ERR,
   AVDT_SCB_CONG_STATE,
@@ -496,6 +497,7 @@ class AvdtpScb {
   uint8_t curr_evt;    // current event; set only by the state machine
   bool cong;           // True if the media transport channel is congested
   uint8_t close_code;  // Error code received in close response
+  bool curr_stream;    // True if the SCB is the current stream, False otherwise
 
  private:
   uint8_t scb_handle_;  // Unique handle for this AvdtpScb entry
@@ -910,6 +912,7 @@ extern void avdt_scb_snd_security_rsp(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 extern void avdt_scb_snd_setconfig_req(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 extern void avdt_scb_snd_setconfig_rej(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 extern void avdt_scb_snd_setconfig_rsp(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
+extern void avdt_scb_snd_snk_delay_rpt_req(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 extern void avdt_scb_snd_tc_close(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 extern void avdt_scb_cb_err(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 extern void avdt_scb_cong_state(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);

@@ -29,7 +29,6 @@
 
 #include "bta/gatt/bta_gatts_int.h"
 #include "bta/include/bta_api.h"
-#include "bta/include/bta_gatts_co.h"
 #include "btif/include/btif_debug_conn.h"
 #include "osi/include/osi.h"
 #include "stack/include/gatt_api.h"
@@ -82,10 +81,7 @@ tGATT_APPL_INFO bta_gatts_nv_cback = {bta_gatts_nv_save_cback,
  *
  ******************************************************************************/
 static void bta_gatts_nv_save_cback(bool is_add,
-                                    tGATTS_HNDL_RANGE* p_hndl_range) {
-  bta_gatts_co_update_handle_range(is_add,
-                                   (tBTA_GATTS_HNDL_RANGE*)p_hndl_range);
-}
+                                    tGATTS_HNDL_RANGE* p_hndl_range) {}
 
 /*******************************************************************************
  *
@@ -101,9 +97,7 @@ static void bta_gatts_nv_save_cback(bool is_add,
 static bool bta_gatts_nv_srv_chg_cback(tGATTS_SRV_CHG_CMD cmd,
                                        tGATTS_SRV_CHG_REQ* p_req,
                                        tGATTS_SRV_CHG_RSP* p_rsp) {
-  return bta_gatts_co_srv_chg((tGATTS_SRV_CHG_CMD)cmd,
-                              (tGATTS_SRV_CHG_REQ*)p_req,
-                              (tGATTS_SRV_CHG_RSP*)p_rsp);
+  return false;
 }
 
 /*******************************************************************************
@@ -116,23 +110,12 @@ static bool bta_gatts_nv_srv_chg_cback(tGATTS_SRV_CHG_CMD cmd,
  *
  ******************************************************************************/
 void bta_gatts_enable(tBTA_GATTS_CB* p_cb) {
-  uint8_t index = 0;
-  tBTA_GATTS_HNDL_RANGE handle_range;
-
   if (p_cb->enabled) {
     VLOG(1) << "GATTS already enabled.";
   } else {
     memset(p_cb, 0, sizeof(tBTA_GATTS_CB));
 
     p_cb->enabled = true;
-
-    while (bta_gatts_co_load_handle_range(index, &handle_range)) {
-      GATTS_AddHandleRange((tGATTS_HNDL_RANGE*)&handle_range);
-      memset(&handle_range, 0, sizeof(tGATTS_HNDL_RANGE));
-      index++;
-    }
-
-    VLOG(1) << __func__ << ": num of handle range added:" << +index;
 
     if (!GATTS_NVRegister(&bta_gatts_nv_cback)) {
       LOG(ERROR) << "BTA GATTS NV register failed.";
@@ -209,7 +192,7 @@ void bta_gatts_register(tBTA_GATTS_CB* p_cb, tBTA_GATTS_DATA* p_msg) {
       p_cb->rcb[first_unuse].p_cback = p_msg->api_reg.p_cback;
       p_cb->rcb[first_unuse].app_uuid = p_msg->api_reg.app_uuid;
       cb_data.reg_oper.server_if = p_cb->rcb[first_unuse].gatt_if =
-          GATT_Register(p_msg->api_reg.app_uuid, &bta_gatts_cback,
+          GATT_Register(p_msg->api_reg.app_uuid, "GattServer", &bta_gatts_cback,
                         p_msg->api_reg.eatt_support);
       if (!p_cb->rcb[first_unuse].gatt_if) {
         status = GATT_NO_RESOURCES;
@@ -593,9 +576,9 @@ static void bta_gatts_conn_cback(tGATT_IF gatt_if, const RawAddress& bdaddr,
           << ", conn_id=" << loghex(conn_id) << " connected=" << connected;
 
   if (connected)
-    btif_debug_conn_state(bdaddr, BTIF_DEBUG_CONNECTED, GATT_CONN_UNKNOWN);
+    btif_debug_conn_state(bdaddr, BTIF_DEBUG_CONNECTED, GATT_CONN_OK);
   else
-    btif_debug_conn_state(bdaddr, BTIF_DEBUG_DISCONNECTED, GATT_CONN_UNKNOWN);
+    btif_debug_conn_state(bdaddr, BTIF_DEBUG_DISCONNECTED, GATT_CONN_OK);
 
   p_reg = bta_gatts_find_app_rcb_by_app_if(gatt_if);
 

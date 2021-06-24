@@ -16,7 +16,6 @@
  */
 
 #include <base/bind.h>
-#include <base/bind_helpers.h>
 #include <base/logging.h>
 #include <base/strings/string_number_conversions.h>
 #include <hardware/bt_vc.h>
@@ -24,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "bind_helpers.h"
 #include "bta_gatt_api.h"
 #include "bta_gatt_queue.h"
 #include "bta_vc_api.h"
@@ -344,7 +344,8 @@ class VolumeControlImpl : public VolumeControl {
   }
 
   void OnGattDisconnected(uint16_t connection_id, tGATT_IF /*client_if*/,
-                          RawAddress remote_bda, tBTA_GATT_REASON /*reason*/) {
+                          RawAddress remote_bda,
+                          tGATT_DISCONN_REASON /*reason*/) {
     VolumeControlDevice* device =
         volume_control_devices_.FindByConnId(connection_id);
     if (!device) {

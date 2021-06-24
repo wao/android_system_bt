@@ -1,5 +1,4 @@
 // Bluetooth main HW module / shared library for target
-// ========================================================
 package {
     // See: http://go/android-license-faq
     // A large-scale-change added 'default_applicable_licenses' to import
@@ -137,6 +136,7 @@ cc_library_shared {
         android: {
             shared_libs: [
                 "android.system.suspend.control-V1-ndk",
+                "android.system.suspend@1.0",
                 "libaaudio",
                 "libfmq",
             ],
@@ -216,6 +216,12 @@ cc_test {
         "system/bt/stack/include",
     ],
     srcs: [
+        ":TestCommonMainHandler",
+        ":TestMockBta",
+        ":TestMockBtif",
+        ":TestMockLegacyHciCommands",
+        ":TestMockMainShimEntry",
+        ":TestMockStack",
         "shim/acl_api.cc",
         "shim/acl.cc",
         "shim/acl_legacy_interface.cc",
@@ -233,25 +239,6 @@ cc_test {
         "shim/metrics_api.cc",
         "shim/shim.cc",
         "shim/stack.cc",
-        "test/common/mock_acl_ble.cc",
-        "test/common/mock_acl_btm_pm.cc",
-        "test/common/mock_bta_dm_act.cc",
-        "test/common/mock_btif_core.cc",
-        "test/common/mock_btif_dm.cc",
-        "test/common/mock_btm_ble_gap.cc",
-        "test/common/mock_btm_dev.cc",
-        "test/common/mock_btm_inq.cc",
-        "test/common/mock_btm_main.cc",
-        "test/common/mock_btm_sec.cc",
-        "test/common/mock_btu_task.cc",
-        "test/common/mock_entry.cc",
-        "test/common/mock_gatt_main.cc",
-        "test/common/mock_hcic_hcicmds.cc",
-        "test/common/mock_l2cap_l2c_ble.cc",
-        "test/common/mock_l2cap_l2c_link.cc",
-        "test/common/mock_stack_acl.cc",
-        "test/common/mock_stack_btm_ble.cc",
-        "test/common/mock_stack_btm_sco.cc",
         "test/main_shim_test.cc",
     ],
     static_libs: [

@@ -26,7 +26,7 @@
 #include "osi/include/log.h"
 
 #include "hci/controller.h"
-#include "src/controller.rs.h"
+#include "src/bridge.rs.h"
 
 using ::bluetooth::common::init_flags::gd_rust_is_enabled;
 using ::bluetooth::shim::GetController;
@@ -270,6 +270,17 @@ static uint16_t get_le_maximum_tx_data_length(void) {
   }
 }
 
+static uint16_t get_le_maximum_tx_time(void) {
+  if (gd_rust_is_enabled()) {
+    return bluetooth::shim::rust::controller_get_le_maximum_tx_time(
+        **bluetooth::shim::Stack::GetInstance()->GetRustController());
+  } else {
+    ::bluetooth::hci::LeMaximumDataLength le_maximum_data_length =
+        GetController()->GetLeMaximumDataLength();
+    return le_maximum_data_length.supported_max_tx_time_;
+  }
+}
+
 FORWARD_GETTER_IF_RUST(uint16_t, get_le_max_advertising_data_length,
                        GetController()->GetLeMaximumAdvertisingDataLength())
 FORWARD_GETTER_IF_RUST(uint8_t, get_le_supported_advertising_sets,
@@ -285,11 +296,15 @@ FORWARD_GETTER_IF_RUST(
     GetController()->GetControllerIsoBufferSize().total_num_le_packets_)
 FORWARD_GETTER_IF_RUST(uint8_t, get_le_connect_list_size,
                        GetController()->GetLeConnectListSize())
-FORWARD_GETTER_IF_RUST(uint8_t, get_le_resolving_list_size,
-                       GetController()->GetLeResolvingListSize())
+
+static uint8_t ble_resolving_list_max_size = 0;
 
 static void set_ble_resolving_list_max_size(int resolving_list_max_size) {
-  LOG_WARN("%s TODO Unimplemented", __func__);
+  ble_resolving_list_max_size = resolving_list_max_size;
+}
+
+static uint8_t get_le_resolving_list_size(void) {
+  return ble_resolving_list_max_size;
 }
 
 static uint8_t get_le_all_initiating_phys() { return data_.phy; }
@@ -362,6 +377,7 @@ static const controller_t interface = {
     get_iso_packet_size,
     get_le_suggested_default_data_length,
     get_le_maximum_tx_data_length,
+    get_le_maximum_tx_time,
     get_le_max_advertising_data_length,
     get_le_supported_advertising_sets,
     get_le_periodic_advertiser_list_size,

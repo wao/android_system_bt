@@ -13,6 +13,7 @@ cc_defaults {
     include_dirs: [
         "system/bt/bta/include/", // For tBT_A2DP_OFFLOAD
         "system/bt/bta/sys/", // For tBT_A2DP_OFFLOAD
+        "system/bt/gd",
     ],
 }
 

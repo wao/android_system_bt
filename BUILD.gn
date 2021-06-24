@@ -23,33 +23,35 @@
 group("all") {
   deps = [ ":bluetooth" ]
 
-  if (use.test) {
-    deps += [ ":bluetooth_tests" ]
-  }
+  #if (use.test) {
+    #deps += [ ":bluetooth_tests" ]
+  #}
 }
 
 # This pulls in main/BUILD.gn and all of its dependencies.
 group("bluetooth") {
   deps = [
     "//bt/main:bluetooth",
-    "//bt/service:bluetoothtbd",
+    "//bt/main:bluetooth-static",
+    #"//bt/service:bluetoothtbd",
   ]
 }
 
-if (use.test) {
-  group("bluetooth_tests") {
-    deps = [
-      "//bt/btcore:net_test_btcore",
-      "//bt/common:bluetooth_test_common",
-      "//bt/profile/avrcp:net_test_avrcp",
-      "//bt/service:bluetoothtbd_test",
-      "//bt/stack:net_test_btm_iso",
-      "//bt/types:net_test_types",
+# TODO(b/190750167) - Re-enable once we're fully Bazel build
+#if (use.test) {
+  #group("bluetooth_tests") {
+    #deps = [
+      #"//bt/btcore:net_test_btcore",
+      #"//bt/common:bluetooth_test_common",
+      #"//bt/profile/avrcp:net_test_avrcp",
+      #"//bt/service:bluetoothtbd_test",
+      #"//bt/stack:net_test_btm_iso",
+      #"//bt/types:net_test_types",
 
-      #"//bt/packet:net_test_btpackets",
-    ]
-  }
-}
+      ##"//bt/packet:net_test_btpackets",
+    #]
+  #}
+#}
 
 if (host_cpu == target_cpu && host_os == target_os) {
   group("tools") {
@@ -104,19 +106,22 @@ config("target_defaults") {
     "-Wno-final-dtor-non-final-class",
   ]
 
-  cflags_cc = [ "-std=c++17" ]
+  cflags_cc = [
+    "-std=c++17",
+  ]
 
   defines = [
     "HAS_NO_BDROID_BUILDCFG",
     "OS_GENERIC",
     "OS_LINUX_GENERIC",
+    "TARGET_FLOSS",
     "EXPORT_SYMBOL=__attribute__((visibility(\"default\")))",
     "FALLTHROUGH_INTENDED=[[clang::fallthrough]]",
   ]
 
   # If not configured as a dynamic library, default to static library
   if (!(defined(use.bt_dynlib) && use.bt_dynlib)) {
-    defines = [
+    defines += [
       "STATIC_LIBBLUETOOTH",
     ]
   }

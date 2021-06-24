@@ -25,6 +25,8 @@
 #include <string>
 #endif  // __cplusplus
 
+#include "stack/include/bt_device_type.h"
+
 /* READ WELL !!
  *
  * This section defines global events. These are events that cross layers.
@@ -100,6 +102,17 @@ typedef struct {
   // This struct may be embedded in any position within other structs
   // and will not trigger various flexible member compilation issues.
 } BT_HDR_RIGID;
+
+#ifdef __cplusplus
+template <typename T>
+T* ToPacketData(BT_HDR* bt_hdr, size_t offset = 0) {
+  return reinterpret_cast<T*>(bt_hdr->data + bt_hdr->offset + offset);
+}
+template <typename T>
+const T* ToPacketData(const BT_HDR* bt_hdr, size_t offset = 0) {
+  return reinterpret_cast<const T*>(bt_hdr->data + bt_hdr->offset + offset);
+}
+#endif  // __cplusplus
 
 #define BT_HDR_SIZE (sizeof(BT_HDR))
 
@@ -520,28 +533,5 @@ typedef uint8_t COF[COF_LEN]; /* ciphering offset number */
 #define BT_EIR_SERVICE_DATA_32BITS_UUID_TYPE 0x20
 #define BT_EIR_SERVICE_DATA_128BITS_UUID_TYPE 0x21
 #define BT_EIR_MANUFACTURER_SPECIFIC_TYPE 0xFF
-
-/* Device Types
- */
-enum {
-  BT_DEVICE_TYPE_BREDR = (1 << 0),
-  BT_DEVICE_TYPE_BLE = (1 << 1),
-  BT_DEVICE_TYPE_DUMO = BT_DEVICE_TYPE_BREDR | BT_DEVICE_TYPE_BLE,
-};
-typedef uint8_t tBT_DEVICE_TYPE;
-#ifdef __cplusplus
-inline std::string DeviceTypeText(tBT_DEVICE_TYPE type) {
-  switch (type) {
-    case BT_DEVICE_TYPE_BREDR:
-      return std::string("BR_EDR");
-    case BT_DEVICE_TYPE_BLE:
-      return std::string("BLE");
-    case BT_DEVICE_TYPE_DUMO:
-      return std::string("BR_EDR and BLE");
-    default:
-      return std::string("Unknown");
-  }
-}
-#endif  // __cplusplus
 
 #endif

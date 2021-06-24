@@ -31,6 +31,7 @@
 #include "device/include/controller.h"
 #include "hcidefs.h"
 #include "l2c_api.h"
+#include "osi/include/log.h"
 #include "osi/include/osi.h"
 #include "smp_int.h"
 #include "stack/btm/btm_ble_int.h"
@@ -375,8 +376,9 @@ bool smp_send_cmd(uint8_t cmd_code, tSMP_CB* p_cb) {
   BT_HDR* p_buf;
   bool sent = false;
 
-  SMP_TRACE_EVENT("%s: on l2cap cmd_code=0x%x, pairing_bda=%s", __func__,
-                  cmd_code, p_cb->pairing_bda.ToString().c_str());
+  LOG_DEBUG("Sending SMP command:%s[0x%x] pairing_bda=%s",
+            smp_opcode_text(static_cast<tSMP_OPCODE>(cmd_code)).c_str(),
+            cmd_code, PRIVATE_ADDRESS(p_cb->pairing_bda));
 
   if (cmd_code <= (SMP_OPCODE_MAX + 1 /* for SMP_OPCODE_PAIR_COMMITM */) &&
       smp_cmd_build_act[cmd_code] != NULL) {
@@ -941,20 +943,19 @@ void smp_proc_pairing_cmpl(tSMP_CB* p_cb) {
   tSMP_EVT_DATA evt_data = {0};
   tSMP_CALLBACK* p_callback = p_cb->p_callback;
 
-  SMP_TRACE_DEBUG("%s: pairing_bda=%s", __func__,
-                  p_cb->pairing_bda.ToString().c_str());
-
   evt_data.cmplt.reason = p_cb->status;
   evt_data.cmplt.smp_over_br = p_cb->smp_over_br;
+
+  LOG_DEBUG(
+      "Pairing process has completed to remote:%s reason:0x%0x sec_level=0x%0x",
+      PRIVATE_ADDRESS(p_cb->pairing_bda), evt_data.cmplt.reason,
+      evt_data.cmplt.sec_level);
 
   if (p_cb->status == SMP_SUCCESS) evt_data.cmplt.sec_level = p_cb->sec_level;
 
   evt_data.cmplt.is_pair_cancel = false;
 
   if (p_cb->is_pair_cancel) evt_data.cmplt.is_pair_cancel = true;
-
-  SMP_TRACE_DEBUG("send SMP_COMPLT_EVT reason=0x%0x sec_level=0x%0x",
-                  evt_data.cmplt.reason, evt_data.cmplt.sec_level);
 
   RawAddress pairing_bda = p_cb->pairing_bda;
 
@@ -1462,22 +1463,30 @@ bool smp_check_commitment(tSMP_CB* p_cb) {
  *
  ******************************************************************************/
 void smp_save_secure_connections_long_term_key(tSMP_CB* p_cb) {
-  tBTM_LE_KEY_VALUE lle_key;
-  tBTM_LE_KEY_VALUE ple_key;
 
   SMP_TRACE_DEBUG("%s-Save LTK as local LTK key", __func__);
-  lle_key.lenc_key.ltk = p_cb->ltk;
-  lle_key.lenc_key.div = 0;
-  lle_key.lenc_key.key_size = p_cb->loc_enc_size;
-  lle_key.lenc_key.sec_level = p_cb->sec_level;
+  tBTM_LE_KEY_VALUE lle_key = {
+      .lenc_key =
+          {
+              .ltk = p_cb->ltk,
+              .div = 0,
+              .key_size = p_cb->loc_enc_size,
+              .sec_level = p_cb->sec_level,
+          },
+  };
   btm_sec_save_le_key(p_cb->pairing_bda, BTM_LE_KEY_LENC, &lle_key, true);
 
   SMP_TRACE_DEBUG("%s-Save LTK as peer LTK key", __func__);
-  ple_key.penc_key.ediv = 0;
+  tBTM_LE_KEY_VALUE ple_key = {
+      .penc_key =
+          {
+              .ltk = p_cb->ltk,
+              .sec_level = p_cb->sec_level,
+              .key_size = p_cb->loc_enc_size,
+              .ediv = 0,
+          },
+  };
   memset(ple_key.penc_key.rand, 0, BT_OCTET8_LEN);
-  ple_key.penc_key.ltk = p_cb->ltk;
-  ple_key.penc_key.sec_level = p_cb->sec_level;
-  ple_key.penc_key.key_size = p_cb->loc_enc_size;
   btm_sec_save_le_key(p_cb->pairing_bda, BTM_LE_KEY_PENC, &ple_key, true);
 }
 

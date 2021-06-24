@@ -32,9 +32,13 @@ impl Alarm {
 
     /// Completes when the alarm has expired
     pub async fn expired(&mut self) {
-        drop(self.fd.readable().await.unwrap());
+        let mut read_ready = self.fd.readable().await.unwrap();
+        read_ready.clear_ready();
+        drop(read_ready);
         // Will not block, since we have confirmed it is readable
-        self.fd.get_ref().wait().unwrap();
+        if self.fd.get_ref().get().unwrap().is_some() {
+            self.fd.get_ref().wait().unwrap();
+        }
     }
 }
 
@@ -60,9 +64,13 @@ pub struct Interval {
 impl Interval {
     /// Call this to get the future for the next tick of the interval
     pub async fn tick(&mut self) {
-        drop(self.fd.readable().await.unwrap());
+        let mut read_ready = self.fd.readable().await.unwrap();
+        read_ready.clear_ready();
+        drop(read_ready);
         // Will not block, since we have confirmed it is readable
-        self.fd.get_ref().wait().unwrap();
+        if self.fd.get_ref().get().unwrap().is_some() {
+            self.fd.get_ref().wait().unwrap();
+        }
     }
 }
 
@@ -91,6 +99,49 @@ mod tests {
             alarm.expired().await;
 
             assert_near!(timer.elapsed().as_millis(), 10, 3);
+        });
+    }
+
+    #[test]
+    fn alarm_cancel_after_expired() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let mut alarm = Alarm::new();
+            alarm.reset(Duration::from_millis(10));
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            alarm.cancel();
+
+            for _ in 0..10 {
+                let ready_in_10_ms = async {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                };
+
+                tokio::select! {
+                    _ = alarm.expired() => (),
+                    _ = ready_in_10_ms => (),
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn alarm_clear_ready_after_expired() {
+        // After an alarm expired, we need to make sure we clear ready from AsyncFdReadyGuard.
+        // Otherwise it's still ready and select! won't work.
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let timer = Instant::now();
+            let mut alarm = Alarm::new();
+            alarm.reset(Duration::from_millis(10));
+            alarm.expired().await;
+            let ready_in_10_ms = async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            };
+            tokio::select! {
+                _ = alarm.expired() => (),
+                _ = ready_in_10_ms => (),
+            }
+            assert_near!(timer.elapsed().as_millis(), 20, 3);
         });
     }
 

@@ -171,7 +171,7 @@ tBTM_STATUS bluetooth::shim::BTM_ReadRemoteDeviceName(
 tBTM_STATUS bluetooth::shim::BTM_SecBond(const RawAddress& bd_addr,
                                          tBLE_ADDR_TYPE addr_type,
                                          tBT_TRANSPORT transport,
-                                         int device_type) {
+                                         tBT_DEVICE_TYPE device_type) {
   mock_function_count_map[__func__]++;
   return BTM_SUCCESS;
 }
@@ -376,8 +376,9 @@ void bluetooth::shim::BTM_LE_PF_uuid_filter(tBTM_BLE_SCAN_COND_OP action,
                                             tBTM_BLE_PF_CFG_CBACK cb) {
   mock_function_count_map[__func__]++;
 }
-void bluetooth::shim::BTM_PINCodeReply(const RawAddress& bd_addr, uint8_t res,
-                                       uint8_t pin_len, uint8_t* p_pin) {
+void bluetooth::shim::BTM_PINCodeReply(const RawAddress& bd_addr,
+                                       tBTM_STATUS res, uint8_t pin_len,
+                                       uint8_t* p_pin) {
   mock_function_count_map[__func__]++;
 }
 void bluetooth::shim::BTM_ReadConnectionAddr(const RawAddress& remote_bda,

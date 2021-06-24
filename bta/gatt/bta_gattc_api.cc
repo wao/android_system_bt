@@ -127,18 +127,23 @@ void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda,
 void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda,
                     bool is_direct, tBT_TRANSPORT transport, bool opportunistic,
                     uint8_t initiating_phys) {
-  tBTA_GATTC_API_OPEN* p_buf =
-      (tBTA_GATTC_API_OPEN*)osi_malloc(sizeof(tBTA_GATTC_API_OPEN));
+  tBTA_GATTC_DATA data = {
+      .api_conn =
+          {
+              .hdr =
+                  {
+                      .event = BTA_GATTC_API_OPEN_EVT,
+                  },
+              .remote_bda = remote_bda,
+              .client_if = client_if,
+              .is_direct = is_direct,
+              .transport = transport,
+              .initiating_phys = initiating_phys,
+              .opportunistic = opportunistic,
+          },
+  };
 
-  p_buf->hdr.event = BTA_GATTC_API_OPEN_EVT;
-  p_buf->client_if = client_if;
-  p_buf->is_direct = is_direct;
-  p_buf->transport = transport;
-  p_buf->initiating_phys = initiating_phys;
-  p_buf->opportunistic = opportunistic;
-  p_buf->remote_bda = remote_bda;
-
-  bta_sys_sendmsg(p_buf);
+  post_on_bt_main([data]() { bta_gattc_process_api_open(&data); });
 }
 
 /*******************************************************************************
@@ -181,7 +186,7 @@ void BTA_GATTC_CancelOpen(tGATT_IF client_if, const RawAddress& remote_bda,
  *
  ******************************************************************************/
 void BTA_GATTC_Close(uint16_t conn_id) {
-  BT_HDR* p_buf = (BT_HDR*)osi_malloc(sizeof(BT_HDR));
+  BT_HDR_RIGID* p_buf = (BT_HDR_RIGID*)osi_malloc(sizeof(BT_HDR_RIGID));
 
   p_buf->event = BTA_GATTC_API_CLOSE_EVT;
   p_buf->layer_specific = conn_id;

@@ -618,8 +618,7 @@ bool UIPC_Send(tUIPC_STATE& uipc, tUIPC_CH_ID ch_id,
  **
  ******************************************************************************/
 
-uint32_t UIPC_Read(tUIPC_STATE& uipc, tUIPC_CH_ID ch_id,
-                   UNUSED_ATTR uint16_t* p_msg_evt, uint8_t* p_buf,
+uint32_t UIPC_Read(tUIPC_STATE& uipc, tUIPC_CH_ID ch_id, uint8_t* p_buf,
                    uint32_t len) {
   if (ch_id >= UIPC_CH_NUM) {
     BTIF_TRACE_ERROR("UIPC_Read : invalid ch id %d", ch_id);
@@ -706,12 +705,6 @@ extern bool UIPC_Ioctl(tUIPC_STATE& uipc, tUIPC_CH_ID ch_id, uint32_t request,
   switch (request) {
     case UIPC_REQ_RX_FLUSH:
       uipc_flush_locked(uipc, ch_id);
-      break;
-
-    case UIPC_REG_CBACK:
-      // BTIF_TRACE_EVENT("register callback ch %d srvfd %d, fd %d", ch_id,
-      // uipc.ch[ch_id].srvfd, uipc.ch[ch_id].fd);
-      uipc.ch[ch_id].cback = (tUIPC_RCV_CBACK*)param;
       break;
 
     case UIPC_REG_REMOVE_ACTIVE_READSET:

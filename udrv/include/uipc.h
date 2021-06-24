@@ -44,7 +44,6 @@ typedef enum {
  */
 
 #define UIPC_REQ_RX_FLUSH 1
-#define UIPC_REG_CBACK 2
 #define UIPC_REG_REMOVE_ACTIVE_READSET 3
 #define UIPC_SET_READ_POLL_TMO 4
 
@@ -124,8 +123,8 @@ bool UIPC_Send(tUIPC_STATE& uipc, tUIPC_CH_ID ch_id, uint16_t msg_evt,
  * @param len Bytes to read
  * @return true on success, otherwise false
  */
-uint32_t UIPC_Read(tUIPC_STATE& uipc, tUIPC_CH_ID ch_id, uint16_t* p_msg_evt,
-                   uint8_t* p_buf, uint32_t len);
+uint32_t UIPC_Read(tUIPC_STATE& uipc, tUIPC_CH_ID ch_id, uint8_t* p_buf,
+                   uint32_t len);
 
 /**
  * Control the UIPC parameter
