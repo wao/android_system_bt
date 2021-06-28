@@ -652,7 +652,7 @@ void avdt_scb_hdl_setconfig_rej(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data) {
  *
  ******************************************************************************/
 void avdt_scb_snd_snk_delay_rpt_req(AvdtpScb* p_scb,
-                                UNUSED_ATTR tAVDT_SCB_EVT* p_data) {
+                                    UNUSED_ATTR tAVDT_SCB_EVT* p_data) {
   if (p_scb->p_ccb == NULL) {
     return;
   }
@@ -683,8 +683,7 @@ void avdt_scb_snd_snk_delay_rpt_req(AvdtpScb* p_scb,
  * Returns          Nothing.
  *
  ******************************************************************************/
-void avdt_scb_hdl_setconfig_rsp(AvdtpScb* p_scb,
-                                UNUSED_ATTR tAVDT_SCB_EVT* p_data) {
+void avdt_scb_hdl_setconfig_rsp(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data) {
   tAVDT_EVT_HDR single;
 
   if (p_scb->p_ccb != NULL) {
@@ -840,8 +839,10 @@ void avdt_scb_hdl_tc_close(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data) {
  *
  ******************************************************************************/
 void avdt_scb_snd_delay_rpt_req(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data) {
-  avdt_msg_send_cmd(p_scb->p_ccb, p_scb, AVDT_SIG_DELAY_RPT,
-                    (tAVDT_MSG*)&p_data->apidelay);
+  if (p_scb->stream_config.cfg.psc_mask & AVDT_PSC_DELAY_RPT) {
+    avdt_msg_send_cmd(p_scb->p_ccb, p_scb, AVDT_SIG_DELAY_RPT,
+                      (tAVDT_MSG*)&p_data->apidelay);
+  }
 }
 
 /*******************************************************************************

@@ -50,6 +50,7 @@
 #include "bta/include/bta_hearing_aid_api.h"
 #include "bta/include/bta_hf_client_api.h"
 #include "btif/avrcp/avrcp_service.h"
+#include "btif/include/stack_manager.h"
 #include "btif_a2dp.h"
 #include "btif_activity_attribution.h"
 #include "btif_api.h"
@@ -81,7 +82,6 @@
 #include "stack/gatt/connection_manager.h"
 #include "stack/include/avdt_api.h"
 #include "stack/include/btu.h"
-#include "stack_manager.h"
 
 using bluetooth::hearing_aid::HearingAidInterface;
 using bluetooth::le_audio::LeAudioClientInterface;
@@ -284,9 +284,8 @@ int set_remote_device_property(RawAddress* remote_addr,
 int get_remote_services(RawAddress* remote_addr) {
   if (!interface_ready()) return BT_STATUS_NOT_READY;
 
-  do_in_main_thread(FROM_HERE,
-                    base::BindOnce(btif_dm_get_remote_services, *remote_addr,
-                                   BT_TRANSPORT_UNKNOWN));
+  do_in_main_thread(FROM_HERE, base::BindOnce(btif_dm_get_remote_services,
+                                              *remote_addr, BT_TRANSPORT_AUTO));
   return BT_STATUS_SUCCESS;
 }
 
@@ -739,7 +738,8 @@ void invoke_ssp_request_cb(RawAddress bd_addr, bt_bdname_t bd_name,
 }
 
 void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c,
-                                Octet16 r, RawAddress raw_address) {
+                                Octet16 r, RawAddress raw_address,
+                                uint8_t address_type) {
   LOG_INFO("%s", __func__);
   bt_oob_data_t oob_data = {};
 
@@ -749,8 +749,7 @@ void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c,
     oob_data.address[i] = raw_address.address[j];
     j--;
   }
-  // Set type always public
-  oob_data.address[6] = 0;
+  oob_data.address[6] = address_type;
 
   // Each value (for C and R) is 16 octets in length
   bool c_empty = true;

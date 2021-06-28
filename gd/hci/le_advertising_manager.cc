@@ -245,6 +245,13 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
           set_data(id, true, config.scan_response);
         }
         set_data(id, false, config.advertisement);
+        auto address_policy = le_address_manager_->GetAddressPolicy();
+        if (address_policy == LeAddressManager::AddressPolicy::USE_NON_RESOLVABLE_ADDRESS ||
+            address_policy == LeAddressManager::AddressPolicy::USE_RESOLVABLE_ADDRESS) {
+          advertising_sets_[id].current_address = le_address_manager_->GetAnotherAddress();
+        } else {
+          advertising_sets_[id].current_address = le_address_manager_->GetCurrentAddress();
+        }
         if (!paused) {
           enable_advertiser(id, true, 0, 0);
         } else {
@@ -440,6 +447,16 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
         le_address_manager_->GetNextPrivateAddressIntervalMs());
   }
 
+  void get_own_address(AdvertiserId advertiser_id) {
+    if (advertising_sets_.find(advertiser_id) == advertising_sets_.end()) {
+      LOG_INFO("Unknown advertising id %u", advertiser_id);
+      return;
+    }
+    auto current_address = advertising_sets_[advertiser_id].current_address;
+    advertising_callbacks_->OnOwnAddressRead(
+        advertiser_id, static_cast<uint8_t>(current_address.GetAddressType()), current_address.GetAddress());
+  }
+
   void set_parameters(AdvertiserId advertiser_id, ExtendedAdvertisingConfig config) {
     advertising_sets_[advertiser_id].connectable = config.connectable;
     advertising_sets_[advertiser_id].tx_power = config.tx_power;
@@ -597,7 +614,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       case (AdvertisingApiType::EXTENDED): {
         uint16_t data_len = 0;
         // check data size
-        for (int i = 0; i < data.size(); i++) {
+        for (size_t i = 0; i < data.size(); i++) {
           if (data[i].size() > kLeMaximumFragmentLength) {
             LOG_WARN("AD data len shall not greater than %d", kLeMaximumFragmentLength);
             if (advertising_callbacks_ != nullptr) {
@@ -637,7 +654,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
           uint16_t sub_data_len = 0;
           Operation operation = Operation::FIRST_FRAGMENT;
 
-          for (int i = 0; i < data.size(); i++) {
+          for (size_t i = 0; i < data.size(); i++) {
             if (sub_data_len + data[i].size() > kLeMaximumFragmentLength) {
               send_data_fragment(advertiser_id, set_scan_rsp, sub_data, operation);
               operation = Operation::INTERMEDIATE_FRAGMENT;
@@ -750,7 +767,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
   void set_periodic_data(AdvertiserId advertiser_id, std::vector<GapData> data) {
     uint16_t data_len = 0;
     // check data size
-    for (int i = 0; i < data.size(); i++) {
+    for (size_t i = 0; i < data.size(); i++) {
       if (data[i].size() > kLeMaximumFragmentLength) {
         LOG_WARN("AD data len shall not greater than %d", kLeMaximumFragmentLength);
         if (advertising_callbacks_ != nullptr) {
@@ -779,7 +796,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       uint16_t sub_data_len = 0;
       Operation operation = Operation::FIRST_FRAGMENT;
 
-      for (int i = 0; i < data.size(); i++) {
+      for (size_t i = 0; i < data.size(); i++) {
         if (sub_data_len + data[i].size() > kLeMaximumFragmentLength) {
           send_periodic_data_fragment(advertiser_id, sub_data, operation);
           operation = Operation::INTERMEDIATE_FRAGMENT;
@@ -1249,6 +1266,10 @@ AdvertiserId LeAdvertisingManager::ExtendedCreateAdvertiser(
       max_extended_advertising_events,
       handler);
   return id;
+}
+
+void LeAdvertisingManager::GetOwnAddress(uint8_t advertiser_id) {
+  CallOn(pimpl_.get(), &impl::get_own_address, advertiser_id);
 }
 
 void LeAdvertisingManager::SetParameters(AdvertiserId advertiser_id, ExtendedAdvertisingConfig config) {

@@ -160,6 +160,9 @@ extern void BTM_BleTrackAdvertiser(tBTM_BLE_TRACK_ADV_CBACK* p_track_cback,
  *                  events from a broadcast device.
  *
  * Parameters       start: start or stop observe.
+ *                  duration: how long the scan should last, in seconds. 0 means
+ *                  scan without timeout. Starting the scan second time without
+ *                  timeout will disable the timer.
  *
  * Returns          void
  *
@@ -167,6 +170,26 @@ extern void BTM_BleTrackAdvertiser(tBTM_BLE_TRACK_ADV_CBACK* p_track_cback,
 extern tBTM_STATUS BTM_BleObserve(bool start, uint8_t duration,
                                   tBTM_INQ_RESULTS_CB* p_results_cb,
                                   tBTM_CMPL_CB* p_cmpl_cb);
+
+/*******************************************************************************
+ *
+ * Function         BTM_BleOpportunisticObserve
+ *
+ * Description      Register/unregister opportunistic scan callback. This method
+ *                  does not trigger scan start/stop, but if scan is ever started,
+ *                  this callback would get called with scan results. Additionally,
+ *                  this callback is not reset on each scan start/stop. It's
+ *                  intended to be used by LE Audio related profiles, that would
+ *                  find yet unpaired members of CSIS set, or broadcasts.
+ *
+ * Parameters       enable: enable/disable observing.
+ *                  p_results_cb: callback for results.
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+extern void BTM_BleOpportunisticObserve(bool enable,
+                                        tBTM_INQ_RESULTS_CB* p_results_cb);
 
 /** Returns local device encryption root (ER) */
 const Octet16& BTM_GetDeviceEncRoot();

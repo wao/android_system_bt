@@ -446,6 +446,7 @@ tGATT_TCB* gatt_allocate_tcb_by_bdaddr(const RawAddress& bda,
     p_tcb->peer_bda = bda;
     p_tcb->eatt = 0;
     gatt_sr_init_cl_status(*p_tcb);
+    gatt_cl_init_sr_status(*p_tcb);
 
     return p_tcb;
   }
@@ -1613,8 +1614,5 @@ uint8_t* gatt_dbg_op_name(uint8_t op_code) {
 bool gatt_auto_connect_dev_remove(tGATT_IF gatt_if, const RawAddress& bd_addr) {
   tGATT_TCB* p_tcb = gatt_find_tcb_by_addr(bd_addr, BT_TRANSPORT_LE);
   if (p_tcb) gatt_update_app_use_link_flag(gatt_if, p_tcb, false, false);
-  if (bluetooth::shim::is_gd_acl_enabled()) {
-    acl_add_to_ignore_auto_connect_after_disconnect(bd_addr);
-  }
   return connection_manager::background_connect_remove(gatt_if, bd_addr);
 }

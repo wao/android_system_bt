@@ -652,6 +652,10 @@ tBTM_STATUS bluetooth::shim::BTM_BleObserve(bool start, uint8_t duration_sec,
     std::lock_guard<std::mutex> lock(btm_cb_mutex_);
 
     if (btm_cb.ble_ctr_cb.is_ble_observe_active()) {
+      if (duration_sec == 0) {
+        Stack::GetInstance()->GetBtm()->CancelObservingTimer();
+        return BTM_CMD_STARTED;
+      }
       LOG_WARN("%s Observing already active", __func__);
       return BTM_WRONG_MODE;
     }
@@ -718,6 +722,15 @@ tBTM_STATUS bluetooth::shim::BTM_BleObserve(bool start, uint8_t duration_sec,
     btm_cb.ble_ctr_cb.p_obs_cmpl_cb = nullptr;
   }
   return BTM_CMD_STARTED;
+}
+
+void bluetooth::shim::BTM_BleOpportunisticObserve(
+    bool enable, tBTM_INQ_RESULTS_CB* p_results_cb) {
+  if (enable) {
+    btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb = p_results_cb;
+  } else {
+    btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb = nullptr;
+  }
 }
 
 void bluetooth::shim::BTM_EnableInterlacedPageScan() {
@@ -1188,7 +1201,7 @@ bool bluetooth::shim::BTM_BleLocalPrivacyEnabled(void) {
 tBTM_STATUS bluetooth::shim::BTM_SecBond(const RawAddress& bd_addr,
                                          tBLE_ADDR_TYPE addr_type,
                                          tBT_TRANSPORT transport,
-                                         int device_type) {
+                                         tBT_DEVICE_TYPE device_type) {
   return Stack::GetInstance()->GetBtm()->CreateBond(bd_addr, addr_type,
                                                     transport, device_type);
 }
@@ -1342,8 +1355,9 @@ bool bluetooth::shim::BTM_SecDeleteRmtNameNotifyCallback(
   return true;
 }
 
-void bluetooth::shim::BTM_PINCodeReply(const RawAddress& bd_addr, uint8_t res,
-                                       uint8_t pin_len, uint8_t* p_pin) {
+void bluetooth::shim::BTM_PINCodeReply(const RawAddress& bd_addr,
+                                       tBTM_STATUS res, uint8_t pin_len,
+                                       uint8_t* p_pin) {
   ASSERT_LOG(!bluetooth::shim::is_gd_shim_enabled(), "Unreachable code path");
 }
 

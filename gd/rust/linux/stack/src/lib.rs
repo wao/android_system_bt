@@ -8,8 +8,10 @@ extern crate num_derive;
 
 pub mod bluetooth;
 pub mod bluetooth_gatt;
+pub mod bluetooth_media;
 
 use bt_topshim::btif::BaseCallbacks;
+use bt_topshim::profiles::a2dp::A2dpCallbacks;
 
 use std::convert::TryInto;
 use std::fmt::{Debug, Formatter, Result};
@@ -18,7 +20,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::bluetooth::{Bluetooth, BtifBluetoothCallbacks};
+use crate::bluetooth::Bluetooth;
 
 /// Represents a Bluetooth address.
 // TODO: Add support for LE random addresses.
@@ -36,6 +38,12 @@ impl Debug for BDAddr {
     }
 }
 
+impl Default for BDAddr {
+    fn default() -> Self {
+        Self { val: [0; 6] }
+    }
+}
+
 impl ToString for BDAddr {
     fn to_string(&self) -> String {
         String::from(format!(
@@ -47,13 +55,42 @@ impl ToString for BDAddr {
 
 impl BDAddr {
     /// Constructs a BDAddr from a vector of 6 bytes.
-    fn from_byte_vec(raw_addr: &Vec<u8>) -> BDAddr {
-        BDAddr { val: raw_addr.clone().try_into().unwrap() }
+    pub fn from_byte_vec(raw_addr: &Vec<u8>) -> Option<BDAddr> {
+        if let Ok(val) = raw_addr.clone().try_into() {
+            return Some(BDAddr { val });
+        }
+        None
+    }
+
+    pub fn from_string<S: Into<String>>(addr: S) -> Option<BDAddr> {
+        let addr: String = addr.into();
+        let s = addr.split(':').collect::<Vec<&str>>();
+
+        if s.len() != 6 {
+            return None;
+        }
+
+        let mut raw: [u8; 6] = [0; 6];
+        for i in 0..s.len() {
+            raw[i] = match u8::from_str_radix(s[i], 16) {
+                Ok(res) => res,
+                Err(_) => {
+                    return None;
+                }
+            };
+        }
+
+        Some(BDAddr { val: raw })
+    }
+
+    pub fn to_byte_arr(&self) -> [u8; 6] {
+        self.val.clone()
     }
 }
 
 /// Message types that are sent to the stack main dispatch loop.
 pub enum Message {
+    A2dp(A2dpCallbacks),
     Base(BaseCallbacks),
     BluetoothCallbackDisconnected(u32),
 }
@@ -68,7 +105,7 @@ impl Stack {
     }
 
     /// Runs the main dispatch loop.
-    pub async fn dispatch(mut rx: Receiver<Message>, bluetooth: Arc<Mutex<Bluetooth>>) {
+    pub async fn dispatch(mut rx: Receiver<Message>, bluetooth: Arc<Mutex<Box<Bluetooth>>>) {
         loop {
             let m = rx.recv().await;
 
@@ -78,21 +115,13 @@ impl Stack {
             }
 
             match m.unwrap() {
-                Message::Base(b) => match b {
-                    BaseCallbacks::AdapterState(state) => {
-                        bluetooth.lock().unwrap().adapter_state_changed(state);
-                    }
-
-                    BaseCallbacks::AdapterProperties(status, num_properties, properties) => {
-                        bluetooth.lock().unwrap().adapter_properties_changed(
-                            status,
-                            num_properties,
-                            properties,
-                        );
-                    }
-
-                    _ => println!("Unhandled callback arm {:?}", b),
-                },
+                Message::A2dp(a) => {
+                    //
+                    println!("RX {:?}", a);
+                }
+                Message::Base(b) => {
+                    bluetooth.lock().unwrap().dispatch_base_callbacks(b);
+                }
 
                 Message::BluetoothCallbackDisconnected(id) => {
                     bluetooth.lock().unwrap().callback_disconnected(id);
@@ -108,5 +137,9 @@ impl Stack {
 /// RPC object. Therefore the object may be disconnected and thus should implement
 /// `register_disconnect` to let others observe the disconnection event.
 pub trait RPCProxy {
+    /// Registers disconnect observer that will be notified when the remote object is disconnected.
     fn register_disconnect(&mut self, f: Box<dyn Fn() + Send>);
+
+    /// Returns the ID of the object. For example this would be an object path in D-Bus RPC.
+    fn get_object_id(&self) -> String;
 }

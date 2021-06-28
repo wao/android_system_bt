@@ -454,6 +454,7 @@ cc_test {
         "gd_defaults",
         "gd_clang_coverage_bin",
     ],
+    include_dirs: ["system/bt/gd"],
     host_supported: true,
     test_options: {
         unit_test: true,
@@ -472,6 +473,7 @@ cc_test {
     },
     static_libs: [
         "libchrome",
+        "libbluetooth_rust_interop",
     ],
     shared_libs: [
         "libgrpc++",
@@ -630,7 +632,6 @@ rust_library {
         "libbytes",
         "libnum_traits",
         "libthiserror",
-        "libbt_hci_custom_types",
         "liblog_rust",
     ],
 }
@@ -646,7 +647,6 @@ rust_test_host {
         "libbytes",
         "libnum_traits",
         "libthiserror",
-        "libbt_hci_custom_types",
         "liblog_rust",
     ],
 }
@@ -874,7 +874,7 @@ genrule {
         "soong_zip",
     ],
     cmd: "mkdir -p $(genDir)/files && " +
-        "$(location aprotoc) -Isystem/bt/gd -Iexternal/protobuf/src --plugin=protoc-gen-grpc=$(location protoc-gen-grpc-python-plugin) $(in) --grpc_out=$(genDir)/files --python_out=$(genDir)/files && " +
+        "$(location aprotoc) -Isystem/bt/gd -Isystem/bt/blueberry/tests/gd/cert -Iexternal/protobuf/src --plugin=protoc-gen-grpc=$(location protoc-gen-grpc-python-plugin) $(in) --grpc_out=$(genDir)/files --python_out=$(genDir)/files && " +
         "mkdir -p $(genDir)/files/cert && " +
         "touch $(genDir)/files/cert/__init__.py && " +
         "touch $(genDir)/files/facade/__init__.py && " +
@@ -886,6 +886,8 @@ genrule {
         "touch $(genDir)/files/l2cap/le/__init__.py && " +
         "touch $(genDir)/files/neighbor/facade/__init__.py && " +
         "touch $(genDir)/files/security/__init__.py && " +
+        "mkdir -p $(genDir)/files/blueberry/tests/gd/cert && " +
+        "touch $(genDir)/files/blueberry/tests/gd/cert/__init__.py && " +
         "$(location soong_zip) -C $(genDir)/files -D $(genDir)/files -o $(out)",
     srcs: [
         ":BluetoothFacadeProto",

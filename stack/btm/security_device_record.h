@@ -224,7 +224,7 @@ struct tBTM_SEC_DEV_REC {
                                BD_NAME bd_name, uint8_t* features,
                                LinkKey* p_link_key, uint8_t key_type,
                                uint8_t pin_length);
-  friend void BTM_PINCodeReply(const RawAddress& bd_addr, uint8_t res,
+  friend void BTM_PINCodeReply(const RawAddress& bd_addr, tBTM_STATUS res,
                                uint8_t pin_len, uint8_t* p_pin);
   friend void btm_sec_auth_complete(uint16_t handle, tHCI_STATUS status);
   friend void btm_sec_connected(const RawAddress& bda, uint16_t handle,
@@ -434,6 +434,7 @@ struct tBTM_SEC_DEV_REC {
         PRIVATE_ADDRESS(bd_addr), DeviceTypeText(device_type).c_str(),
         class_of_device_text(dev_class).c_str(),
         remote_version_info.ToString().c_str(), sm4,
-        (remote_supports_secure_connections) ? 'T' : 'F', sec_bd_name);
+        (remote_supports_secure_connections) ? 'T' : 'F',
+        PRIVATE_NAME(sec_bd_name));
   }
 };

@@ -289,27 +289,6 @@ bool BTM_SecDeleteRmtNameNotifyCallback(tBTM_RMT_NAME_CALLBACK* p_callback) {
   return (false);
 }
 
-/*******************************************************************************
- *
- * Function         BTM_GetSecurityFlags
- *
- * Description      Get security flags for the device
- *
- * Returns          bool    true or false is device found
- *
- ******************************************************************************/
-bool BTM_GetSecurityFlags(const RawAddress& bd_addr, uint8_t* p_sec_flags) {
-  tBTM_SEC_DEV_REC* p_dev_rec;
-
-  p_dev_rec = btm_find_dev(bd_addr);
-  if (p_dev_rec != NULL) {
-    *p_sec_flags = (uint8_t)p_dev_rec->sec_flags;
-    return (true);
-  }
-  BTM_TRACE_ERROR("BTM_GetSecurityFlags false");
-  return (false);
-}
-
 bool BTM_IsEncrypted(const RawAddress& bd_addr, tBT_TRANSPORT transport) {
   uint8_t flags = 0;
   BTM_GetSecurityFlagsByTransport(bd_addr, &flags, transport);
@@ -612,8 +591,8 @@ uint8_t BTM_SecClrServiceByPsm(uint16_t psm) {
  *                  p_pin        - pointer to array with the PIN Code
  *
  ******************************************************************************/
-void BTM_PINCodeReply(const RawAddress& bd_addr, uint8_t res, uint8_t pin_len,
-                      uint8_t* p_pin) {
+void BTM_PINCodeReply(const RawAddress& bd_addr, tBTM_STATUS res,
+                      uint8_t pin_len, uint8_t* p_pin) {
   tBTM_SEC_DEV_REC* p_dev_rec;
 
   BTM_TRACE_API(
@@ -890,16 +869,16 @@ tBTM_STATUS btm_sec_bond_by_transport(const RawAddress& bd_addr,
  *  Note: After 2.1 parameters are not used and preserved here not to change API
  ******************************************************************************/
 tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                        tBT_TRANSPORT transport, int device_type,
+                        tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type,
                         uint8_t pin_len, uint8_t* p_pin) {
   if (bluetooth::shim::is_gd_shim_enabled()) {
     return bluetooth::shim::BTM_SecBond(bd_addr, addr_type, transport,
                                         device_type);
   }
 
-  if (transport == BT_TRANSPORT_INVALID)
+  if (transport == BT_TRANSPORT_AUTO) {
     transport = BTM_UseLeLink(bd_addr) ? BT_TRANSPORT_LE : BT_TRANSPORT_BR_EDR;
-
+  }
   tBT_DEVICE_TYPE dev_type;
 
   BTM_ReadDevInfo(bd_addr, &dev_type, &addr_type);
@@ -3969,7 +3948,7 @@ static void btm_sec_pairing_timeout(UNUSED_ATTR void* data) {
   tBTM_AUTH_REQ auth_req = (btm_cb.devcb.loc_io_caps == BTM_IO_CAP_NONE)
                                ? BTM_AUTH_AP_NO
                                : BTM_AUTH_AP_YES;
-  uint8_t name[2];
+  BD_NAME name;
 
   p_dev_rec = btm_find_dev(p_cb->pairing_bda);
 
@@ -4611,15 +4590,26 @@ void btm_sec_dev_rec_cback_event(tBTM_SEC_DEV_REC* p_dev_rec,
   tBTM_SEC_CALLBACK* p_callback = p_dev_rec->p_callback;
   p_dev_rec->p_callback = NULL;
   if (p_callback != nullptr) {
-    if (is_le_transport)
+    if (is_le_transport) {
       (*p_callback)(&p_dev_rec->ble.pseudo_addr, BT_TRANSPORT_LE,
                     p_dev_rec->p_ref_data, btm_status);
-    else
+    } else {
       (*p_callback)(&p_dev_rec->bd_addr, BT_TRANSPORT_BR_EDR,
                     p_dev_rec->p_ref_data, btm_status);
+    }
   }
 
   btm_sec_check_pending_reqs();
+}
+
+void btm_sec_cr_loc_oob_data_cback_event(const RawAddress& address,
+                                         tSMP_LOC_OOB_DATA loc_oob_data) {
+  tBTM_LE_EVT_DATA evt_data = {
+      .local_oob_data = loc_oob_data,
+  };
+  if (btm_cb.api.p_le_callback) {
+    (*btm_cb.api.p_le_callback)(BTM_LE_SC_LOC_OOB_EVT, address, &evt_data);
+  }
 }
 
 /*******************************************************************************

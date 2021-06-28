@@ -30,7 +30,7 @@ void tACL_CONN::Reset() {
   conn_addr = RawAddress::kEmpty;
   remote_addr = RawAddress::kEmpty;
   link_up_issued = false;
-  transport = BT_TRANSPORT_INVALID;
+  transport = BT_TRANSPORT_AUTO;
   flush_timeout_in_ticks = 0;
   hci_handle = 0;
   link_super_tout = 0;
@@ -46,27 +46,4 @@ void tACL_CONN::Reset() {
   rs_disc_pending = BTM_SEC_RS_NOT_PENDING;
   switch_role_state_ = BTM_ACL_SWKEY_STATE_IDLE;
   sca = 0;
-}
-
-// When the local device initiates an le ACL disconnect the address
-// should not be re-added to the acceptlist.
-void tACL_CB::AddToIgnoreAutoConnectAfterDisconnect(const RawAddress& bd_addr) {
-  if (!ignore_auto_connect_after_disconnect_set_.insert(bd_addr).second) {
-    LOG_WARN(
-        "Unexpectedly found device address already in ignore auto connect "
-        "device:%s",
-        PRIVATE_ADDRESS(bd_addr));
-  }
-}
-
-// A check and clear mechanism used to determine if the address should be
-// re-added to the acceptlist after an le ACL disconnect is received from a
-// peer.
-bool tACL_CB::CheckAndClearIgnoreAutoConnectAfterDisconnect(
-    const RawAddress& bd_addr) {
-  return (ignore_auto_connect_after_disconnect_set_.erase(bd_addr) > 0);
-}
-
-void tACL_CB::ClearAllIgnoreAutoConnectAfterDisconnect() {
-  ignore_auto_connect_after_disconnect_set_.clear();
 }

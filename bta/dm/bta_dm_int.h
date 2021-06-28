@@ -369,6 +369,7 @@ typedef struct {
   uint8_t peer_scn;
   tBT_TRANSPORT transport;
   tBTA_DM_SEARCH_CBACK* p_scan_cback;
+  tBTA_DM_SEARCH_CBACK* p_csis_scan_cback;
   tGATT_IF client_if;
   uint8_t uuid_to_search;
   bool gatt_disc_active;
@@ -479,7 +480,8 @@ extern void bta_dm_set_dev_name(const std::vector<uint8_t>&);
 extern void bta_dm_set_visibility(tBTA_DM_DISC, tBTA_DM_CONN);
 extern void bta_dm_set_scan_config(tBTA_DM_MSG* p_data);
 extern void bta_dm_vendor_spec_command(tBTA_DM_MSG* p_data);
-extern void bta_dm_bond(const RawAddress&, tBLE_ADDR_TYPE, tBT_TRANSPORT, int);
+extern void bta_dm_bond(const RawAddress&, tBLE_ADDR_TYPE, tBT_TRANSPORT,
+                        tBT_DEVICE_TYPE);
 extern void bta_dm_bond_cancel(const RawAddress&);
 extern void bta_dm_pin_reply(std::unique_ptr<tBTA_DM_API_PIN_REPLY> msg);
 extern void bta_dm_add_device(std::unique_ptr<tBTA_DM_API_ADD_DEVICE> msg);
@@ -504,6 +506,8 @@ extern void bta_dm_ble_set_conn_params(const RawAddress&, uint16_t, uint16_t,
                                        uint16_t, uint16_t);
 extern void bta_dm_close_gatt_conn(tBTA_DM_MSG* p_data);
 extern void bta_dm_ble_observe(bool, uint8_t, tBTA_DM_SEARCH_CBACK*);
+extern void bta_dm_ble_scan(bool, uint8_t);
+extern void bta_dm_ble_csis_observe(bool, tBTA_DM_SEARCH_CBACK*);
 extern void bta_dm_ble_update_conn_params(const RawAddress&, uint16_t, uint16_t,
                                           uint16_t, uint16_t, uint16_t,
                                           uint16_t);

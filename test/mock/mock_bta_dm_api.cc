@@ -94,7 +94,7 @@ void BTA_DmBleUpdateConnectionParams(const RawAddress& bd_addr,
   mock_function_count_map[__func__]++;
 }
 void BTA_DmBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                tBT_TRANSPORT transport, int device_type) {
+                tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type) {
   mock_function_count_map[__func__]++;
 }
 void BTA_DmBondCancel(const RawAddress& bd_addr) {
@@ -140,6 +140,12 @@ void BTA_GetEirService(uint8_t* p_eir, size_t eir_len,
 void BTA_RemoveEirUuid(uint16_t uuid16) { mock_function_count_map[__func__]++; }
 void BTA_DmBleObserve(bool start, uint8_t duration,
                       tBTA_DM_SEARCH_CBACK* p_results_cb) {
+  mock_function_count_map[__func__]++;
+}
+void BTA_DmBleScan(bool start, uint8_t duration) {
+  mock_function_count_map[__func__]++;
+}
+void BTA_DmBleCsisObserve(bool observe, tBTA_DM_SEARCH_CBACK* p_results_cb) {
   mock_function_count_map[__func__]++;
 }
 void BTA_VendorInit(void) { mock_function_count_map[__func__]++; }
