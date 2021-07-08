@@ -31,7 +31,9 @@ cc_library_static {
         "model/devices/classic.cc",
         "model/devices/device.cc",
         "model/devices/device_properties.cc",
+        "model/devices/h4_data_channel_packetizer.cc",
         "model/devices/h4_packetizer.cc",
+        "model/devices/h4_parser.cc",
         "model/devices/hci_protocol.cc",
         "model/devices/hci_socket_device.cc",
         "model/devices/keyboard.cc",
@@ -47,6 +49,9 @@ cc_library_static {
         "model/setup/test_channel_transport.cc",
         "model/setup/test_command_handler.cc",
         "model/setup/test_model.cc",
+        "net/posix/posix_async_socket.cc",
+        "net/posix/posix_async_socket_connector.cc",
+        "net/posix/posix_async_socket_server.cc",
         ":BluetoothPacketSources",
         ":BluetoothHciClassSources",
     ],
@@ -71,11 +76,10 @@ cc_library_static {
         "system/bt/gd",
     ],
     shared_libs: [
-        "libbase",
-        "libchrome",
         "liblog",
     ],
     static_libs: [
+        "libjsoncpp",
         "libbt-rootcanal-types",
         "libscriptedbeaconpayload-protos-lite",
     ],
@@ -96,12 +100,13 @@ cc_library_static {
 cc_test_host {
     name: "test-vendor_test_host",
     defaults: [
-        "libchrome_support_defaults",
         "clang_file_coverage",
         "clang_coverage_bin",
     ],
     srcs: [
         "test/async_manager_unittest.cc",
+        "test/h4_parser_unittest.cc",
+        "test/posix_socket_unittest.cc",
         "test/security_manager_unittest.cc",
     ],
     header_libs: [
@@ -122,6 +127,9 @@ cc_test_host {
         "libbt-rootcanal",
     ],
     cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
         "-fvisibility=hidden",
         "-DLOG_NDEBUG=1",
     ],
@@ -131,7 +139,6 @@ cc_test_host {
 cc_binary_host {
     name: "root-canal",
     defaults: [
-        "libchrome_support_defaults",
         "gd_clang_tidy",
     ],
     srcs: [
@@ -157,12 +164,18 @@ cc_binary_host {
         "libbacktrace",
     ],
     static_libs: [
+        "libjsoncpp",
         "libbt-rootcanal-types",
         "libprotobuf-cpp-lite",
         "libscriptedbeaconpayload-protos-lite",
         "libbt-rootcanal",
         "breakpad_client",
         "libgflags",
+    ],
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
     ],
     sanitize: {
         address: true,

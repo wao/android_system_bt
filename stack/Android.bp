@@ -502,6 +502,7 @@ cc_test {
         "system/bt/utils/include",
     ],
     srcs: [
+        ":TestMockStackBtm",
         "gatt/gatt_utils.cc",
         "test/common/mock_eatt.cc",
         "test/common/mock_gatt_layer.cc",
@@ -631,6 +632,7 @@ cc_test {
         "system/bt/utils/include",
     ],
     srcs: crypto_toolbox_srcs + [
+        ":TestMockStackBtm",
         "gatt/gatt_db.cc",
         "gatt/gatt_sr_hash.cc",
         "gatt/gatt_utils.cc",

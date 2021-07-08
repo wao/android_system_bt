@@ -47,6 +47,7 @@
 
 #include "advertise_data_parser.h"
 #include "bt_common.h"
+#include "bta_dm_int.h"
 #include "bta_gatt_api.h"
 #include "btif/include/stack_manager.h"
 #include "btif_api.h"
@@ -54,6 +55,7 @@
 #include "btif_bqr.h"
 #include "btif_config.h"
 #include "btif_dm.h"
+#include "btif_gatt.h"
 #include "btif_hd.h"
 #include "btif_hf.h"
 #include "btif_hh.h"
@@ -475,6 +477,7 @@ static void bond_state_changed(bt_status_t status, const RawAddress& bd_addr,
     pairing_cb.bd_addr = bd_addr;
   } else {
     pairing_cb = {};
+    bta_dm_execute_queued_request();
   }
 }
 
@@ -1331,6 +1334,7 @@ static void btif_dm_search_services_evt(tBTA_DM_SEARCH_EVT event,
         // Both SDP and bonding are done, clear pairing control block in case
         // it is not already cleared
         pairing_cb = {};
+        bta_dm_execute_queued_request();
 
         // Send one empty UUID to Java to unblock pairing intent when SDP failed
         // or no UUID is discovered
@@ -1338,16 +1342,16 @@ static void btif_dm_search_services_evt(tBTA_DM_SEARCH_EVT event,
             p_data->disc_res.num_uuids == 0) {
           LOG_INFO("SDP failed, send empty UUID to unblock bonding %s",
                    bd_addr.ToString().c_str());
-          bt_property_t prop;
+          bt_property_t prop_uuids;
           Uuid uuid = {};
 
-          prop.type = BT_PROPERTY_UUIDS;
-          prop.val = &uuid;
-          prop.len = Uuid::kNumBytes128;
+          prop_uuids.type = BT_PROPERTY_UUIDS;
+          prop_uuids.val = &uuid;
+          prop_uuids.len = Uuid::kNumBytes128;
 
           /* Send the event to the BTIF */
           invoke_remote_device_properties_cb(BT_STATUS_SUCCESS, bd_addr, 1,
-                                             &prop);
+                                             &prop_uuids);
           break;
         }
       }
@@ -1843,6 +1847,12 @@ static void bte_scan_filt_param_cfg_evt(uint8_t ref_value, uint8_t avbl_space,
 void btif_dm_start_discovery(void) {
   BTIF_TRACE_EVENT("%s", __func__);
 
+  if (bta_dm_is_search_request_queued()) {
+    LOG_INFO("%s skipping start discovery because a request is queued",
+             __func__);
+    return;
+  }
+
   /* Cleanup anything remaining on index 0 */
   BTM_BleAdvFilterParamSetup(
       BTM_BLE_SCAN_COND_DELETE, static_cast<tBTM_BLE_PF_FILT_INDEX>(0), nullptr,
@@ -1864,7 +1874,7 @@ void btif_dm_start_discovery(void) {
   /* Will be enabled to true once inquiry busy level has been received */
   btif_dm_inquiry_in_progress = false;
   /* find nearby devices */
-  BTA_DmSearch(btif_dm_search_devices_evt);
+  BTA_DmSearch(btif_dm_search_devices_evt, is_bonding_or_sdp());
 }
 
 /*******************************************************************************
@@ -2210,7 +2220,8 @@ void btif_dm_get_remote_services(RawAddress remote_addr, const int transport) {
   BTIF_TRACE_EVENT("%s: transport=%d, remote_addr=%s", __func__, transport,
                    remote_addr.ToString().c_str());
 
-  BTA_DmDiscover(remote_addr, btif_dm_search_services_evt, transport);
+  BTA_DmDiscover(remote_addr, btif_dm_search_services_evt, transport,
+                 remote_addr != pairing_cb.bd_addr && is_bonding_or_sdp());
 }
 
 void btif_dm_enable_service(tBTA_SERVICE_ID service_id, bool enable) {
@@ -2364,6 +2375,14 @@ void btif_dm_load_local_oob(void) {
   }
 }
 
+static bool waiting_on_oob_advertiser_start = false;
+static uint8_t oob_advertiser_id = 0;
+static void stop_oob_advertiser() {
+  auto advertiser = get_ble_advertiser_instance();
+  advertiser->Unregister(oob_advertiser_id);
+  oob_advertiser_id = 0;
+}
+
 /*******************************************************************************
  *
  * Function         btif_dm_generate_local_oob_data
@@ -2378,14 +2397,113 @@ void btif_dm_generate_local_oob_data(tBT_TRANSPORT transport) {
   if (transport == BT_TRANSPORT_BR_EDR) {
     BTM_ReadLocalOobData();
   } else if (transport == BT_TRANSPORT_LE) {
-    SMP_CrLocScOobData(base::BindOnce(&btif_dm_proc_loc_oob));
+    // Call create data first, so we don't have to hold on to the address for
+    // the state machine lifecycle.  Rather, lets create the data, then start
+    // advertising then request the address.
+    if (!waiting_on_oob_advertiser_start) {
+      if (oob_advertiser_id != 0) {
+        stop_oob_advertiser();
+      }
+      waiting_on_oob_advertiser_start = true;
+      SMP_CrLocScOobData();
+    } else {
+      invoke_oob_data_request_cb(transport, false, Octet16{}, Octet16{},
+                                 RawAddress{}, 0x00);
+    }
   }
+}
+
+// Step Four: CallBack from Step Three
+static void get_address_callback(tBT_TRANSPORT transport, bool is_valid,
+                                 const Octet16& c, const Octet16& r,
+                                 uint8_t address_type, RawAddress address) {
+  invoke_oob_data_request_cb(transport, is_valid, c, r, address, address_type);
+  waiting_on_oob_advertiser_start = false;
+}
+
+// Step Three: CallBack from Step Two, advertise and get address
+static void start_advertising_callback(uint8_t id, tBT_TRANSPORT transport,
+                                       bool is_valid, const Octet16& c,
+                                       const Octet16& r, uint8_t status) {
+  if (status != 0) {
+    LOG_INFO("OOB get advertiser ID failed with status %hhd", status);
+    invoke_oob_data_request_cb(transport, false, c, r, RawAddress{}, 0x00);
+    SMP_ClearLocScOobData();
+    waiting_on_oob_advertiser_start = false;
+    oob_advertiser_id = 0;
+    return;
+  }
+  LOG_DEBUG("OOB advertiser with id %hhd", id);
+  auto advertiser = get_ble_advertiser_instance();
+  advertiser->GetOwnAddress(
+      id, base::Bind(&get_address_callback, transport, is_valid, c, r));
+}
+
+static void timeout_cb(uint8_t id, uint8_t status) {
+  LOG_INFO("OOB advertiser with id %hhd timed out with status %hhd", id,
+           status);
+  auto advertiser = get_ble_advertiser_instance();
+  advertiser->Unregister(id);
+  SMP_ClearLocScOobData();
+  waiting_on_oob_advertiser_start = false;
+  oob_advertiser_id = 0;
+}
+
+// Step Two: CallBack from Step One, advertise and get address
+static void id_status_callback(tBT_TRANSPORT transport, bool is_valid,
+                               const Octet16& c, const Octet16& r, uint8_t id,
+                               uint8_t status) {
+  if (status != 0) {
+    LOG_INFO("OOB get advertiser ID failed with status %hhd", status);
+    invoke_oob_data_request_cb(transport, false, c, r, RawAddress{}, 0x00);
+    SMP_ClearLocScOobData();
+    waiting_on_oob_advertiser_start = false;
+    oob_advertiser_id = 0;
+    return;
+  }
+
+  oob_advertiser_id = id;
+
+  auto advertiser = get_ble_advertiser_instance();
+  AdvertiseParameters parameters;
+  parameters.advertising_event_properties = 0x0041 /* connectable, tx power */;
+  parameters.min_interval = 0xa0;   // 100 ms
+  parameters.max_interval = 0x500;  // 800 ms
+  parameters.channel_map = 0x7;     // Use all the channels
+  parameters.tx_power = 0;          // 0 dBm
+  parameters.primary_advertising_phy = 1;
+  parameters.secondary_advertising_phy = 2;
+  parameters.scan_request_notification_enable = 0;
+
+  std::vector<uint8_t> advertisement{0x02, 0x01 /* Flags */,
+                                     0x02 /* Connectable */};
+  std::vector<uint8_t> scan_data{};
+
+  advertiser->StartAdvertising(
+      id,
+      base::Bind(&start_advertising_callback, id, transport, is_valid, c, r),
+      parameters, advertisement, scan_data, 3600 /* timeout_s */,
+      base::Bind(&timeout_cb, id));
+}
+
+// Step One: Start the advertiser
+static void start_oob_advertiser(tBT_TRANSPORT transport, bool is_valid,
+                                 const Octet16& c, const Octet16& r) {
+  auto advertiser = get_ble_advertiser_instance();
+  advertiser->RegisterAdvertiser(
+      base::Bind(&id_status_callback, transport, is_valid, c, r));
 }
 
 void btif_dm_proc_loc_oob(tBT_TRANSPORT transport, bool is_valid,
                           const Octet16& c, const Octet16& r) {
-  invoke_oob_data_request_cb(transport, is_valid, c, r,
-                             *controller_get_interface()->get_address());
+  // is_valid is important for deciding which OobDataCallback function to use
+  if (!is_valid) {
+    invoke_oob_data_request_cb(transport, false, c, r, RawAddress{}, 0x00);
+    waiting_on_oob_advertiser_start = false;
+    return;
+  }
+  // Now that we have the data, lets start advertising and get the address.
+  start_oob_advertiser(transport, is_valid, c, r);
 }
 
 /*******************************************************************************
@@ -2858,8 +2976,9 @@ static void btif_dm_ble_sc_oob_req_evt(tBTA_DM_SP_RMT_OOB* req_oob_type) {
   }
 
   /* Remote name update */
-  btif_update_remote_properties(req_oob_type->bd_addr, req_oob_type->bd_name,
-                                NULL, BT_DEVICE_TYPE_BLE);
+  btif_update_remote_properties(req_oob_type->bd_addr,
+                                oob_data_to_use.device_name, NULL,
+                                BT_DEVICE_TYPE_BLE);
 
   bond_state_changed(BT_STATUS_SUCCESS, bd_addr, BT_BOND_STATE_BONDING);
   pairing_cb.is_ssp = false;
