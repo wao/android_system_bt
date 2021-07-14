@@ -268,7 +268,7 @@ type FfiAddress = bindings::RawAddress;
 /// A shared address structure that has the same representation as
 /// bindings::RawAddress. Macros `deref_ffi_address` and `cast_to_ffi_address`
 /// are used for transforming between bindings::RawAddress at ffi boundaries.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq)]
 #[repr(C)]
 pub struct RawAddress {
     pub val: [u8; 6],
@@ -609,7 +609,11 @@ impl BluetoothInterface {
         profile: SupportedProfiles,
     ) -> *const std::os::raw::c_void {
         let cprofile = Vec::<u8>::from(profile);
-        ccall!(self, get_profile_interface, cprofile.as_slice().as_ptr() as *const i8)
+        ccall!(
+            self,
+            get_profile_interface,
+            cprofile.as_slice().as_ptr() as *const std::os::raw::c_char
+        )
     }
 
     pub(crate) fn as_raw_ptr(&self) -> *const u8 {

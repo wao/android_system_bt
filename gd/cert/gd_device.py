@@ -240,22 +240,26 @@ class GdAndroidDevice(GdDeviceBase):
         try:
             self.adb.shell("rm /data/misc/bluetooth/logs/btsnoop_hci.log")
         except AdbCommandError as error:
-            logging.error("Error during setup: " + str(error))
+            if "No such file or directory" not in str(error):
+                logging.error("Error during setup: " + str(error))
 
         try:
             self.adb.shell("rm /data/misc/bluetooth/logs/btsnooz_hci.log")
         except AdbCommandError as error:
-            logging.error("Error during setup: " + str(error))
+            if "No such file or directory" not in str(error):
+                logging.error("Error during setup: " + str(error))
 
         try:
             self.adb.shell("rm /data/misc/bluedroid/bt_config.conf")
         except AdbCommandError as error:
-            logging.error("Error during setup: " + str(error))
+            if "No such file or directory" not in str(error):
+                logging.error("Error during setup: " + str(error))
 
         try:
             self.adb.shell("rm /data/misc/bluedroid/bt_config.bak")
         except AdbCommandError as error:
-            logging.error("Error during setup: " + str(error))
+            if "No such file or directory" not in str(error):
+                logging.error("Error during setup: " + str(error))
 
         self.ensure_no_output(self.adb.shell("svc bluetooth disable"))
 
@@ -300,28 +304,55 @@ class GdAndroidDevice(GdDeviceBase):
             logging.error("logcat_process %s_%s stopped with code: %d" % (self.label, self.serial_number, return_code))
         self.logcat_logger.stop()
         self.cleanup_port_forwarding()
-        self.adb.pull("/data/misc/bluetooth/logs/btsnoop_hci.log %s" % os.path.join(self.log_path_base,
-                                                                                    "%s_btsnoop_hci.log" % self.label))
-        self.adb.pull("/data/misc/bluedroid/bt_config.conf %s" % os.path.join(self.log_path_base,
-                                                                              "%s_bt_config.conf" % self.label))
-        self.adb.pull(
-            "/data/misc/bluedroid/bt_config.bak %s" % os.path.join(self.log_path_base, "%s_bt_config.bak" % self.label))
+        try:
+            self.adb.pull("/data/misc/bluetooth/logs/btsnoop_hci.log %s" % os.path.join(
+                self.log_path_base, "%s_btsnoop_hci.log" % self.label))
+        except AdbError as error:
+            # Some tests have no snoop logs, and that's OK
+            if "No such file or directory" not in str(error):
+                logging.error("While trying to pull log files" + str(error))
+        try:
+            self.adb.pull("/data/misc/bluedroid/bt_config.conf %s" % os.path.join(self.log_path_base,
+                                                                                  "%s_bt_config.conf" % self.label))
+        except AdbError as error:
+            # Some tests have no config file, and that's OK
+            if "No such file or directory" not in str(error):
+                logging.error("While trying to pull log files" + str(error))
+        try:
+            self.adb.pull("/data/misc/bluedroid/bt_config.bak %s" % os.path.join(self.log_path_base,
+                                                                                 "%s_bt_config.bak" % self.label))
+        except AdbError as error:
+            # Some tests have no config.bak file, and that's OK
+            if "No such file or directory" not in str(error):
+                logging.error("While trying to pull log files" + str(error))
 
     def cleanup_port_forwarding(self):
         try:
             self.adb.remove_tcp_forward(self.grpc_port)
         except AdbError as error:
-            logging.error("Error during port forwarding cleanup: " + str(error))
+            msg = "During port forwarding cleanup: " + str(error)
+            if "not found" in msg:
+                logging.info(msg)
+            else:
+                logging.error(msg)
 
         try:
             self.adb.remove_tcp_forward(self.grpc_root_server_port)
         except AdbError as error:
-            logging.error("Error during port forwarding cleanup: " + str(error))
+            msg = "During port forwarding cleanup: " + str(error)
+            if "not found" in msg:
+                logging.info(msg)
+            else:
+                logging.error(msg)
 
         try:
             self.adb.reverse("--remove tcp:%d" % self.signal_port)
         except AdbError as error:
-            logging.error("Error during port forwarding cleanup: " + str(error))
+            msg = "During port forwarding cleanup: " + str(error)
+            if "not found" in msg:
+                logging.info(msg)
+            else:
+                logging.error(msg)
 
     @staticmethod
     def ensure_no_output(result):

@@ -57,9 +57,9 @@ impl A2dpCodecIndex {
     pub const MIN: A2dpCodecIndex = A2dpCodecIndex::SrcSbc;
 }
 
-impl From<u32> for A2dpCodecIndex {
-    fn from(item: u32) -> Self {
-        A2dpCodecIndex::from_u32(item).unwrap_or_else(|| A2dpCodecIndex::MIN)
+impl From<i32> for A2dpCodecIndex {
+    fn from(item: i32) -> Self {
+        A2dpCodecIndex::from_i32(item).unwrap_or_else(|| A2dpCodecIndex::MIN)
     }
 }
 
@@ -68,7 +68,7 @@ impl From<u32> for A2dpCodecIndex {
 pub enum A2dpCodecPriority {
     Disabled = -1,
     Default = 0,
-    Highest = 1000_000,
+    Highest = 1_000_000,
 }
 
 impl From<i32> for A2dpCodecPriority {
@@ -305,12 +305,8 @@ impl A2dp {
     }
 
     pub fn set_audio_config(&mut self, sample_rate: i32, bits_per_sample: i32, channel_mode: i32) {
-        let config = A2dpCodecConfig {
-            sample_rate: sample_rate,
-            bits_per_sample: bits_per_sample,
-            channel_mode: channel_mode,
-            ..Default::default()
-        };
+        let config =
+            A2dpCodecConfig { sample_rate, bits_per_sample, channel_mode, ..Default::default() };
         self.internal.pin_mut().set_audio_config(config);
     }
     pub fn start_audio_request(&mut self) {
