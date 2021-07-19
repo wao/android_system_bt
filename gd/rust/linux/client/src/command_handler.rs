@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::console_yellow;
 use crate::print_info;
+use crate::{BluetoothDBus, BluetoothManagerDBus};
 
 struct BtCallback {
     objpath: String,
@@ -60,21 +61,37 @@ impl RPCProxy for BtCallback {
 }
 
 /// Handles string command entered from command line.
-pub struct CommandHandler<TBluetoothManager: IBluetoothManager, TBluetooth: IBluetooth> {
-    bluetooth_manager: Arc<Mutex<Box<TBluetoothManager>>>,
-    bluetooth: Arc<Mutex<Box<TBluetooth>>>,
+pub(crate) struct CommandHandler {
+    bluetooth_manager: Arc<Mutex<Box<BluetoothManagerDBus>>>,
+    bluetooth: Arc<Mutex<Box<BluetoothDBus>>>,
 
     is_bluetooth_callback_registered: bool,
+
+    commands: Vec<String>,
 }
 
-impl<TBluetoothManager: IBluetoothManager, TBluetooth: IBluetooth>
-    CommandHandler<TBluetoothManager, TBluetooth>
-{
+impl CommandHandler {
+    /// Creates a new CommandHandler.
+    ///
+    /// * `commands` - List of commands for `help`.
     pub fn new(
-        bluetooth_manager: Arc<Mutex<Box<TBluetoothManager>>>,
-        bluetooth: Arc<Mutex<Box<TBluetooth>>>,
-    ) -> CommandHandler<TBluetoothManager, TBluetooth> {
-        CommandHandler { bluetooth_manager, bluetooth, is_bluetooth_callback_registered: false }
+        bluetooth_manager: Arc<Mutex<Box<BluetoothManagerDBus>>>,
+        bluetooth: Arc<Mutex<Box<BluetoothDBus>>>,
+        commands: Vec<String>,
+    ) -> CommandHandler {
+        CommandHandler {
+            bluetooth_manager,
+            bluetooth,
+            is_bluetooth_callback_registered: false,
+            commands,
+        }
+    }
+
+    pub fn cmd_help(&self) {
+        println!("Available commands:");
+        for cmd in &self.commands {
+            println!("{}", cmd);
+        }
     }
 
     pub fn cmd_enable(&self, _cmd: String) {

@@ -160,6 +160,13 @@ filegroup {
 }
 
 filegroup {
+  name: "TestMockOsi",
+    srcs: [
+      "mock/mock_osi_*.cc",
+    ],
+}
+
+filegroup {
   name: "TestMockStackAcl",
   srcs: [
       "mock/mock_stack_acl*.cc",
@@ -226,5 +233,12 @@ filegroup {
   name: "TestCommonMainHandler",
   srcs: [
       "common/main_handler.cc",
+  ],
+}
+
+filegroup {
+  name: "TestCommonInitFlags",
+  srcs: [
+      "common/init_flags.cc",
   ],
 }
