@@ -69,10 +69,6 @@ void btif_dm_generate_local_oob_data(tBT_TRANSPORT transport);
 /*callout for reading SMP properties from Text file*/
 bool btif_dm_get_smp_config(tBTE_APPL_CFG* p_cfg);
 
-/* EIR functions */
-void btif_dm_add_uuid_to_eir(uint16_t uuid16);
-void btif_dm_remove_uuid_from_eir(uint16_t uuid16);
-
 typedef struct {
   bool is_penc_key_rcvd;
   tBTM_LE_PENC_KEYS penc_key; /* received peer encryption key */
@@ -97,10 +93,6 @@ void btif_dm_load_ble_local_keys(void);
 void btif_dm_get_ble_local_keys(tBTA_DM_BLE_LOCAL_KEY_MASK* p_key_mask,
                                 Octet16* p_er,
                                 tBTA_BLE_LOCAL_ID_KEYS* p_id_keys);
-void btif_dm_save_ble_bonding_keys(RawAddress& bd_addr);
-void btif_dm_remove_ble_bonding_keys(void);
-void btif_dm_ble_sec_req_evt(tBTA_DM_BLE_SEC_REQ* p_ble_req, bool is_consent);
-
 void btif_dm_update_ble_remote_properties(const RawAddress& bd_addr,
                                           BD_NAME bd_name,
                                           tBT_DEVICE_TYPE dev_type);
