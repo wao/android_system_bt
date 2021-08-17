@@ -50,10 +50,12 @@ struct API {
 }
 
 // This creates the API implementations over D-Bus.
-fn create_api_dbus(conn: Arc<SyncConnection>, cr: Arc<Mutex<Crossroads>>) -> API {
-    let bluetooth = Arc::new(Mutex::new(Box::new(BluetoothDBus::new(conn.clone(), cr.clone()))));
+fn create_api_dbus(conn: Arc<SyncConnection>, cr: Arc<Mutex<Crossroads>>, idx: i32) -> API {
     let bluetooth_manager =
         Arc::new(Mutex::new(Box::new(BluetoothManagerDBus::new(conn.clone(), cr.clone()))));
+
+    let bluetooth =
+        Arc::new(Mutex::new(Box::new(BluetoothDBus::new(conn.clone(), cr.clone(), idx))));
 
     API { bluetooth_manager, bluetooth }
 }
@@ -90,7 +92,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }),
         );
 
-        let api = create_api_dbus(conn, cr);
+        // We only need hci index 0 for now.
+        // TODO: Have a mechanism (e.g. CLI argument or btclient command) to select the hci index.
+        let api = create_api_dbus(conn, cr, 0);
 
         // TODO: Registering the callback should be done when btmanagerd is ready (detect with
         // ObjectManager).
@@ -98,9 +102,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             objpath: String::from("/org/chromium/bluetooth/client/bluetooth_manager_callback"),
         }));
 
-        let mut handler = CommandHandler::new(api.bluetooth_manager.clone(), api.bluetooth.clone());
+        // TODO(b/193719802): Refactor this into a dedicated "Help" data structure.
+        let commands = vec![
+            String::from("help"),
+            String::from("enable"),
+            String::from("disable"),
+            String::from("get_address"),
+            String::from("start_discovery"),
+            String::from("cancel_discovery"),
+            String::from("create_bond"),
+        ];
+
+        let mut handler = CommandHandler::new(
+            api.bluetooth_manager.clone(),
+            api.bluetooth.clone(),
+            commands.clone(),
+        );
 
         let mut handle_cmd = move |cmd: String| match cmd.split(' ').collect::<Vec<&str>>()[0] {
+            "help" => handler.cmd_help(),
+
             "enable" => handler.cmd_enable(cmd),
             "disable" => handler.cmd_disable(cmd),
             "get_address" => handler.cmd_get_address(cmd),
@@ -115,7 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => print_info!("Command \"{}\" not recognized", cmd),
         };
 
-        let editor = AsyncEditor::new();
+        let editor = AsyncEditor::new(commands.clone());
 
         loop {
             let result = editor.readline().await;

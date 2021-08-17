@@ -1,5 +1,11 @@
 use crate::RPCProxy;
 
+#[derive(Debug, Default)]
+pub struct AdapterWithEnabled {
+    pub hci_interface: i32,
+    pub enabled: bool,
+}
+
 /// Bluetooth stack management API.
 pub trait IBluetoothManager {
     /// Starts the Bluetooth stack.
@@ -8,9 +14,8 @@ pub trait IBluetoothManager {
     /// Stops the Bluetooth stack.
     fn stop(&mut self, hci_interface: i32);
 
-    /// Returns the state of Bluetooth manager.
-    /// TODO: Should return an enum.
-    fn get_state(&mut self) -> i32;
+    /// Returns whether an adapter is enabled.
+    fn get_adapter_enabled(&mut self, hci_interface: i32) -> bool;
 
     /// Registers a callback to the Bluetooth manager state.
     fn register_callback(&mut self, callback: Box<dyn IBluetoothManagerCallback + Send>);
@@ -21,8 +26,8 @@ pub trait IBluetoothManager {
     /// Enables/disables Floss.
     fn set_floss_enabled(&mut self, enabled: bool);
 
-    /// Returns the list of available HCI devices.
-    fn list_hci_devices(&mut self) -> Vec<i32>;
+    /// Returns a list of available HCI devices and if they are enabled.
+    fn get_available_adapters(&mut self) -> Vec<AdapterWithEnabled>;
 }
 
 /// Interface of Bluetooth Manager callbacks.

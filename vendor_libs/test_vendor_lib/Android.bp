@@ -39,7 +39,6 @@ cc_library_static {
         "model/devices/keyboard.cc",
         "model/devices/link_layer_socket_device.cc",
         "model/devices/loopback.cc",
-        "model/devices/polled_socket.cc",
         "model/devices/remote_loopback_device.cc",
         "model/devices/scripted_beacon.cc",
         "model/devices/sniffer.cc",
@@ -212,5 +211,15 @@ genrule {
     ],
     out: [
         "packets/link_layer_packets.h",
+    ],
+}
+
+// bt_vhci_forwarder in cuttlefish depends on this H4Packetizer implementation.
+filegroup {
+    name: "H4PacketizerSources",
+    srcs: [
+        "model/devices/h4_packetizer.cc",
+        "model/devices/h4_parser.cc",
+        "model/devices/hci_protocol.cc",
     ],
 }

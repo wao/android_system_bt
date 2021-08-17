@@ -142,8 +142,8 @@ pub fn generate_dbus_exporter(attr: TokenStream, item: TokenStream) -> TokenStre
             let mut output_type = quote! {};
             let mut ret = quote! {Ok(())};
             if let ReturnType::Type(_, t) = method.sig.output {
-                output_type = quote! {#t,};
-                ret = quote! {Ok((ret,))};
+                output_type = quote! {<#t as DBusArg>::DBusType,};
+                ret = quote! {Ok((<#t as DBusArg>::to_dbus(ret).unwrap(),))};
                 output_names = quote! { "out", };
             }
 
@@ -590,6 +590,9 @@ pub fn generate_dbus_arg(_item: TokenStream) -> TokenStream {
         impl DirectDBus for bool {}
         impl DirectDBus for i32 {}
         impl DirectDBus for u32 {}
+        impl DirectDBus for i64 {}
+        impl DirectDBus for u64 {}
+        impl DirectDBus for u8 {}
         impl DirectDBus for String {}
         impl<T: DirectDBus> DBusArg for T {
             type DBusType = T;

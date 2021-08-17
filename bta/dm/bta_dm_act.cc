@@ -124,7 +124,7 @@ static void bta_dm_ctrl_features_rd_cmpl_cback(tHCI_STATUS result);
 
 /* Disable timer interval (in milliseconds) */
 #ifndef BTA_DM_DISABLE_TIMER_MS
-#define BTA_DM_DISABLE_TIMER_MS 5000
+#define BTA_DM_DISABLE_TIMER_MS (2000)
 #endif
 
 /* Disable timer retrial interval (in milliseconds) */
@@ -269,7 +269,7 @@ void bta_dm_enable(tBTA_DM_SEC_CBACK* p_sec_cback) {
  *
  ******************************************************************************/
 void bta_dm_init_cb(void) {
-  memset(&bta_dm_cb, 0, sizeof(bta_dm_cb));
+  bta_dm_cb = {};
   bta_dm_cb.disable_timer = alarm_new("bta_dm.disable_timer");
   bta_dm_cb.switch_delay_timer = alarm_new("bta_dm.switch_delay_timer");
   for (size_t i = 0; i < BTA_DM_NUM_PM_TIMER; i++) {
@@ -301,7 +301,7 @@ void bta_dm_deinit_cb(void) {
       alarm_free(bta_dm_cb.pm_timer[i].timer[j]);
     }
   }
-  memset(&bta_dm_cb, 0, sizeof(bta_dm_cb));
+  bta_dm_cb = {};
 }
 
 void BTA_dm_on_hw_off() {
@@ -401,7 +401,8 @@ void BTA_dm_on_hw_on() {
      which forces
      the DM_ENABLE_EVT to be sent only after all the init steps are complete
      */
-  BTM_ReadLocalDeviceNameFromController(bta_dm_local_name_cback);
+  get_btm_client_interface().local.BTM_ReadLocalDeviceNameFromController(
+      bta_dm_local_name_cback);
 
   bta_sys_rm_register(bta_dm_rm_cback);
 
@@ -508,7 +509,7 @@ static void bta_dm_wait_for_acl_to_drain_cback(void* data) {
 
 /** Sets local device name */
 void bta_dm_set_dev_name(const std::vector<uint8_t>& name) {
-  BTM_SetLocalDeviceName((char*)name.data());
+  BTM_SetLocalDeviceName((const char*)name.data());
   bta_dm_set_eir((char*)name.data());
 }
 
@@ -2883,6 +2884,7 @@ static void bta_dm_set_eir(char* local_name) {
 
   /* Allocate a buffer to hold HCI command */
   BT_HDR* p_buf = (BT_HDR*)osi_malloc(BTM_CMD_BUF_SIZE);
+  ASSERT(p_buf != nullptr);
   p = (uint8_t*)p_buf + BTM_HCI_EIR_OFFSET;
 
   memset(p, 0x00, HCI_EXT_INQ_RESPONSE_LEN);

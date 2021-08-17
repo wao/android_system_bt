@@ -87,6 +87,7 @@ cc_fuzz {
 
 cc_fuzz {
     name: "btcore_module_fuzzer",
+    enabled: false,
     defaults: [
         "btcore_fuzz_defaults",
     ],

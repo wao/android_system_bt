@@ -13,13 +13,19 @@ use dbus_projection::{impl_dbus_arg_enum, DisconnectWatcher};
 
 use dbus_macros::{dbus_method, dbus_propmap, generate_dbus_exporter};
 
-use manager_service::iface_bluetooth_manager::{IBluetoothManager, IBluetoothManagerCallback};
+use manager_service::iface_bluetooth_manager::{
+    AdapterWithEnabled, IBluetoothManager, IBluetoothManagerCallback,
+};
 
 use num_traits::{FromPrimitive, ToPrimitive};
 
 use std::sync::{Arc, Mutex};
 
 use crate::dbus_arg::{DBusArg, DBusArgError, RefArgToRust};
+
+fn make_object_path(idx: i32, name: &str) -> dbus::Path {
+    dbus::Path::new(format!("/org/chromium/bluetooth/hci{}/{}", idx, name)).unwrap()
+}
 
 impl_dbus_arg_enum!(BluetoothTransport);
 impl_dbus_arg_enum!(BtSspVariant);
@@ -115,14 +121,17 @@ pub(crate) struct BluetoothDBus {
 }
 
 impl BluetoothDBus {
-    pub(crate) fn new(conn: Arc<SyncConnection>, cr: Arc<Mutex<Crossroads>>) -> BluetoothDBus {
-        // TODO: Adapter client should dynamically accept hci # and be initialized
+    pub(crate) fn new(
+        conn: Arc<SyncConnection>,
+        cr: Arc<Mutex<Crossroads>>,
+        index: i32,
+    ) -> BluetoothDBus {
         BluetoothDBus {
             client_proxy: ClientDBusProxy {
                 conn: conn.clone(),
                 cr: cr,
                 bus_name: String::from("org.chromium.bluetooth"),
-                objpath: dbus::Path::new("/org/chromium/bluetooth/adapter0").unwrap(),
+                objpath: make_object_path(index, "adapter"),
                 interface: String::from("org.chromium.bluetooth.Bluetooth"),
             },
         }
@@ -178,6 +187,12 @@ impl IBluetooth for BluetoothDBus {
     }
 }
 
+#[dbus_propmap(AdapterWithEnabled)]
+pub struct AdapterWithEnabledDbus {
+    hci_interface: i32,
+    enabled: bool,
+}
+
 pub(crate) struct BluetoothManagerDBus {
     client_proxy: ClientDBusProxy,
 }
@@ -209,8 +224,8 @@ impl IBluetoothManager for BluetoothManagerDBus {
         self.client_proxy.method_noreturn("Stop", (hci_interface,))
     }
 
-    fn get_state(&mut self) -> i32 {
-        self.client_proxy.method("GetState", ())
+    fn get_adapter_enabled(&mut self, hci_interface: i32) -> bool {
+        self.client_proxy.method("GetAdapterEnabled", (hci_interface,))
     }
 
     fn register_callback(&mut self, callback: Box<dyn IBluetoothManagerCallback + Send>) {
@@ -235,8 +250,15 @@ impl IBluetoothManager for BluetoothManagerDBus {
         self.client_proxy.method_noreturn("SetFlossEnabled", (enabled,))
     }
 
-    fn list_hci_devices(&mut self) -> Vec<i32> {
-        self.client_proxy.method("ListHciDevices", ())
+    fn get_available_adapters(&mut self) -> Vec<AdapterWithEnabled> {
+        let props: Vec<dbus::arg::PropMap> = self.client_proxy.method("GetAvailableAdapters", ());
+        <Vec<AdapterWithEnabled> as DBusArg>::from_dbus(
+            props,
+            self.client_proxy.conn.clone(),
+            dbus::strings::BusName::new(":1.0").unwrap(), // unused
+            Arc::new(Mutex::new(DisconnectWatcher::new())),
+        )
+        .unwrap()
     }
 }
 

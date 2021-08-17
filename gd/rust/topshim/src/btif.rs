@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 use topshim_macros::cb_variant;
 
-#[derive(Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
 #[repr(u32)]
 pub enum BtState {
     Off = 0,
@@ -24,7 +24,7 @@ impl From<bindings::bt_state_t> for BtState {
     }
 }
 
-#[derive(Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
 #[repr(u32)]
 pub enum BtTransport {
     Invalid = 0,
@@ -65,7 +65,7 @@ impl From<BtSspVariant> for bindings::bt_ssp_variant_t {
     }
 }
 
-#[derive(Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
 #[repr(u32)]
 pub enum BtBondState {
     Unknown = 0,
@@ -79,7 +79,7 @@ impl From<bindings::bt_bond_state_t> for BtBondState {
     }
 }
 
-#[derive(Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
 #[repr(u32)]
 pub enum BtAclState {
     Connected = 0,
@@ -92,7 +92,7 @@ impl From<bindings::bt_acl_state_t> for BtAclState {
     }
 }
 
-#[derive(Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
 #[repr(u32)]
 pub enum BtDeviceType {
     Bredr,
@@ -136,7 +136,7 @@ impl From<BtPropertyType> for u32 {
     }
 }
 
-#[derive(Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
 #[repr(i32)]
 pub enum BtDiscoveryState {
     Stopped = 0x0,
@@ -149,7 +149,7 @@ impl From<u32> for BtDiscoveryState {
     }
 }
 
-#[derive(Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, FromPrimitive, ToPrimitive, PartialEq, PartialOrd)]
 #[repr(u32)]
 pub enum BtStatus {
     Success = 0,
@@ -188,19 +188,6 @@ pub struct BtProperty {
     pub val: Vec<u8>,
 }
 
-fn convert_properties(count: i32, props: *const bindings::bt_property_t) -> Vec<BtProperty> {
-    let mut ret: Vec<BtProperty> = Vec::new();
-
-    for i in 0..isize::from_i32(count).unwrap() {
-        let prop: *const bindings::bt_property_t = unsafe { props.offset(i) };
-        let converted = BtProperty::from(unsafe { *prop });
-
-        ret.push(converted)
-    }
-
-    ret
-}
-
 impl From<bindings::bt_property_t> for BtProperty {
     fn from(item: bindings::bt_property_t) -> Self {
         let slice: &[u8] =
@@ -226,7 +213,12 @@ impl From<BtProperty> for bindings::bt_property_t {
 
 impl From<bindings::bt_bdname_t> for String {
     fn from(item: bindings::bt_bdname_t) -> Self {
-        std::str::from_utf8(&item.name).unwrap().to_string()
+        // We need to reslice item.name because from_utf8 tries to interpret the
+        // whole slice and not just what is before the null terminated portion
+        let ascii =
+            item.name.iter().take_while(|&c| *c != 0).map(|x| x.clone()).collect::<Vec<u8>>();
+
+        return std::str::from_utf8(ascii.as_slice()).unwrap_or("").to_string();
     }
 }
 
@@ -234,17 +226,24 @@ pub type BtHciErrorCode = u8;
 
 pub type BtPinCode = bindings::bt_pin_code_t;
 
+pub type Uuid = bindings::bluetooth::Uuid;
+
 pub enum SupportedProfiles {
     HidHost,
     A2dp,
+    Gatt,
 }
 
 impl From<SupportedProfiles> for Vec<u8> {
     fn from(item: SupportedProfiles) -> Self {
         match item {
-            SupportedProfiles::HidHost => "hidhost".bytes().collect::<Vec<u8>>(),
-            SupportedProfiles::A2dp => "a2dp".bytes().collect::<Vec<u8>>(),
+            SupportedProfiles::HidHost => "hidhost",
+            SupportedProfiles::A2dp => "a2dp",
+            SupportedProfiles::Gatt => "gatt",
         }
+        .bytes()
+        .chain("\0".bytes())
+        .collect::<Vec<u8>>()
     }
 }
 
@@ -263,7 +262,7 @@ mod ffi {
 }
 
 // Export the raw address type directly from the bindings
-type FfiAddress = bindings::RawAddress;
+pub type FfiAddress = bindings::RawAddress;
 
 /// A shared address structure that has the same representation as
 /// bindings::RawAddress. Macros `deref_ffi_address` and `cast_to_ffi_address`
@@ -356,7 +355,7 @@ macro_rules! cast_to_const_ffi_address {
     };
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum BaseCallbacks {
     AdapterState(BtState),
     AdapterProperties(BtStatus, i32, Vec<BtProperty>),
@@ -385,16 +384,16 @@ type BaseCb = Arc<Mutex<BaseCallbacksDispatcher>>;
 cb_variant!(BaseCb, adapter_state_cb -> BaseCallbacks::AdapterState, u32 -> BtState);
 cb_variant!(BaseCb, adapter_properties_cb -> BaseCallbacks::AdapterProperties,
 u32 -> BtStatus, i32, *mut bindings::bt_property_t, {
-    let _2 = convert_properties(_1, _2);
+    let _2 = ptr_to_vec(_2, _1 as usize);
 });
 cb_variant!(BaseCb, remote_device_properties_cb -> BaseCallbacks::RemoteDeviceProperties,
 u32 -> BtStatus, *mut FfiAddress -> RawAddress, i32, *mut bindings::bt_property_t, {
     let _1 = unsafe { *(_1 as *const RawAddress) };
-    let _3 = convert_properties(_2, _3);
+    let _3 = ptr_to_vec(_3, _2 as usize);
 });
 cb_variant!(BaseCb, device_found_cb -> BaseCallbacks::DeviceFound,
 i32, *mut bindings::bt_property_t, {
-    let _1 = convert_properties(_0, _1);
+    let _1 = ptr_to_vec(_1, _0 as usize);
 });
 cb_variant!(BaseCb, discovery_state_cb -> BaseCallbacks::DiscoveryState,
     bindings::bt_discovery_state_t -> BtDiscoveryState);
@@ -638,6 +637,11 @@ pub fn get_btinterface() -> Option<BluetoothInterface> {
     ret
 }
 
+// Turns C-array T[] to Vec<U>.
+pub(crate) fn ptr_to_vec<T: Copy, U: From<T>>(start: *const T, length: usize) -> Vec<U> {
+    unsafe { (0..length).map(|i| U::from(*start.offset(i as isize))).collect::<Vec<U>>() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -661,5 +665,41 @@ mod tests {
     #[test]
     fn test_alignment() {
         assert_eq!(std::mem::align_of::<RawAddress>(), std::mem::align_of::<FfiAddress>());
+    }
+
+    fn make_bdname_from_slice(slice: &[u8]) -> bindings::bt_bdname_t {
+        // Length of slice must be less than bd_name max
+        assert!(slice.len() <= 249);
+
+        let mut bdname = bindings::bt_bdname_t { name: [128; 249] };
+
+        for (i, v) in slice.iter().enumerate() {
+            bdname.name[i] = v.clone();
+        }
+
+        bdname
+    }
+
+    #[test]
+    fn test_bdname_conversions() {
+        let hello_bdname = make_bdname_from_slice(&[72, 69, 76, 76, 79, 0]);
+        assert_eq!("HELLO".to_string(), String::from(hello_bdname));
+
+        let empty_bdname = make_bdname_from_slice(&[0]);
+        assert_eq!("".to_string(), String::from(empty_bdname));
+
+        let no_nullterm_bdname = make_bdname_from_slice(&[72, 69, 76, 76, 79]);
+        assert_eq!("".to_string(), String::from(no_nullterm_bdname));
+
+        let invalid_bdname = make_bdname_from_slice(&[128; 249]);
+        assert_eq!("".to_string(), String::from(invalid_bdname));
+    }
+
+    #[test]
+    fn test_ptr_to_vec() {
+        let arr: [i32; 3] = [1, 2, 3];
+        let vec: Vec<i32> = ptr_to_vec(arr.as_ptr(), arr.len());
+        let expected: Vec<i32> = vec![1, 2, 3];
+        assert_eq!(expected, vec);
     }
 }
