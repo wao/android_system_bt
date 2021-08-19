@@ -534,8 +534,10 @@ tBTM_STATUS BTM_StartInquiry(tBTM_INQ_RESULTS_CB* p_results_cb,
 
   if (controller_get_interface()->supports_ble()) {
     btm_ble_start_inquiry(p_inq->inqparms.duration);
+  } else {
+    LOG_WARN("Trying to do LE scan on a non-LE adapter");
+    p_inq->inqparms.mode &= ~BTM_BLE_INQUIRY_MASK;
   }
-  p_inq->inqparms.mode &= ~BTM_BLE_INQUIRY_MASK;
 
   btm_acl_update_inquiry_status(BTM_INQUIRY_STARTED);
 
@@ -647,12 +649,8 @@ tBTM_STATUS BTM_CancelRemoteDeviceName(void) {
  *
  ******************************************************************************/
 tBTM_INQ_INFO* BTM_InqDbRead(const RawAddress& p_bda) {
-  VLOG(1) << __func__ << ": bd addr " << p_bda;
-
   tINQ_DB_ENT* p_ent = btm_inq_db_find(p_bda);
-  if (!p_ent) return NULL;
-
-  return &p_ent->inq_info;
+  return (p_ent == nullptr) ? nullptr : &p_ent->inq_info;
 }
 
 /*******************************************************************************
