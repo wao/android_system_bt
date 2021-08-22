@@ -71,7 +71,7 @@ class LeAddressManager {
   void AckResume(LeAddressManagerCallback* callback);
   virtual AddressPolicy Register(LeAddressManagerCallback* callback);
   virtual void Unregister(LeAddressManagerCallback* callback);
-  AddressWithType GetCurrentAddress();          // What was set in SetRandomAddress()
+  virtual AddressWithType GetCurrentAddress();  // What was set in SetRandomAddress()
   virtual AddressWithType GetAnotherAddress();  // A new random address without rotating.
 
   uint8_t GetConnectListSize();
@@ -126,6 +126,7 @@ class LeAddressManager {
   hci::Address generate_rpa();
   hci::Address generate_nrpa();
   void handle_next_command();
+  void check_cached_commands();
 
   common::Callback<void(std::unique_ptr<CommandBuilder>)> enqueue_command_;
   os::Handler* handler_;

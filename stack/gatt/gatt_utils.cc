@@ -446,6 +446,7 @@ tGATT_TCB* gatt_allocate_tcb_by_bdaddr(const RawAddress& bda,
     p_tcb->peer_bda = bda;
     p_tcb->eatt = 0;
     gatt_sr_init_cl_status(*p_tcb);
+    gatt_cl_init_sr_status(*p_tcb);
 
     return p_tcb;
   }
@@ -752,16 +753,14 @@ std::list<tGATT_SRV_LIST_ELEM>::iterator gatt_sr_find_i_rcb_by_handle(
  *
  ******************************************************************************/
 void gatt_sr_get_sec_info(const RawAddress& rem_bda, tBT_TRANSPORT transport,
-                          uint8_t* p_sec_flag, uint8_t* p_key_size) {
-  uint8_t sec_flag = 0;
-
-  BTM_GetSecurityFlagsByTransport(rem_bda, &sec_flag, transport);
-
-  sec_flag &= (GATT_SEC_FLAG_LKEY_UNAUTHED | GATT_SEC_FLAG_LKEY_AUTHED |
-               GATT_SEC_FLAG_ENCRYPTED);
+                          tGATT_SEC_FLAG* p_sec_flag, uint8_t* p_key_size) {
+  tGATT_SEC_FLAG flags = {};
+  flags.is_link_key_known = BTM_IsLinkKeyKnown(rem_bda, transport);
+  flags.is_link_key_authed = BTM_IsLinkKeyAuthed(rem_bda, transport);
+  flags.is_encrypted = BTM_IsEncrypted(rem_bda, transport);
 
   *p_key_size = btm_ble_read_sec_key_size(rem_bda);
-  *p_sec_flag = sec_flag;
+  *p_sec_flag = flags;
 }
 /*******************************************************************************
  *
@@ -1613,8 +1612,5 @@ uint8_t* gatt_dbg_op_name(uint8_t op_code) {
 bool gatt_auto_connect_dev_remove(tGATT_IF gatt_if, const RawAddress& bd_addr) {
   tGATT_TCB* p_tcb = gatt_find_tcb_by_addr(bd_addr, BT_TRANSPORT_LE);
   if (p_tcb) gatt_update_app_use_link_flag(gatt_if, p_tcb, false, false);
-  if (bluetooth::shim::is_gd_acl_enabled()) {
-    acl_add_to_ignore_auto_connect_after_disconnect(bd_addr);
-  }
   return connection_manager::background_connect_remove(gatt_if, bd_addr);
 }

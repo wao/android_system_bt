@@ -26,6 +26,7 @@
 
 #include <base/bind.h>
 #include <base/strings/string_number_conversions.h>
+
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -37,6 +38,7 @@
 #include "main/shim/btm_api.h"
 #include "main/shim/shim.h"
 #include "osi/include/log.h"
+#include "osi/include/osi.h"  // UNUSED_ATTR
 #include "stack/btm/btm_ble_int.h"
 #include "stack/btm/btm_ble_int_types.h"
 #include "stack/btm/btm_dev.h"
@@ -98,7 +100,7 @@ class AdvertisingCache {
   bool Exist(uint8_t addr_type, const RawAddress& addr) {
     auto it = Find(addr_type, addr);
     if (it != items.end()) {
-        return true;
+      return true;
     }
     return false;
   }
@@ -128,9 +130,7 @@ class AdvertisingCache {
     }
   }
 
-  void ClearAll() {
-    items.clear();
-  }
+  void ClearAll() { items.clear(); }
 
  private:
   struct Item {
@@ -374,6 +374,20 @@ inline bool BTM_LE_STATES_SUPPORTED(const uint8_t* x, uint8_t bit_num) {
   return ((x)[offset] & mask);
 }
 
+void BTM_BleOpportunisticObserve(bool enable,
+                                 tBTM_INQ_RESULTS_CB* p_results_cb) {
+  if (bluetooth::shim::is_gd_shim_enabled()) {
+    bluetooth::shim::BTM_BleOpportunisticObserve(enable, p_results_cb);
+    return;
+  }
+
+  if (enable) {
+    btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb = p_results_cb;
+  } else {
+    btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb = NULL;
+  }
+}
+
 /*******************************************************************************
  *
  * Function         BTM_BleObserve
@@ -382,7 +396,9 @@ inline bool BTM_LE_STATES_SUPPORTED(const uint8_t* x, uint8_t bit_num) {
  *                  events from a broadcast device.
  *
  * Parameters       start: start or stop observe.
- *                  acceptlist: use acceptlist in observer mode or not.
+ *                  duration: how long the scan should last, in seconds. 0 means
+ *                  scan without timeout. Starting the scan second time without
+ *                  timeout will disable the timer.
  *
  * Returns          void
  *
@@ -411,6 +427,12 @@ tBTM_STATUS BTM_BleObserve(bool start, uint8_t duration,
   if (start) {
     /* shared inquiry database, do not allow observe if any inquiry is active */
     if (btm_cb.ble_ctr_cb.is_ble_observe_active()) {
+      if (duration == 0) {
+        if (alarm_is_scheduled(btm_cb.ble_ctr_cb.observer_timer)) {
+          alarm_cancel(btm_cb.ble_ctr_cb.observer_timer);
+          return BTM_CMD_STARTED;
+        }
+      }
       BTM_TRACE_ERROR("%s Observe Already Active", __func__);
       return status;
     }
@@ -522,7 +544,6 @@ static void btm_get_dynamic_audio_buffer_vsc_cmpl_cback(
  ******************************************************************************/
 static void btm_ble_vendor_capability_vsc_cmpl_cback(
     tBTM_VSC_CMPL* p_vcs_cplt_params) {
-
   BTM_TRACE_DEBUG("%s", __func__);
 
   /* Check status of command complete event */
@@ -556,7 +577,8 @@ static void btm_ble_vendor_capability_vsc_cmpl_cback(
 
   if (btm_cb.cmn_ble_vsc_cb.version_supported >=
       BTM_VSC_CHIP_CAPABILITY_M_VERSION) {
-    CHECK(p_vcs_cplt_params->param_len >= BTM_VSC_CHIP_CAPABILITY_RSP_LEN_M_RELEASE);
+    CHECK(p_vcs_cplt_params->param_len >=
+          BTM_VSC_CHIP_CAPABILITY_RSP_LEN_M_RELEASE);
     STREAM_TO_UINT16(btm_cb.cmn_ble_vsc_cb.total_trackable_advertisers, p);
     STREAM_TO_UINT8(btm_cb.cmn_ble_vsc_cb.extended_scan_support, p);
     STREAM_TO_UINT8(btm_cb.cmn_ble_vsc_cb.debug_logging_supported, p);
@@ -814,7 +836,7 @@ static uint8_t btm_set_conn_mode_adv_init_addr(
     }
   }
 
-/* undirect adv mode or non-connectable mode*/
+  /* undirect adv mode or non-connectable mode*/
   /* when privacy 1.2 privacy only mode is used, or mixed mode */
   if ((btm_cb.ble_ctr_cb.privacy_mode == BTM_PRIVACY_1_2 &&
        p_cb->afp != AP_SCAN_CONN_ALL) ||
@@ -1527,6 +1549,10 @@ static void btm_ble_appearance_to_cod(uint16_t appearance, uint8_t* dev_class) {
       dev_class[1] = BTM_COD_MAJOR_AUDIO;
       dev_class[2] = BTM_COD_MINOR_UNCLASSIFIED;
       break;
+    case BTM_BLE_APPEARANCE_WEARABLE_AUDIO_DEVICE_EARBUD:
+      dev_class[1] = BTM_COD_MAJOR_AUDIO;
+      dev_class[2] = BTM_COD_MINOR_WEARABLE_HEADSET;
+      break;
     case BTM_BLE_APPEARANCE_GENERIC_BARCODE_SCANNER:
     case BTM_BLE_APPEARANCE_HID_BARCODE_SCANNER:
     case BTM_BLE_APPEARANCE_GENERIC_HID:
@@ -1621,10 +1647,14 @@ void btm_ble_update_inq_result(tINQ_DB_ENT* p_i, uint8_t addr_type,
 
   p_i->inq_count = p_inq->inq_counter; /* Mark entry for current inquiry */
 
+  bool has_advertising_flags = false;
   if (!data.empty()) {
     const uint8_t* p_flag =
         AdvertiseDataParser::GetFieldByType(data, BTM_BLE_AD_TYPE_FLAG, &len);
-    if (p_flag != NULL && len != 0) p_cur->flag = *p_flag;
+    if (p_flag != NULL && len != 0) {
+      has_advertising_flags = true;
+      p_cur->flag = *p_flag;
+    }
   }
 
   if (!data.empty()) {
@@ -1659,7 +1689,13 @@ void btm_ble_update_inq_result(tINQ_DB_ENT* p_i, uint8_t addr_type,
     }
   }
 
-  if ((p_cur->flag & BTM_BLE_BREDR_NOT_SPT) == 0 &&
+  // Non-connectable packets may omit flags entirely, in which case nothing
+  // should be assumed about their values (CSSv10, 1.3.1). Thus, do not
+  // interpret the device type unless this packet has the flags set or is
+  // connectable.
+  bool should_process_flags =
+      has_advertising_flags || ble_evt_type_is_connectable(evt_type);
+  if (should_process_flags && (p_cur->flag & BTM_BLE_BREDR_NOT_SPT) == 0 &&
       !ble_evt_type_is_directed(evt_type)) {
     if (p_cur->ble_addr_type != BLE_ADDR_RANDOM) {
       LOG_VERBOSE("NOT_BR_EDR support bit not set, treat device as DUMO");
@@ -1832,20 +1868,20 @@ void btm_ble_process_adv_pkt(uint8_t data_len, uint8_t* data) {
     uint16_t event_type;
     event_type = 1 << BLE_EVT_LEGACY_BIT;
     if (legacy_evt_type == BTM_BLE_ADV_IND_EVT) {
-      event_type |= (1 << BLE_EVT_CONNECTABLE_BIT)|
-                    (1 << BLE_EVT_SCANNABLE_BIT);
+      event_type |=
+          (1 << BLE_EVT_CONNECTABLE_BIT) | (1 << BLE_EVT_SCANNABLE_BIT);
     } else if (legacy_evt_type == BTM_BLE_ADV_DIRECT_IND_EVT) {
-      event_type |= (1 << BLE_EVT_CONNECTABLE_BIT)|
-                    (1 << BLE_EVT_DIRECTED_BIT);
+      event_type |=
+          (1 << BLE_EVT_CONNECTABLE_BIT) | (1 << BLE_EVT_DIRECTED_BIT);
     } else if (legacy_evt_type == BTM_BLE_ADV_SCAN_IND_EVT) {
       event_type |= (1 << BLE_EVT_SCANNABLE_BIT);
     } else if (legacy_evt_type == BTM_BLE_ADV_NONCONN_IND_EVT) {
-      event_type = (1 << BLE_EVT_LEGACY_BIT);//0x0010;
+      event_type = (1 << BLE_EVT_LEGACY_BIT);              // 0x0010;
     } else if (legacy_evt_type == BTM_BLE_SCAN_RSP_EVT) {  // SCAN_RSP;
       // We can't distinguish between "SCAN_RSP to an ADV_IND", and "SCAN_RSP to
       // an ADV_SCAN_IND", so always return "SCAN_RSP to an ADV_IND"
-      event_type |= (1 << BLE_EVT_CONNECTABLE_BIT)|
-                    (1 << BLE_EVT_SCANNABLE_BIT)|
+      event_type |= (1 << BLE_EVT_CONNECTABLE_BIT) |
+                    (1 << BLE_EVT_SCANNABLE_BIT) |
                     (1 << BLE_EVT_SCAN_RESPONSE_BIT);
     } else {
       BTM_TRACE_ERROR(
@@ -1887,13 +1923,11 @@ void btm_ble_process_adv_pkt_cont(uint16_t evt_type, uint8_t addr_type,
   // has no ad flag, the device will be set to DUMO mode. The createbond
   // procedure will use the wrong device mode.
   // In such case no necessary to report scan response
-  if(is_legacy && is_scan_resp && !cache.Exist(addr_type, bda))
-    return;
+  if (is_legacy && is_scan_resp && !cache.Exist(addr_type, bda)) return;
 
   bool is_start = is_legacy && is_scannable && !is_scan_resp;
 
-  if (is_legacy)
-    AdvertiseDataParser::RemoveTrailingZeros(tmp);
+  if (is_legacy) AdvertiseDataParser::RemoveTrailingZeros(tmp);
 
   // We might have send scan request to this device before, but didn't get the
   // response. In such case make sure data is put at start, not appended to
@@ -1984,6 +2018,14 @@ void btm_ble_process_adv_pkt_cont(uint16_t evt_type, uint8_t addr_type,
                        const_cast<uint8_t*>(adv_data.data()), adv_data.size());
   }
 
+  tBTM_INQ_RESULTS_CB* p_opportunistic_obs_results_cb =
+      btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb;
+  if (p_opportunistic_obs_results_cb) {
+    (p_opportunistic_obs_results_cb)((tBTM_INQ_RESULTS*)&p_i->inq_info.results,
+                                     const_cast<uint8_t*>(adv_data.data()),
+                                     adv_data.size());
+  }
+
   cache.Clear(addr_type, bda);
 }
 
@@ -2049,6 +2091,14 @@ void btm_ble_process_adv_pkt_cont_for_inquiry(
     (p_inq_results_cb)((tBTM_INQ_RESULTS*)&p_i->inq_info.results,
                        const_cast<uint8_t*>(advertising_data.data()),
                        advertising_data.size());
+  }
+
+  tBTM_INQ_RESULTS_CB* p_opportunistic_obs_results_cb =
+      btm_cb.ble_ctr_cb.p_opportunistic_obs_results_cb;
+  if (p_opportunistic_obs_results_cb) {
+    (p_opportunistic_obs_results_cb)(
+        (tBTM_INQ_RESULTS*)&p_i->inq_info.results,
+        const_cast<uint8_t*>(advertising_data.data()), advertising_data.size());
   }
 }
 
@@ -2496,19 +2546,7 @@ void btm_ble_update_mode_operation(uint8_t link_role, const RawAddress* bd_addr,
   if (bd_addr != nullptr) {
     const RawAddress bda(*bd_addr);
     if (bluetooth::shim::is_gd_acl_enabled()) {
-      if (acl_check_and_clear_ignore_auto_connect_after_disconnect(bda)) {
-        LOG_DEBUG(
-            "Local disconnect initiated so skipping re-add to acceptlist "
-            "device:%s",
-            PRIVATE_ADDRESS(bda));
-      } else {
-        if (!bluetooth::shim::ACL_AcceptLeConnectionFrom(
-                convert_to_address_with_type(bda, btm_find_dev(bda)),
-                /* is_direct */ false)) {
-          LOG_ERROR("Unable to add to acceptlist as it is full:%s",
-                    PRIVATE_ADDRESS(bda));
-        }
-      }
+      LOG_DEBUG("gd_acl enabled so skip background connection logic");
     } else {
       btm_ble_bgconn_cancel_if_disconnected(bda);
     }

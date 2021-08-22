@@ -30,15 +30,13 @@ tBTM_STATUS BTM_ReadLocalDeviceName(char** p_name) { return BTM_SUCCESS; }
 uint8_t BTM_GetEirSupportedServices(uint32_t* p_eir_uuid, uint8_t** p,
                                     uint8_t max_num_uuid16,
                                     uint8_t* p_num_uuid16) {
-  return BT_EIR_FLAGS_TYPE;
+  return HCI_EIR_FLAGS_TYPE;
 }
 tBTM_STATUS BTM_WriteEIR(BT_HDR* p_buff) { return BTM_SUCCESS; }
 
 class BtaCustUuid : public testing::Test {
  protected:
-  void SetUp() override {
-    memset(&bta_dm_cb, 0, sizeof(bta_dm_cb));
-  }
+  void SetUp() override { bta_dm_cb = {}; }
 };
 
 namespace {

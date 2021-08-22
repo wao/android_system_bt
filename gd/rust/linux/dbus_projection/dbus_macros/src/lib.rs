@@ -54,6 +54,8 @@ pub fn generate_dbus_exporter(attr: TokenStream, item: TokenStream) -> TokenStre
 
     let mut register_methods = quote! {};
 
+    let obj_type = quote! { std::sync::Arc<std::sync::Mutex<Box<T>>> };
+
     for item in ast.items {
         if let ImplItem::Method(method) = item {
             if method.attrs.len() != 1 {
@@ -140,8 +142,8 @@ pub fn generate_dbus_exporter(attr: TokenStream, item: TokenStream) -> TokenStre
             let mut output_type = quote! {};
             let mut ret = quote! {Ok(())};
             if let ReturnType::Type(_, t) = method.sig.output {
-                output_type = quote! {#t,};
-                ret = quote! {Ok((ret,))};
+                output_type = quote! {<#t as DBusArg>::DBusType,};
+                ret = quote! {Ok((<#t as DBusArg>::to_dbus(ret).unwrap(),))};
                 output_names = quote! { "out", };
             }
 
@@ -151,7 +153,7 @@ pub fn generate_dbus_exporter(attr: TokenStream, item: TokenStream) -> TokenStre
                 let conn_clone = conn.clone();
                 let dc_watcher_clone = disconnect_watcher.clone();
                 let handle_method = move |ctx: &mut dbus_crossroads::Context,
-                                          obj: &mut ObjType,
+                                          obj: &mut #obj_type,
                                           #dbus_input_args |
                       -> Result<(#output_type), dbus_crossroads::MethodErr> {
                     #make_args
@@ -171,20 +173,18 @@ pub fn generate_dbus_exporter(attr: TokenStream, item: TokenStream) -> TokenStre
     let gen = quote! {
         #ori_item
 
-        type ObjType = std::sync::Arc<std::sync::Mutex<dyn #api_iface_ident + Send>>;
-
-        pub fn #fn_ident(
-            path: &'static str,
+        pub fn #fn_ident<T: 'static + #api_iface_ident + Send + ?Sized, P: Into<dbus::Path<'static>>>(
+            path: P,
             conn: std::sync::Arc<SyncConnection>,
             cr: &mut dbus_crossroads::Crossroads,
-            obj: ObjType,
-            disconnect_watcher: Arc<Mutex<dbus_projection::DisconnectWatcher>>,
+            obj: #obj_type,
+            disconnect_watcher: std::sync::Arc<std::sync::Mutex<dbus_projection::DisconnectWatcher>>,
         ) {
-            fn get_iface_token(
-                conn: Arc<SyncConnection>,
+            fn get_iface_token<T: #api_iface_ident + Send + ?Sized>(
+                conn: std::sync::Arc<SyncConnection>,
                 cr: &mut dbus_crossroads::Crossroads,
                 disconnect_watcher: std::sync::Arc<std::sync::Mutex<dbus_projection::DisconnectWatcher>>,
-            ) -> dbus_crossroads::IfaceToken<ObjType> {
+            ) -> dbus_crossroads::IfaceToken<#obj_type> {
                 cr.register(#dbus_iface_name, |ibuilder| {
                     #register_methods
                 })
@@ -241,16 +241,6 @@ pub fn dbus_propmap(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         let field_str = field_ident.as_ref().unwrap().clone().to_string();
 
-        let propmap_attr = field.attrs.clone().into_iter().find(|x| {
-            let ident = x.path.get_ident();
-
-            if ident.is_none() {
-                return false;
-            }
-
-            ident.unwrap().to_string().eq("dbus_propmap_field_propmap")
-        });
-
         let field_type_str = if let Type::Path(t) = field.ty {
             t.path.get_ident().unwrap().to_string()
         } else {
@@ -263,66 +253,32 @@ pub fn dbus_propmap(attr: TokenStream, item: TokenStream) -> TokenStream {
             #field_idents #field_ident,
         };
 
-        let make_field = if !propmap_attr.is_none() {
-            quote! {
-                let mut map: dbus::arg::PropMap = HashMap::new();
-
-                let mut iter = #field_ident.as_iter().unwrap();
-                let mut iter = iter.next().unwrap().as_iter().unwrap();
-
-                let mut i1 = iter.next();
-                let mut i2 = iter.next();
-                while !i1.is_none() && !i2.is_none() {
-                    let k = i1.unwrap().as_str().unwrap().to_string();
-                    let v = dbus::arg::Variant(i2.unwrap().box_clone());
-                    map.insert(k, v);
-                    i1 = iter.next();
-                    i2 = iter.next();
-                }
-
-                let #field_ident = #field_type_ident::from_dbus(
-                    map,
-                    conn.clone(),
-                    remote.clone(),
-                    disconnect_watcher.clone(),
-                )?;
-            }
-        } else {
-            quote! {
-                match #field_ident.arg_type() {
-                    dbus::arg::ArgType::Variant => {}
-                    _ => {
-                        return Err(Box::new(DBusArgError::new(String::from(format!(
-                            "{}.{} must be a variant",
-                            #struct_str, #field_str
-                        )))));
-                    }
-                };
-                let #field_ident = #field_ident.as_static_inner(0).unwrap();
-                let any = #field_ident.as_any();
-                if !any.is::<<#field_type_ident as DBusArg>::DBusType>() {
+        let make_field = quote! {
+            match #field_ident.arg_type() {
+                dbus::arg::ArgType::Variant => {}
+                _ => {
                     return Err(Box::new(DBusArgError::new(String::from(format!(
-                        "{}.{} type does not match: expected {}, found {}",
-                        #struct_str,
-                        #field_str,
-                        std::any::type_name::<<#field_type_ident as DBusArg>::DBusType>(),
-                        #field_ident.arg_type().as_str(),
+                        "{}.{} must be a variant",
+                        #struct_str, #field_str
                     )))));
                 }
-                let #field_ident = *any.downcast_ref::<<#field_type_ident as DBusArg>::DBusType>().unwrap();
-                let #field_ident = #field_type_ident::from_dbus(
-                    #field_ident,
-                    conn.clone(),
-                    remote.clone(),
-                    disconnect_watcher.clone(),
-                )?;
-            }
+            };
+            let #field_ident = <<#field_type_ident as DBusArg>::DBusType as RefArgToRust>::ref_arg_to_rust(
+                #field_ident,
+                format!("{}.{}", #struct_str, #field_str),
+            )?;
+            let #field_ident = #field_type_ident::from_dbus(
+                #field_ident,
+                conn__.clone(),
+                remote__.clone(),
+                disconnect_watcher__.clone(),
+            )?;
         };
 
         make_fields = quote! {
             #make_fields
 
-            let #field_ident = match data.get(#field_str) {
+            let #field_ident = match data__.get(#field_str) {
                 Some(data) => data,
                 None => {
                     return Err(Box::new(DBusArgError::new(String::from(format!(
@@ -336,8 +292,8 @@ pub fn dbus_propmap(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         insert_map_fields = quote! {
             #insert_map_fields
-            let field_data = DBusArg::to_dbus(data.#field_ident)?;
-            map.insert(String::from(#field_str), dbus::arg::Variant(Box::new(field_data)));
+            let field_data__ = DBusArg::to_dbus(data__.#field_ident)?;
+            map__.insert(String::from(#field_str), dbus::arg::Variant(Box::new(field_data__)));
         };
     }
 
@@ -349,11 +305,11 @@ pub fn dbus_propmap(attr: TokenStream, item: TokenStream) -> TokenStream {
             type DBusType = dbus::arg::PropMap;
 
             fn from_dbus(
-                data: dbus::arg::PropMap,
-                conn: Arc<SyncConnection>,
-                remote: BusName<'static>,
-                disconnect_watcher: Arc<Mutex<dbus_projection::DisconnectWatcher>>,
-            ) -> Result<#struct_ident, Box<dyn Error>> {
+                data__: dbus::arg::PropMap,
+                conn__: std::sync::Arc<SyncConnection>,
+                remote__: dbus::strings::BusName<'static>,
+                disconnect_watcher__: std::sync::Arc<std::sync::Mutex<dbus_projection::DisconnectWatcher>>,
+            ) -> Result<#struct_ident, Box<dyn std::error::Error>> {
                 #make_fields
 
                 return Ok(#struct_ident {
@@ -362,10 +318,10 @@ pub fn dbus_propmap(attr: TokenStream, item: TokenStream) -> TokenStream {
                 });
             }
 
-            fn to_dbus(data: #struct_ident) -> Result<dbus::arg::PropMap, Box<dyn Error>> {
-                let mut map: dbus::arg::PropMap = HashMap::new();
+            fn to_dbus(data__: #struct_ident) -> Result<dbus::arg::PropMap, Box<dyn std::error::Error>> {
+                let mut map__: dbus::arg::PropMap = std::collections::HashMap::new();
                 #insert_map_fields
-                return Ok(map);
+                return Ok(map__);
             }
         }
     };
@@ -443,15 +399,15 @@ pub fn dbus_proxy_obj(attr: TokenStream, item: TokenStream) -> TokenStream {
                 #method_impls
                 #[allow(unused_variables)]
                 #method_sig {
-                    let remote = self.remote.clone();
-                    let objpath = self.objpath.clone();
-                    let conn = self.conn.clone();
-                    bt_topshim::topstack::get_runtime().spawn(async move {
+                    let remote__ = self.remote.clone();
+                    let objpath__ = self.objpath.clone();
+                    let conn__ = self.conn.clone();
+                    tokio::spawn(async move {
                         let proxy = dbus::nonblock::Proxy::new(
-                            remote,
-                            objpath,
+                            remote__,
+                            objpath__,
                             std::time::Duration::from_secs(2),
-                            conn,
+                            conn__,
                         );
                         let future: dbus::nonblock::MethodReply<()> = proxy.method_call(
                             #dbus_iface_name,
@@ -470,13 +426,16 @@ pub fn dbus_proxy_obj(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         impl RPCProxy for #self_ty {
             fn register_disconnect(&mut self, _disconnect_callback: Box<dyn Fn() + Send>) {}
+            fn get_object_id(&self) -> String {
+                String::from("")
+            }
         }
 
         struct #struct_ident {
-            conn: Arc<SyncConnection>,
-            remote: BusName<'static>,
+            conn: std::sync::Arc<SyncConnection>,
+            remote: dbus::strings::BusName<'static>,
             objpath: Path<'static>,
-            disconnect_watcher: Arc<Mutex<DisconnectWatcher>>,
+            disconnect_watcher: std::sync::Arc<std::sync::Mutex<DisconnectWatcher>>,
         }
 
         impl #trait_ for #struct_ident {
@@ -487,21 +446,30 @@ pub fn dbus_proxy_obj(attr: TokenStream, item: TokenStream) -> TokenStream {
             fn register_disconnect(&mut self, disconnect_callback: Box<dyn Fn() + Send>) {
                 self.disconnect_watcher.lock().unwrap().add(self.remote.clone(), disconnect_callback);
             }
+
+            fn get_object_id(&self) -> String {
+                self.objpath.to_string().clone()
+            }
         }
 
         impl DBusArg for Box<dyn #trait_ + Send> {
             type DBusType = Path<'static>;
 
             fn from_dbus(
-                objpath: Path<'static>,
-                conn: Arc<SyncConnection>,
-                remote: BusName<'static>,
-                disconnect_watcher: Arc<Mutex<DisconnectWatcher>>,
-            ) -> Result<Box<dyn #trait_ + Send>, Box<dyn Error>> {
-                Ok(Box::new(#struct_ident { conn, remote, objpath, disconnect_watcher }))
+                objpath__: Path<'static>,
+                conn__: std::sync::Arc<SyncConnection>,
+                remote__: dbus::strings::BusName<'static>,
+                disconnect_watcher__: std::sync::Arc<std::sync::Mutex<DisconnectWatcher>>,
+            ) -> Result<Box<dyn #trait_ + Send>, Box<dyn std::error::Error>> {
+                Ok(Box::new(#struct_ident {
+                    conn: conn__,
+                    remote: remote__,
+                    objpath: objpath__,
+                    disconnect_watcher: disconnect_watcher__,
+                }))
             }
 
-            fn to_dbus(_data: Box<dyn #trait_ + Send>) -> Result<Path<'static>, Box<dyn Error>> {
+            fn to_dbus(_data: Box<dyn #trait_ + Send>) -> Result<Path<'static>, Box<dyn std::error::Error>> {
                 // This impl represents a remote DBus object, so `to_dbus` does not make sense.
                 panic!("not implemented");
             }
@@ -551,6 +519,57 @@ pub fn generate_dbus_arg(_item: TokenStream) -> TokenStream {
 
         impl Error for DBusArgError {}
 
+        pub(crate) trait RefArgToRust {
+            type RustType;
+            fn ref_arg_to_rust<U: 'static + dbus::arg::RefArg + ?Sized>(
+                arg: &U,
+                name: String,
+            ) -> Result<Self::RustType, Box<dyn Error>>;
+        }
+
+        impl<T: 'static + Clone + DirectDBus> RefArgToRust for T {
+            type RustType = T;
+            fn ref_arg_to_rust<U: 'static + dbus::arg::RefArg + ?Sized>(
+                arg: &U,
+                name: String,
+            ) -> Result<Self::RustType, Box<dyn Error>> {
+                let arg = arg.as_static_inner(0).unwrap();
+                let any = arg.as_any();
+                if !any.is::<<Self as DBusArg>::DBusType>() {
+                    return Err(Box::new(DBusArgError::new(String::from(format!(
+                        "{} type does not match: expected {}, found {}",
+                        name,
+                        std::any::type_name::<<Self as DBusArg>::DBusType>(),
+                        arg.arg_type().as_str(),
+                    )))));
+                }
+                let arg = (*any.downcast_ref::<<Self as DBusArg>::DBusType>().unwrap()).clone();
+                return Ok(arg);
+            }
+        }
+
+        impl RefArgToRust for dbus::arg::PropMap {
+            type RustType = dbus::arg::PropMap;
+            fn ref_arg_to_rust<U: 'static + dbus::arg::RefArg + ?Sized>(
+                arg: &U,
+                _name: String,
+            ) -> Result<Self::RustType, Box<dyn Error>> {
+                let mut map: dbus::arg::PropMap = std::collections::HashMap::new();
+                let mut outer_iter = arg.as_iter().unwrap();
+                let mut iter = outer_iter.next().unwrap().as_iter().unwrap();
+                let mut key = iter.next();
+                let mut val = iter.next();
+                while !key.is_none() && !val.is_none() {
+                    let k = key.unwrap().as_str().unwrap().to_string();
+                    let v = dbus::arg::Variant(val.unwrap().box_clone());
+                    map.insert(k, v);
+                    key = iter.next();
+                    val = iter.next();
+                }
+                return Ok(map);
+            }
+        }
+
         pub(crate) trait DBusArg {
             type DBusType;
 
@@ -568,8 +587,13 @@ pub fn generate_dbus_arg(_item: TokenStream) -> TokenStream {
 
         // Types that implement dbus::arg::Append do not need any conversion.
         pub(crate) trait DirectDBus {}
+        impl DirectDBus for bool {}
         impl DirectDBus for i32 {}
         impl DirectDBus for u32 {}
+        impl DirectDBus for i64 {}
+        impl DirectDBus for u64 {}
+        impl DirectDBus for u16 {}
+        impl DirectDBus for u8 {}
         impl DirectDBus for String {}
         impl<T: DirectDBus> DBusArg for T {
             type DBusType = T;

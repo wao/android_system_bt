@@ -26,6 +26,7 @@
 
 #include "bt_target.h"
 #include "buffer_allocator.h"
+#include "check.h"
 #include "device/include/controller.h"
 #include "hci_internals.h"
 #include "osi/include/log.h"
@@ -344,7 +345,7 @@ static void reassemble_and_dispatch_iso(UNUSED_ATTR BT_HDR* packet) {
   }
 }
 
-static void reassemble_and_dispatch(UNUSED_ATTR BT_HDR* packet) {
+static void reassemble_and_dispatch(BT_HDR* packet) {
   if ((packet->event & MSG_EVT_MASK) == MSG_HC_TO_STACK_HCI_ACL) {
     uint8_t* stream = packet->data;
     uint16_t handle;
@@ -446,8 +447,8 @@ static void reassemble_and_dispatch(UNUSED_ATTR BT_HDR* packet) {
       packet->offset = HCI_ACL_PREAMBLE_SIZE;
       uint16_t projected_offset =
           partial_packet->offset + (packet->len - HCI_ACL_PREAMBLE_SIZE);
-      if (projected_offset >
-          partial_packet->len) {  // len stores the expected length
+      if ((packet->len - packet->offset) >
+          (partial_packet->len - partial_packet->offset)) {
         LOG_WARN(
             "%s got packet which would exceed expected length of %d. "
             "Truncating.",

@@ -79,17 +79,6 @@ bool BTM_SecDeleteRmtNameNotifyCallback(tBTM_RMT_NAME_CALLBACK* p_callback);
 
 /*******************************************************************************
  *
- * Function         BTM_GetSecurityFlags
- *
- * Description      Get security flags for the device
- *
- * Returns          bool    true or false is device found
- *
- ******************************************************************************/
-bool BTM_GetSecurityFlags(const RawAddress& bd_addr, uint8_t* p_sec_flags);
-
-/*******************************************************************************
- *
  * Function         BTM_GetSecurityFlagsByTransport
  *
  * Description      Get security flags for the device on a particular transport
@@ -194,8 +183,8 @@ uint8_t BTM_SecClrServiceByPsm(uint16_t psm);
  *                  p_pin        - pointer to array with the PIN Code
  *
  ******************************************************************************/
-void BTM_PINCodeReply(const RawAddress& bd_addr, uint8_t res, uint8_t pin_len,
-                      uint8_t* p_pin);
+void BTM_PINCodeReply(const RawAddress& bd_addr, tBTM_STATUS res,
+                      uint8_t pin_len, uint8_t* p_pin);
 
 /*******************************************************************************
  *
@@ -229,7 +218,7 @@ tBTM_STATUS btm_sec_bond_by_transport(const RawAddress& bd_addr,
  *  Note: After 2.1 parameters are not used and preserved here not to change API
  ******************************************************************************/
 tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                        tBT_TRANSPORT transport, int device_type,
+                        tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type,
                         uint8_t pin_len, uint8_t* p_pin);
 
 /*******************************************************************************
@@ -781,7 +770,20 @@ bool btm_sec_is_a_bonded_dev(const RawAddress& bda);
  ******************************************************************************/
 void btm_sec_set_peer_sec_caps(uint16_t hci_handle, bool ssp_supported,
                                bool sc_supported,
-                               bool hci_role_switch_supported);
+                               bool hci_role_switch_supported,
+                               bool br_edr_supported, bool le_supported);
+
+/*******************************************************************************
+ *
+ * Function         btm_sec_cr_loc_oob_data_cback_event
+ *
+ * Description      This function is called to pass the local oob up to caller
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void btm_sec_cr_loc_oob_data_cback_event(const RawAddress& address,
+                                         tSMP_LOC_OOB_DATA loc_oob_data);
 
 // Return DEV_CLASS (uint8_t[3]) of bda. If record doesn't exist, create one.
 const uint8_t* btm_get_dev_class(const RawAddress& bda);

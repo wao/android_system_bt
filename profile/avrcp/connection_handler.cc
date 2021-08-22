@@ -211,7 +211,8 @@ bool ConnectionHandler::AvrcpConnect(bool initiator, const RawAddress& bdaddr) {
                            : AVRC_CONN_ACP;  // 0 if initiator, 1 if acceptor
   // TODO (apanicke): We shouldn't need RCCT to do absolute volume. The current
   // AVRC_API requires it though.
-  open_cb.control = BTA_AV_FEAT_RCTG | BTA_AV_FEAT_RCCT | BTA_AV_FEAT_METADATA;
+  open_cb.control = BTA_AV_FEAT_RCTG | BTA_AV_FEAT_RCCT | BTA_AV_FEAT_METADATA
+                    | AVRC_CT_PASSIVE;
 
   uint8_t handle = 0;
   uint16_t status = avrc_->Open(&handle, &open_cb, bdaddr);
@@ -419,7 +420,7 @@ void ConnectionHandler::MessageCb(uint8_t handle, uint8_t label, uint8_t opcode,
   device_map_[handle]->MessageReceived(label, Packet::Parse(pkt));
 }
 
-void ConnectionHandler::SdpCb(const RawAddress& bdaddr, SdpCallback cb,
+void ConnectionHandler::SdpCb(RawAddress bdaddr, SdpCallback cb,
                               tSDP_DISCOVERY_DB* disc_db, bool retry,
                               uint16_t status) {
   VLOG(1) << __PRETTY_FUNCTION__ << ": SDP lookup callback received";

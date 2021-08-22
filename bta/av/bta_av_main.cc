@@ -137,12 +137,10 @@ static void bta_av_api_enable(tBTA_AV_DATA* p_data) {
       SDP_DeleteRecord(bta_av_cb.sdp_a2dp_handle);
       bta_sys_remove_uuid(UUID_SERVCLASS_AUDIO_SOURCE);
     }
-#if (BTA_AV_SINK_INCLUDED == TRUE)
     if (bta_av_cb.sdp_a2dp_snk_handle) {
       SDP_DeleteRecord(bta_av_cb.sdp_a2dp_snk_handle);
       bta_sys_remove_uuid(UUID_SERVCLASS_AUDIO_SINK);
     }
-#endif
     // deregister from AVDT
     bta_ar_dereg_avdt();
 
@@ -159,14 +157,6 @@ static void bta_av_api_enable(tBTA_AV_DATA* p_data) {
     bta_av_cb.rcb[i].handle = BTA_AV_RC_HANDLE_NONE;
 
   bta_av_cb.rc_acp_handle = BTA_AV_RC_HANDLE_NONE;
-
-  /*
-   * TODO: The "disable" event handling is missing - there we need
-   * to alarm_free() the alarms below.
-   */
-  bta_av_cb.link_signalling_timer = alarm_new("bta_av.link_signalling_timer");
-  bta_av_cb.accept_signalling_timer =
-      alarm_new("bta_av.accept_signalling_timer");
 
   /* store parameters */
   bta_av_cb.p_cback = p_data->api_enable.p_cback;
@@ -607,12 +597,10 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
                        A2DP_SUPF_PLAYER, bta_av_cb.sdp_a2dp_handle);
         bta_sys_add_uuid(UUID_SERVCLASS_AUDIO_SOURCE);
       } else if (profile_initialized == UUID_SERVCLASS_AUDIO_SINK) {
-#if (BTA_AV_SINK_INCLUDED == TRUE)
         bta_av_cb.sdp_a2dp_snk_handle = SDP_CreateRecord();
         A2DP_AddRecord(UUID_SERVCLASS_AUDIO_SINK, p_service_name, NULL,
                        A2DP_SUPF_PLAYER, bta_av_cb.sdp_a2dp_snk_handle);
         bta_sys_add_uuid(UUID_SERVCLASS_AUDIO_SINK);
-#endif
       }
       /* start listening when A2DP is registered */
       if (bta_av_cb.features & BTA_AV_FEAT_RCTG)
@@ -1402,14 +1390,6 @@ void bta_debug_av_dump(int fd) {
 
   dprintf(fd, "\nBTA AV State:\n");
   dprintf(fd, "  State Machine State: %s\n", bta_av_st_code(bta_av_cb.state));
-  dprintf(fd, "  Link signalling timer: %s\n",
-          alarm_is_scheduled(bta_av_cb.link_signalling_timer)
-              ? "Scheduled"
-              : "Not scheduled");
-  dprintf(fd, "  Accept signalling timer: %s\n",
-          alarm_is_scheduled(bta_av_cb.accept_signalling_timer)
-              ? "Scheduled"
-              : "Not scheduled");
   dprintf(fd, "  SDP A2DP source handle: %d\n", bta_av_cb.sdp_a2dp_handle);
   dprintf(fd, "  SDP A2DP sink handle: %d\n", bta_av_cb.sdp_a2dp_snk_handle);
   dprintf(fd, "  Features: 0x%x\n", bta_av_cb.features);
@@ -1468,6 +1448,13 @@ void bta_debug_av_dump(int fd) {
             p_scb->open_api.use_rc ? "true" : "false");
     dprintf(fd, "      Switch result: %d\n", p_scb->open_api.switch_res);
     dprintf(fd, "      Initiator UUID: 0x%x\n", p_scb->open_api.uuid);
+    dprintf(fd, "  Link signalling timer: %s\n",
+            alarm_is_scheduled(p_scb->link_signalling_timer) ? "Scheduled"
+                                                             : "Not scheduled");
+    dprintf(fd, "  Accept signalling timer: %s\n",
+            alarm_is_scheduled(p_scb->accept_signalling_timer)
+                ? "Scheduled"
+                : "Not scheduled");
     // TODO: Print p_scb->sep_info[], cfg, avrc_ct_timer, current_codec ?
     dprintf(fd, "    L2CAP Channel ID: %d\n", p_scb->l2c_cid);
     dprintf(fd, "    Stream MTU: %d\n", p_scb->stream_mtu);

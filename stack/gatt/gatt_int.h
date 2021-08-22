@@ -84,10 +84,11 @@ inline std::string gatt_security_action_text(const tGATT_SEC_ACTION& action) {
 #define GATT_WAIT_FOR_DISC_RSP_TIMEOUT_MS (5 * 1000)
 #define GATT_REQ_RETRY_LIMIT 2
 
-#define GATT_SEC_FLAG_LKEY_UNAUTHED BTM_SEC_FLAG_LKEY_KNOWN
-#define GATT_SEC_FLAG_LKEY_AUTHED BTM_SEC_FLAG_LKEY_AUTHED
-#define GATT_SEC_FLAG_ENCRYPTED BTM_SEC_FLAG_ENCRYPTED
-typedef uint8_t tGATT_SEC_FLAG;
+typedef struct {
+  bool is_link_key_known;
+  bool is_link_key_authed;
+  bool is_encrypted;
+} tGATT_SEC_FLAG;
 
 /* Find Information Response Type
 */
@@ -317,6 +318,8 @@ typedef struct {
   // TODO(hylo): support byte array data
   /* Client supported feature*/
   uint8_t cl_supp_feat;
+  /* Server supported features */
+  uint8_t sr_supp_feat;
   /* Use for server. if false, should handle database out of sync. */
   bool is_robust_cache_change_aware;
 
@@ -459,9 +462,11 @@ extern void gatt_add_a_bonded_dev_for_srv_chg(const RawAddress& bda);
 /* from gatt_attr.cc */
 extern uint16_t gatt_profile_find_conn_id_by_bd_addr(const RawAddress& bda);
 
-extern bool gatt_profile_get_eatt_support(
-    const RawAddress& remote_bda,
-    base::OnceCallback<void(const RawAddress&, bool)> cb);
+extern bool gatt_profile_get_eatt_support(const RawAddress& remote_bda);
+extern void gatt_cl_init_sr_status(tGATT_TCB& tcb);
+extern bool gatt_cl_read_sr_supp_feat_req(
+    const RawAddress& peer_bda,
+    base::OnceCallback<void(const RawAddress&, uint8_t)> cb);
 
 extern bool gatt_sr_is_cl_change_aware(tGATT_TCB& tcb);
 extern void gatt_sr_init_cl_status(tGATT_TCB& tcb);
@@ -488,7 +493,8 @@ extern uint8_t gatt_build_uuid_to_stream_len(const bluetooth::Uuid& uuid);
 extern uint8_t gatt_build_uuid_to_stream(uint8_t** p_dst,
                                          const bluetooth::Uuid& uuid);
 extern void gatt_sr_get_sec_info(const RawAddress& rem_bda,
-                                 tBT_TRANSPORT transport, uint8_t* p_sec_flag,
+                                 tBT_TRANSPORT transport,
+                                 tGATT_SEC_FLAG* p_sec_flag,
                                  uint8_t* p_key_size);
 extern void gatt_start_rsp_timer(tGATT_CLCB* p_clcb);
 extern void gatt_stop_rsp_timer(tGATT_CLCB* p_clcb);

@@ -107,6 +107,9 @@ void Btm::ScanningCallbacks::OnScannerRegistered(
     const bluetooth::hci::Uuid app_uuid, bluetooth::hci::ScannerId scanner_id,
     ScanningStatus status){};
 
+void Btm::ScanningCallbacks::OnSetScannerParameterComplete(
+    bluetooth::hci::ScannerId scanner_id, ScanningStatus status){};
+
 void Btm::ScanningCallbacks::OnScanResult(
     uint16_t event_type, uint8_t address_type, bluetooth::hci::Address address,
     uint8_t primary_phy, uint8_t secondary_phy, uint8_t advertising_sid,
@@ -614,7 +617,7 @@ size_t Btm::GetNumberOfAdvertisingInstances() const {
 
 tBTM_STATUS Btm::CreateBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
                             tBT_TRANSPORT transport, int device_type) {
-  if (transport == BT_TRANSPORT_UNKNOWN) {
+  if (transport == BT_TRANSPORT_AUTO) {
     if (device_type & BT_DEVICE_TYPE_BLE) {
       transport = BT_TRANSPORT_LE;
     } else if (device_type & BT_DEVICE_TYPE_BREDR) {
@@ -673,11 +676,6 @@ hci::AddressWithType Btm::GetAddressAndType(const RawAddress& bd_addr) {
   }
   LOG(ERROR) << "Unknown bd_addr. Use public address";
   return ToAddressWithType(bd_addr, BLE_ADDR_PUBLIC);
-}
-
-void Btm::Register_HACK_SetScoDisconnectCallback(
-    HACK_ScoDisconnectCallback callback) {
-  GetAclManager()->HACK_SetScoDisconnectCallback(callback);
 }
 
 }  // namespace shim

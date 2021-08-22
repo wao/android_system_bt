@@ -242,6 +242,12 @@ uint8_t btif_storage_get_gatt_cl_supp_feat(const RawAddress& bd_addr);
 /** Remove client supported features */
 void btif_storage_remove_gatt_cl_supp_feat(const RawAddress& bd_addr);
 
+/** Stores information about GATT server supported features */
+void btif_storage_set_gatt_sr_supp_feat(const RawAddress& addr, uint8_t feat);
+
+/** Gets information about GATT server supported features */
+uint8_t btif_storage_get_sr_supp_feat(const RawAddress& bd_addr);
+
 /** Store last server database hash for remote client */
 void btif_storage_set_gatt_cl_db_hash(const RawAddress& bd_addr, Octet16 hash);
 
@@ -293,6 +299,15 @@ bt_status_t btif_storage_get_remote_addr_type(const RawAddress* remote_bd_addr,
 
 bt_status_t btif_storage_set_remote_addr_type(const RawAddress* remote_bd_addr,
                                               tBLE_ADDR_TYPE addr_type);
+
+bool btif_storage_get_remote_addr_type(const RawAddress& remote_bd_addr,
+                                       tBLE_ADDR_TYPE& addr_type);
+void btif_storage_set_remote_addr_type(const RawAddress& remote_bd_addr,
+                                       const tBLE_ADDR_TYPE& addr_type);
+bool btif_storage_get_remote_device_type(const RawAddress& remote_bd_addr,
+                                         tBT_DEVICE_TYPE& device_type);
+void btif_storage_set_remote_device_type(const RawAddress& remote_bd_addr,
+                                         const tBT_DEVICE_TYPE& device_type);
 
 /*******************************************************************************
  * Function         btif_storage_load_hidd

@@ -26,6 +26,7 @@
 #include "btcore/include/event_mask.h"
 #include "btcore/include/module.h"
 #include "btcore/include/version.h"
+#include "check.h"
 #include "hcimsgs.h"
 #include "main/shim/controller.h"
 #include "main/shim/shim.h"
@@ -840,14 +841,4 @@ const controller_t* controller_get_interface() {
   } else {
     return controller_get_interface_legacy();
   }
-}
-
-const controller_t* controller_get_test_interface(
-    const hci_t* hci_interface,
-    const hci_packet_factory_t* packet_factory_interface,
-    const hci_packet_parser_t* packet_parser_interface) {
-  local_hci = hci_interface;
-  packet_factory = packet_factory_interface;
-  packet_parser = packet_parser_interface;
-  return &interface;
 }

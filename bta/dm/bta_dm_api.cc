@@ -77,11 +77,16 @@ void BTA_DmSetDeviceName(char* p_name) {
  * Returns          void
  *
  ******************************************************************************/
-void BTA_DmSearch(tBTA_DM_SEARCH_CBACK* p_cback) {
+void BTA_DmSearch(tBTA_DM_SEARCH_CBACK* p_cback, bool is_bonding_or_sdp) {
   tBTA_DM_API_SEARCH* p_msg =
       (tBTA_DM_API_SEARCH*)osi_calloc(sizeof(tBTA_DM_API_SEARCH));
 
-  p_msg->hdr.event = BTA_DM_API_SEARCH_EVT;
+  /* Queue request if a device is bonding or performing service discovery */
+  if (is_bonding_or_sdp) {
+    p_msg->hdr.event = BTA_DM_API_QUEUE_SEARCH_EVT;
+  } else {
+    p_msg->hdr.event = BTA_DM_API_SEARCH_EVT;
+  }
   p_msg->p_cback = p_cback;
 
   bta_sys_sendmsg(p_msg);
@@ -129,11 +134,15 @@ void BTA_DmSearchCancel(void) {
  *
  ******************************************************************************/
 void BTA_DmDiscover(const RawAddress& bd_addr, tBTA_DM_SEARCH_CBACK* p_cback,
-                    tBT_TRANSPORT transport) {
+                    tBT_TRANSPORT transport, bool is_bonding_or_sdp) {
   tBTA_DM_API_DISCOVER* p_msg =
       (tBTA_DM_API_DISCOVER*)osi_calloc(sizeof(tBTA_DM_API_DISCOVER));
 
-  p_msg->hdr.event = BTA_DM_API_DISCOVER_EVT;
+  if (is_bonding_or_sdp) {
+    p_msg->hdr.event = BTA_DM_API_QUEUE_DISCOVER_EVT;
+  } else {
+    p_msg->hdr.event = BTA_DM_API_DISCOVER_EVT;
+  }
   p_msg->bd_addr = bd_addr;
   p_msg->transport = transport;
   p_msg->p_cback = p_cback;
@@ -143,7 +152,7 @@ void BTA_DmDiscover(const RawAddress& bd_addr, tBTA_DM_SEARCH_CBACK* p_cback,
 
 /** This function initiates a bonding procedure with a peer device */
 void BTA_DmBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                tBT_TRANSPORT transport, int device_type) {
+                tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type) {
   do_in_main_thread(FROM_HERE, base::Bind(bta_dm_bond, bd_addr, addr_type,
                                           transport, device_type));
 }
@@ -297,40 +306,6 @@ void BTA_GetEirService(uint8_t* p_eir, size_t eir_len,
     if (*(p_uuid16 + xx) == UUID_SERVCLASS_HDP_SINK)
       *p_services |= BTA_HL_SERVICE_MASK;
   }
-}
-
-/*******************************************************************************
- *
- * Function         BTA_AddEirUuid
- *
- * Description      Request to add a service class UID to the local
- *                  device's EIR data.
- *
- * Parameters       uuid16 - The service class UUID you wish to add
- *
- * Returns          void
- *
- ******************************************************************************/
-void BTA_AddEirUuid(uint16_t uuid16) {
-  APPL_TRACE_API("%s: %d", __func__, uuid16);
-  bta_sys_add_uuid(uuid16);
-}
-
-/*******************************************************************************
- *
- * Function         BTA_RemoveEirUuid
- *
- * Description      Request to remove a service class UID from the local
- *                  device's EIR data.
- *
- * Parameters       uuid16 - The service class UUID you wish to remove
- *
- * Returns          void
- *
- ******************************************************************************/
-void BTA_RemoveEirUuid(uint16_t uuid16) {
-  APPL_TRACE_API("%s: %d", __func__, uuid16);
-  bta_sys_remove_uuid(uuid16);
 }
 
 /*******************************************************************************
@@ -644,6 +619,45 @@ extern void BTA_DmBleObserve(bool start, uint8_t duration,
   APPL_TRACE_API("%s:start = %d ", __func__, start);
   do_in_main_thread(
       FROM_HERE, base::Bind(bta_dm_ble_observe, start, duration, p_results_cb));
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_DmBleScan
+ *
+ * Description      Start or stop the scan procedure if it's not already started
+ *                  with BTA_DmBleObserve().
+ *
+ * Parameters       start: start or stop the scan procedure,
+ *                  duration_sec: Duration of the scan. Continuous scan if 0 is
+ *                                passed,
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+extern void BTA_DmBleScan(bool start, uint8_t duration_sec) {
+  APPL_TRACE_API("%s:start = %d ", __func__, start);
+  do_in_main_thread(FROM_HERE,
+                    base::Bind(bta_dm_ble_scan, start, duration_sec));
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_DmBleCsisObserve
+ *
+ * Description      This procedure keeps the external observer listening for
+ *                  advertising events from a CSIS grouped device.
+ *
+ * Parameters       observe: enable or disable passive observe,
+ *                  p_results_cb: Callback to be called with scan results,
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTA_DmBleCsisObserve(bool observe, tBTA_DM_SEARCH_CBACK* p_results_cb) {
+  APPL_TRACE_API("%s:enable = %d ", __func__, observe);
+  do_in_main_thread(FROM_HERE,
+                    base::Bind(bta_dm_ble_csis_observe, observe, p_results_cb));
 }
 
 /*******************************************************************************

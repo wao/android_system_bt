@@ -85,12 +85,8 @@ class Acl : public hci::acl_manager::ConnectionCallbacks,
                       uint16_t minimum_remote_timeout,
                       uint16_t minimum_local_timeout) override;
 
-  void HACK_OnScoDisconnected(uint16_t handle, uint8_t reason);
-
   void WriteData(uint16_t hci_handle,
                  std::unique_ptr<packet::RawBuilder> packet);
-
-  void ConfigureLePrivacy(bool is_le_privacy_enabled);
 
   void Dump(int fd) const;
   void DumpConnectionHistory(int fd) const;

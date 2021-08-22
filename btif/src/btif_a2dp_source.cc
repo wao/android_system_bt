@@ -34,7 +34,6 @@
 #include "bt_common.h"
 #include "bta_av_ci.h"
 #include "btif_a2dp.h"
-#include "btif_a2dp_audio_interface.h"
 #include "btif_a2dp_control.h"
 #include "btif_a2dp_source.h"
 #include "btif_av.h"
@@ -358,7 +357,9 @@ bool btif_a2dp_source_startup(void) {
 static void btif_a2dp_source_startup_delayed() {
   LOG_INFO("%s: state=%s", __func__, btif_a2dp_source_cb.StateStr().c_str());
   if (!btif_a2dp_source_thread.EnableRealTimeScheduling()) {
+#if defined(OS_ANDROID)
     LOG(FATAL) << __func__ << ": unable to enable real time scheduling";
+#endif
   }
   if (!bluetooth::audio::a2dp::init(&btif_a2dp_source_thread)) {
     if (btif_av_is_a2dp_offload_enabled()) {
@@ -405,9 +406,6 @@ static void btif_a2dp_source_start_session_delayed(
     bluetooth::audio::a2dp::set_remote_delay(btif_av_get_audio_delay());
     BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionStart(
         bluetooth::common::CONNECTION_TECHNOLOGY_TYPE_BREDR, 0);
-  } else if (btif_av_is_a2dp_offload_enabled()) {
-    // TODO: BluetoothA2dp@1.0 is deprecated
-    btif_a2dp_audio_interface_start_session();
   } else {
     BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionStart(
         bluetooth::common::CONNECTION_TECHNOLOGY_TYPE_BREDR, 0);
@@ -472,9 +470,6 @@ static void btif_a2dp_source_end_session_delayed(
     bluetooth::audio::a2dp::end_session();
     BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionEnd(
         bluetooth::common::DISCONNECT_REASON_UNKNOWN, 0);
-  } else if (btif_av_is_a2dp_offload_enabled()) {
-    // TODO: BluetoothA2dp@1.0 is deprecated
-    btif_a2dp_audio_interface_end_session();
   } else {
     BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionEnd(
         bluetooth::common::DISCONNECT_REASON_UNKNOWN, 0);
@@ -505,9 +500,6 @@ static void btif_a2dp_source_shutdown_delayed(void) {
 
   if (bluetooth::audio::a2dp::is_hal_2_0_enabled()) {
     bluetooth::audio::a2dp::cleanup();
-  } else if (btif_av_is_a2dp_offload_enabled()) {
-    // TODO: BluetoothA2dp@1.0 is deprecated
-    btif_a2dp_audio_interface_end_session();
   } else {
     btif_a2dp_control_cleanup();
   }
@@ -828,15 +820,14 @@ static void btif_a2dp_source_audio_tx_stop_event(void) {
                                     &btif_a2dp_source_cb.accumulated_stats);
 
   uint8_t p_buf[AUDIO_STREAM_OUTPUT_BUFFER_SZ * 2];
-  uint16_t event;
 
   // Keep track of audio data still left in the pipe
   if (bluetooth::audio::a2dp::is_hal_2_0_enabled()) {
     btif_a2dp_control_log_bytes_read(
         bluetooth::audio::a2dp::read(p_buf, sizeof(p_buf)));
   } else if (a2dp_uipc != nullptr) {
-    btif_a2dp_control_log_bytes_read(UIPC_Read(*a2dp_uipc, UIPC_CH_ID_AV_AUDIO,
-                                               &event, p_buf, sizeof(p_buf)));
+    btif_a2dp_control_log_bytes_read(
+        UIPC_Read(*a2dp_uipc, UIPC_CH_ID_AV_AUDIO, p_buf, sizeof(p_buf)));
   }
 
   /* Stop the timer first */
@@ -901,13 +892,12 @@ static void btif_a2dp_source_audio_handle_timer(void) {
 }
 
 static uint32_t btif_a2dp_source_read_callback(uint8_t* p_buf, uint32_t len) {
-  uint16_t event;
   uint32_t bytes_read = 0;
 
   if (bluetooth::audio::a2dp::is_hal_2_0_enabled()) {
     bytes_read = bluetooth::audio::a2dp::read(p_buf, len);
   } else if (a2dp_uipc != nullptr) {
-    bytes_read = UIPC_Read(*a2dp_uipc, UIPC_CH_ID_AV_AUDIO, &event, p_buf, len);
+    bytes_read = UIPC_Read(*a2dp_uipc, UIPC_CH_ID_AV_AUDIO, p_buf, len);
   }
 
   if (bytes_read < len) {

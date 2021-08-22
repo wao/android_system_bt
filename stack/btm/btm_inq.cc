@@ -534,8 +534,10 @@ tBTM_STATUS BTM_StartInquiry(tBTM_INQ_RESULTS_CB* p_results_cb,
 
   if (controller_get_interface()->supports_ble()) {
     btm_ble_start_inquiry(p_inq->inqparms.duration);
+  } else {
+    LOG_WARN("Trying to do LE scan on a non-LE adapter");
+    p_inq->inqparms.mode &= ~BTM_BLE_INQUIRY_MASK;
   }
-  p_inq->inqparms.mode &= ~BTM_BLE_INQUIRY_MASK;
 
   btm_acl_update_inquiry_status(BTM_INQUIRY_STARTED);
 
@@ -647,12 +649,8 @@ tBTM_STATUS BTM_CancelRemoteDeviceName(void) {
  *
  ******************************************************************************/
 tBTM_INQ_INFO* BTM_InqDbRead(const RawAddress& p_bda) {
-  VLOG(1) << __func__ << ": bd addr " << p_bda;
-
   tINQ_DB_ENT* p_ent = btm_inq_db_find(p_bda);
-  if (!p_ent) return NULL;
-
-  return &p_ent->inq_info;
+  return (p_ent == nullptr) ? nullptr : &p_ent->inq_info;
 }
 
 /*******************************************************************************
@@ -1635,8 +1633,8 @@ void BTM_RemoveEirService(uint32_t* p_eir_uuid, uint16_t uuid16) {
  *                  max_num_uuid16 - max number of UUID can be written in EIR
  *                  num_uuid16 - number of UUID have been written in EIR
  *
- * Returns          BTM_EIR_MORE_16BITS_UUID_TYPE, if it has more than max
- *                  BTM_EIR_COMPLETE_16BITS_UUID_TYPE, otherwise
+ * Returns          HCI_EIR_MORE_16BITS_UUID_TYPE, if it has more than max
+ *                  HCI_EIR_COMPLETE_16BITS_UUID_TYPE, otherwise
  *
  ******************************************************************************/
 uint8_t BTM_GetEirSupportedServices(uint32_t* p_eir_uuid, uint8_t** p,
@@ -1655,11 +1653,11 @@ uint8_t BTM_GetEirSupportedServices(uint32_t* p_eir_uuid, uint8_t** p,
       }
       /* if max number of UUIDs are stored and found one more */
       else {
-        return BTM_EIR_MORE_16BITS_UUID_TYPE;
+        return HCI_EIR_MORE_16BITS_UUID_TYPE;
       }
     }
   }
-  return BTM_EIR_COMPLETE_16BITS_UUID_TYPE;
+  return HCI_EIR_COMPLETE_16BITS_UUID_TYPE;
 }
 
 /*******************************************************************************
@@ -1677,12 +1675,12 @@ uint8_t BTM_GetEirSupportedServices(uint32_t* p_eir_uuid, uint8_t** p,
  *                  max_num_uuid - maximum number of UUID to be returned
  *
  * Returns          0 - if not found
- *                  BTM_EIR_COMPLETE_16BITS_UUID_TYPE
- *                  BTM_EIR_MORE_16BITS_UUID_TYPE
- *                  BTM_EIR_COMPLETE_32BITS_UUID_TYPE
- *                  BTM_EIR_MORE_32BITS_UUID_TYPE
- *                  BTM_EIR_COMPLETE_128BITS_UUID_TYPE
- *                  BTM_EIR_MORE_128BITS_UUID_TYPE
+ *                  HCI_EIR_COMPLETE_16BITS_UUID_TYPE
+ *                  HCI_EIR_MORE_16BITS_UUID_TYPE
+ *                  HCI_EIR_COMPLETE_32BITS_UUID_TYPE
+ *                  HCI_EIR_MORE_32BITS_UUID_TYPE
+ *                  HCI_EIR_COMPLETE_128BITS_UUID_TYPE
+ *                  HCI_EIR_MORE_128BITS_UUID_TYPE
  *
  ******************************************************************************/
 uint8_t BTM_GetEirUuidList(uint8_t* p_eir, size_t eir_len, uint8_t uuid_size,
@@ -1759,16 +1757,16 @@ static const uint8_t* btm_eir_get_uuid_list(uint8_t* p_eir, size_t eir_len,
 
   switch (uuid_size) {
     case Uuid::kNumBytes16:
-      complete_type = BTM_EIR_COMPLETE_16BITS_UUID_TYPE;
-      more_type = BTM_EIR_MORE_16BITS_UUID_TYPE;
+      complete_type = HCI_EIR_COMPLETE_16BITS_UUID_TYPE;
+      more_type = HCI_EIR_MORE_16BITS_UUID_TYPE;
       break;
     case Uuid::kNumBytes32:
-      complete_type = BTM_EIR_COMPLETE_32BITS_UUID_TYPE;
-      more_type = BTM_EIR_MORE_32BITS_UUID_TYPE;
+      complete_type = HCI_EIR_COMPLETE_32BITS_UUID_TYPE;
+      more_type = HCI_EIR_MORE_32BITS_UUID_TYPE;
       break;
     case Uuid::kNumBytes128:
-      complete_type = BTM_EIR_COMPLETE_128BITS_UUID_TYPE;
-      more_type = BTM_EIR_MORE_128BITS_UUID_TYPE;
+      complete_type = HCI_EIR_COMPLETE_128BITS_UUID_TYPE;
+      more_type = HCI_EIR_MORE_128BITS_UUID_TYPE;
       break;
     default:
       *p_num_uuid = 0;
@@ -1864,12 +1862,12 @@ void btm_set_eir_uuid(uint8_t* p_eir, tBTM_INQ_RESULTS* p_results) {
   uint8_t num_uuid;
   uint16_t uuid16;
   uint8_t yy;
-  uint8_t type = BTM_EIR_MORE_16BITS_UUID_TYPE;
+  uint8_t type = HCI_EIR_MORE_16BITS_UUID_TYPE;
 
   p_uuid_data = btm_eir_get_uuid_list(p_eir, HCI_EXT_INQ_RESPONSE_LEN,
                                       Uuid::kNumBytes16, &num_uuid, &type);
 
-  if (type == BTM_EIR_COMPLETE_16BITS_UUID_TYPE) {
+  if (type == HCI_EIR_COMPLETE_16BITS_UUID_TYPE) {
     p_results->eir_complete_list = true;
   } else {
     p_results->eir_complete_list = false;

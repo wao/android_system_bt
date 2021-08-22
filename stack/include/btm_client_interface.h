@@ -127,8 +127,9 @@ struct btm_client_interface_s {
     char* (*BTM_SecReadDevName)(const RawAddress& bd_addr);
     tBTM_STATUS (*BTM_SecBond)(const RawAddress& bd_addr,
                                tBLE_ADDR_TYPE addr_type,
-                               tBT_TRANSPORT transport, int device_type,
-                               uint8_t pin_len, uint8_t* p_pin);
+                               tBT_TRANSPORT transport,
+                               tBT_DEVICE_TYPE device_type, uint8_t pin_len,
+                               uint8_t* p_pin);
     tBTM_STATUS (*BTM_SecBondCancel)(const RawAddress& bd_addr);
     void (*BTM_SecAddBleKey)(const RawAddress& bd_addr,
                              tBTM_LE_KEY_VALUE* p_le_key,
@@ -141,7 +142,7 @@ struct btm_client_interface_s {
     uint8_t (*BTM_SecClrServiceByPsm)(uint16_t psm);
     void (*BTM_RemoteOobDataReply)(tBTM_STATUS res, const RawAddress& bd_addr,
                                    const Octet16& c, const Octet16& r);
-    void (*BTM_PINCodeReply)(const RawAddress& bd_addr, uint8_t res,
+    void (*BTM_PINCodeReply)(const RawAddress& bd_addr, tBTM_STATUS res,
                              uint8_t pin_len, uint8_t* p_pin);
     void (*BTM_ConfirmReqReply)(tBTM_STATUS res, const RawAddress& bd_addr);
     bool (*BTM_SecDeleteRmtNameNotifyCallback)(
@@ -200,7 +201,7 @@ struct btm_client_interface_s {
   struct {
     tBTM_STATUS (*BTM_ReadLocalDeviceNameFromController)(
         tBTM_CMPL_CB* p_rln_cmpl_cback);
-    tBTM_STATUS (*BTM_SetLocalDeviceName)(char* p_name);
+    tBTM_STATUS (*BTM_SetLocalDeviceName)(const char* p_name);
     tBTM_STATUS (*BTM_SetDeviceClass)(DEV_CLASS dev_class);
     bool (*BTM_IsDeviceUp)();
     uint8_t* (*BTM_ReadDeviceClass)();

@@ -83,6 +83,7 @@ using bluetooth::Uuid;
 #define BTIF_STORAGE_KEY_ADAPTER_DISC_TIMEOUT "DiscoveryTimeout"
 #define BTIF_STORAGE_KEY_GATT_CLIENT_SUPPORTED "GattClientSupportedFeatures"
 #define BTIF_STORAGE_KEY_GATT_CLIENT_DB_HASH "GattClientDatabaseHash"
+#define BTIF_STORAGE_KEY_GATT_SERVER_SUPPORTED "GattServerSupportedFeatures"
 
 /* This is a local property to add a device found */
 #define BT_PROPERTY_REMOTE_DEVICE_TIMESTAMP 0xFF
@@ -855,6 +856,9 @@ bt_status_t btif_storage_remove_bonded_device(
   if (btif_config_exist(bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_DB_HASH)) {
     ret &= btif_config_remove(bdstr, BTIF_STORAGE_KEY_GATT_CLIENT_DB_HASH);
   }
+  if (btif_config_exist(bdstr, BTIF_STORAGE_KEY_GATT_SERVER_SUPPORTED)) {
+    ret &= btif_config_remove(bdstr, BTIF_STORAGE_KEY_GATT_SERVER_SUPPORTED);
+  }
 
   /* write bonded info immediately */
   btif_config_flush();
@@ -1294,6 +1298,20 @@ bt_status_t btif_storage_set_remote_addr_type(const RawAddress* remote_bd_addr,
   return ret ? BT_STATUS_SUCCESS : BT_STATUS_FAIL;
 }
 
+void btif_storage_set_remote_addr_type(const RawAddress& remote_bd_addr,
+                                       const tBLE_ADDR_TYPE& addr_type) {
+  if (!btif_config_set_int(remote_bd_addr.ToString(), "AddrType",
+                           static_cast<int>(addr_type)))
+    LOG_ERROR("Unable to set storage property");
+}
+
+void btif_storage_set_remote_device_type(const RawAddress& remote_bd_addr,
+                                         const tBT_DEVICE_TYPE& device_type) {
+  if (!btif_config_set_int(remote_bd_addr.ToString(), "DevType",
+                           static_cast<int>(device_type)))
+    LOG_ERROR("Unable to set storage property");
+}
+
 bool btif_has_ble_keys(const std::string& bdstr) {
   return btif_config_exist(bdstr, "LE_KEY_PENC");
 }
@@ -1315,6 +1333,25 @@ bt_status_t btif_storage_get_remote_addr_type(const RawAddress* remote_bd_addr,
   *addr_type = static_cast<tBLE_ADDR_TYPE>(val);
   return ret ? BT_STATUS_SUCCESS : BT_STATUS_FAIL;
 }
+
+bool btif_storage_get_remote_addr_type(const RawAddress& remote_bd_addr,
+                                       tBLE_ADDR_TYPE& addr_type) {
+  int val;
+  const int ret =
+      btif_config_get_int(remote_bd_addr.ToString(), "AddrType", &val);
+  addr_type = static_cast<tBLE_ADDR_TYPE>(val);
+  return ret;
+}
+
+bool btif_storage_get_remote_device_type(const RawAddress& remote_bd_addr,
+                                         tBT_DEVICE_TYPE& device_type) {
+  int val;
+  const bool ret =
+      btif_config_get_int(remote_bd_addr.ToString(), "DevType", &val);
+  device_type = static_cast<tBT_DEVICE_TYPE>(val);
+  return ret;
+}
+
 /*******************************************************************************
  *
  * Function         btif_storage_add_hid_device_info
@@ -1658,6 +1695,34 @@ bool btif_storage_get_hearing_aid_prop(
   }
 
   return true;
+}
+
+/** Stores information about GATT server supported features */
+void btif_storage_set_gatt_sr_supp_feat(const RawAddress& addr, uint8_t feat) {
+  do_in_jni_thread(
+      FROM_HERE, Bind(
+                     [](const RawAddress& addr, uint8_t feat) {
+                       std::string bdstr = addr.ToString();
+                       VLOG(2)
+                           << "GATT server supported features for: " << bdstr
+                           << " features: " << +feat;
+                       btif_config_set_int(
+                           bdstr, BTIF_STORAGE_KEY_GATT_SERVER_SUPPORTED, feat);
+                       btif_config_save();
+                     },
+                     addr, feat));
+}
+
+/** Gets information about GATT server supported features */
+uint8_t btif_storage_get_sr_supp_feat(const RawAddress& bd_addr) {
+  auto name = bd_addr.ToString();
+
+  int value = 0;
+  btif_config_get_int(name, BTIF_STORAGE_KEY_GATT_SERVER_SUPPORTED, &value);
+  BTIF_TRACE_DEBUG("Remote device: %s GATT server supported features 0x%02x",
+                   name.c_str(), value);
+
+  return value;
 }
 
 /*******************************************************************************

@@ -34,6 +34,7 @@
 #include "bta/hh/bta_hh_int.h"
 #include "btif/include/btif_debug_conn.h"
 #include "device/include/controller.h"
+#include "main/shim/dumpsys.h"
 #include "osi/include/log.h"
 #include "osi/include/osi.h"  // UNUSED_ATTR
 #include "stack/include/btm_ble_api_types.h"
@@ -69,6 +70,8 @@ static void bta_gattc_phy_update_cback(tGATT_IF gatt_if, uint16_t conn_id,
 static void bta_gattc_conn_update_cback(tGATT_IF gatt_if, uint16_t conn_id,
                                         uint16_t interval, uint16_t latency,
                                         uint16_t timeout, tGATT_STATUS status);
+static void bta_gattc_init_bk_conn(const tBTA_GATTC_API_OPEN* p_data,
+                                   tBTA_GATTC_RCB* p_clreg);
 
 static tGATT_CBACK bta_gattc_cl_cback = {
     .p_conn_cb = bta_gattc_conn_cback,
@@ -152,7 +155,7 @@ void bta_gattc_disable() {
 }
 
 /** start an application interface */
-void bta_gattc_start_if(uint8_t client_if) {
+static void bta_gattc_start_if(uint8_t client_if) {
   if (!bta_gattc_cl_get_regcb(client_if)) {
     LOG(ERROR) << "Unable to start app.: Unknown client_if=" << +client_if;
     return;
@@ -308,7 +311,8 @@ void bta_gattc_process_api_open_cancel(const tBTA_GATTC_DATA* p_msg) {
 }
 
 /** process encryption complete message */
-void bta_gattc_process_enc_cmpl(tGATT_IF client_if, const RawAddress& bda) {
+static void bta_gattc_process_enc_cmpl(tGATT_IF client_if,
+                                       const RawAddress& bda) {
   tBTA_GATTC_RCB* p_clreg = bta_gattc_cl_get_regcb(client_if);
 
   if (!p_clreg || !p_clreg->p_cback) return;
@@ -378,9 +382,10 @@ void bta_gattc_open(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
 }
 
 /** Process API Open for a background connection */
-void bta_gattc_init_bk_conn(const tBTA_GATTC_API_OPEN* p_data,
-                            tBTA_GATTC_RCB* p_clreg) {
+static void bta_gattc_init_bk_conn(const tBTA_GATTC_API_OPEN* p_data,
+                                   tBTA_GATTC_RCB* p_clreg) {
   if (!bta_gattc_mark_bg_conn(p_data->client_if, p_data->remote_bda, true)) {
+    LOG_WARN("Unable to find space for acceptlist connection mask");
     bta_gattc_send_open_cback(p_clreg, GATT_NO_RESOURCES, p_data->remote_bda,
                               GATT_INVALID_CONN_ID, BT_TRANSPORT_LE, 0);
     return;
@@ -397,18 +402,27 @@ void bta_gattc_init_bk_conn(const tBTA_GATTC_API_OPEN* p_data,
   }
 
   uint16_t conn_id;
-  /* if is not a connected remote device */
   if (!GATT_GetConnIdIfConnected(p_data->client_if, p_data->remote_bda,
                                  &conn_id, p_data->transport)) {
+    LOG_WARN("Not a connected remote device");
     return;
   }
 
   tBTA_GATTC_CLCB* p_clcb = bta_gattc_find_alloc_clcb(
       p_data->client_if, p_data->remote_bda, BT_TRANSPORT_LE);
-  if (!p_clcb) return;
+  if (!p_clcb) {
+    LOG_WARN("Unable to find connection link for device:%s",
+             PRIVATE_ADDRESS(p_data->remote_bda));
+    return;
+  }
 
-  tBTA_GATTC_DATA gattc_data;
-  gattc_data.hdr.layer_specific = p_clcb->bta_conn_id = conn_id;
+  p_clcb->bta_conn_id = conn_id;
+  tBTA_GATTC_DATA gattc_data = {
+      .hdr =
+          {
+              .layer_specific = conn_id,
+          },
+  };
 
   /* open connection */
   bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_CONN_EVT,
@@ -617,7 +631,7 @@ void bta_gattc_disc_close(tBTA_GATTC_CLCB* p_clcb,
 }
 
 /** when a SRCB start discovery, tell all related clcb and set the state */
-void bta_gattc_set_discover_st(tBTA_GATTC_SERV* p_srcb) {
+static void bta_gattc_set_discover_st(tBTA_GATTC_SERV* p_srcb) {
   uint8_t i;
 
   for (i = 0; i < BTA_GATTC_CLCB_MAX; i++) {
@@ -1108,12 +1122,12 @@ static void bta_gattc_conn_cback(tGATT_IF gattc_if, const RawAddress& bdaddr,
     LOG_INFO("Connected att_id:%hhu transport:%s reason:%s", gattc_if,
              bt_transport_text(transport).c_str(),
              gatt_disconnection_reason_text(reason).c_str());
-    btif_debug_conn_state(bdaddr, BTIF_DEBUG_CONNECTED, GATT_CONN_UNKNOWN);
+    btif_debug_conn_state(bdaddr, BTIF_DEBUG_CONNECTED, GATT_CONN_OK);
   } else {
     LOG_INFO("Disconnected att_id:%hhu transport:%s reason:%s", gattc_if,
              bt_transport_text(transport).c_str(),
              gatt_disconnection_reason_text(reason).c_str());
-    btif_debug_conn_state(bdaddr, BTIF_DEBUG_DISCONNECTED, GATT_CONN_UNKNOWN);
+    btif_debug_conn_state(bdaddr, BTIF_DEBUG_DISCONNECTED, GATT_CONN_OK);
   }
 
   tBTA_GATTC_DATA* p_buf =
@@ -1181,12 +1195,12 @@ void bta_gattc_process_api_refresh(const RawAddress& remote_bda) {
 }
 
 /** process service change indication */
-bool bta_gattc_process_srvc_chg_ind(uint16_t conn_id, tBTA_GATTC_RCB* p_clrcb,
-                                    tBTA_GATTC_SERV* p_srcb,
-                                    tBTA_GATTC_CLCB* p_clcb,
-                                    tBTA_GATTC_NOTIFY* p_notify,
-                                    tGATT_VALUE* att_value) {
-
+static bool bta_gattc_process_srvc_chg_ind(uint16_t conn_id,
+                                           tBTA_GATTC_RCB* p_clrcb,
+                                           tBTA_GATTC_SERV* p_srcb,
+                                           tBTA_GATTC_CLCB* p_clcb,
+                                           tBTA_GATTC_NOTIFY* p_notify,
+                                           tGATT_VALUE* att_value) {
   Uuid gattp_uuid = Uuid::From16Bit(UUID_SERVCLASS_GATT_SERVER);
   Uuid srvc_chg_uuid = Uuid::From16Bit(GATT_UUID_GATT_SRV_CHGD);
 
@@ -1259,9 +1273,9 @@ bool bta_gattc_process_srvc_chg_ind(uint16_t conn_id, tBTA_GATTC_RCB* p_clrcb,
 }
 
 /** process all non-service change indication/notification */
-void bta_gattc_proc_other_indication(tBTA_GATTC_CLCB* p_clcb, uint8_t op,
-                                     tGATT_CL_COMPLETE* p_data,
-                                     tBTA_GATTC_NOTIFY* p_notify) {
+static void bta_gattc_proc_other_indication(tBTA_GATTC_CLCB* p_clcb, uint8_t op,
+                                            tGATT_CL_COMPLETE* p_data,
+                                            tBTA_GATTC_NOTIFY* p_notify) {
   VLOG(1) << __func__
           << StringPrintf(
                  ": check p_data->att_value.handle=%d p_data->handle=%d",
@@ -1282,8 +1296,8 @@ void bta_gattc_proc_other_indication(tBTA_GATTC_CLCB* p_clcb, uint8_t op,
 }
 
 /** process indication/notification */
-void bta_gattc_process_indicate(uint16_t conn_id, tGATTC_OPTYPE op,
-                                tGATT_CL_COMPLETE* p_data) {
+static void bta_gattc_process_indicate(uint16_t conn_id, tGATTC_OPTYPE op,
+                                       tGATT_CL_COMPLETE* p_data) {
   uint16_t handle = p_data->att_value.handle;
   tBTA_GATTC_NOTIFY notify;
   RawAddress remote_bda;

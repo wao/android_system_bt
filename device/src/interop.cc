@@ -22,6 +22,7 @@
 #include <string.h>  // For memcmp
 
 #include "btcore/include/module.h"
+#include "check.h"
 #include "device/include/interop.h"
 #include "device/include/interop_database.h"
 #include "osi/include/allocator.h"
@@ -134,6 +135,7 @@ static const char* interop_feature_string_(const interop_feature_t feature) {
     CASE_RETURN_STR(INTEROP_AVRCP_1_4_ONLY)
     CASE_RETURN_STR(INTEROP_DISABLE_SNIFF)
     CASE_RETURN_STR(INTEROP_DISABLE_AVDTP_SUSPEND)
+    CASE_RETURN_STR(INTEROP_SLC_SKIP_BIND_COMMAND);
   }
 
   return "UNKNOWN";

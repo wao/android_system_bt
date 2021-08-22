@@ -48,6 +48,7 @@
 #include "main/shim/l2c_api.h"
 #include "main/shim/shim.h"
 #include "osi/include/log.h"
+#include "osi/include/osi.h"  // UNUSED_ATTR
 #include "stack/acl/acl.h"
 #include "stack/acl/peer_packet_types.h"
 #include "stack/btm/btm_dev.h"
@@ -771,6 +772,11 @@ static void maybe_chain_more_commands_after_read_remote_version_complete(
           internal_.btm_read_remote_features(p_acl_cb->hci_handle);
         }
       }
+      break;
+    default:
+      LOG_ERROR("Unable to determine transport:%s device:%s",
+                bt_transport_text(p_acl_cb->transport).c_str(),
+                PRIVATE_ADDRESS(p_acl_cb->remote_addr));
   }
 }
 
@@ -852,9 +858,14 @@ void btm_process_remote_ext_features(tACL_CONN* p_acl_cb,
       HCI_SC_HOST_SUPPORTED(p_acl_cb->peer_lmp_feature_pages[1]);
   bool role_switch_supported =
       HCI_SWITCH_SUPPORTED(p_acl_cb->peer_lmp_feature_pages[0]);
+  bool br_edr_supported =
+      !HCI_BREDR_NOT_SPT_SUPPORTED(p_acl_cb->peer_lmp_feature_pages[0]);
+  bool le_supported =
+      HCI_LE_SPT_SUPPORTED(p_acl_cb->peer_lmp_feature_pages[0]) &&
+      HCI_LE_HOST_SUPPORTED(p_acl_cb->peer_lmp_feature_pages[1]);
   btm_sec_set_peer_sec_caps(p_acl_cb->hci_handle, ssp_supported,
-                            secure_connections_supported,
-                            role_switch_supported);
+                            secure_connections_supported, role_switch_supported,
+                            br_edr_supported, le_supported);
 }
 
 /*******************************************************************************
@@ -2595,6 +2606,12 @@ void btm_acl_connected(const RawAddress& bda, uint16_t handle,
   }
 }
 
+void btm_acl_iso_disconnected(uint16_t handle, tHCI_REASON reason) {
+  LOG_INFO("ISO disconnection from GD, handle: 0x%02x, reason: 0x%02x", handle,
+           reason);
+  bluetooth::hci::IsoManager::GetInstance()->HandleDisconnect(handle, reason);
+}
+
 void btm_acl_disconnected(tHCI_STATUS status, uint16_t handle,
                           tHCI_REASON reason) {
   if (status != HCI_SUCCESS) {
@@ -2798,6 +2815,8 @@ void acl_link_segments_xmitted(BT_HDR* p_msg) {
 
 void acl_packets_completed(uint16_t handle, uint16_t credits) {
   l2c_packets_completed(handle, credits);
+  bluetooth::hci::IsoManager::GetInstance()->HandleGdNumComplDataPkts(handle,
+                                                                      credits);
 }
 
 static void acl_parse_num_completed_pkts(uint8_t* p, uint8_t evt_len) {
@@ -2912,20 +2931,6 @@ bool ACL_SupportTransparentSynchronousData(const RawAddress& bd_addr) {
   }
 
   return HCI_LMP_TRANSPNT_SUPPORTED(p_acl->peer_lmp_feature_pages[0]);
-}
-
-void acl_add_to_ignore_auto_connect_after_disconnect(
-    const RawAddress& bd_addr) {
-  btm_cb.acl_cb_.AddToIgnoreAutoConnectAfterDisconnect(bd_addr);
-}
-
-bool acl_check_and_clear_ignore_auto_connect_after_disconnect(
-    const RawAddress& bd_addr) {
-  return btm_cb.acl_cb_.CheckAndClearIgnoreAutoConnectAfterDisconnect(bd_addr);
-}
-
-void acl_clear_all_ignore_auto_connect_after_disconnect() {
-  btm_cb.acl_cb_.ClearAllIgnoreAutoConnectAfterDisconnect();
 }
 
 /**

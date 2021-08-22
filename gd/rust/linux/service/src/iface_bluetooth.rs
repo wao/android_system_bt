@@ -1,31 +1,56 @@
 extern crate bt_shim;
 
-use btstack::bluetooth::{IBluetooth, IBluetoothCallback};
+use bt_topshim::btif::BtSspVariant;
+
+use btstack::bluetooth::{BluetoothDevice, BluetoothTransport, IBluetooth, IBluetoothCallback};
 use btstack::RPCProxy;
 
+use dbus::arg::RefArg;
+
 use dbus::nonblock::SyncConnection;
-use dbus::strings::{BusName, Path};
+use dbus::strings::Path;
 
-use dbus_macros::{dbus_method, dbus_proxy_obj, generate_dbus_exporter};
+use dbus_macros::{dbus_method, dbus_propmap, dbus_proxy_obj, generate_dbus_exporter};
 
+use dbus_projection::impl_dbus_arg_enum;
 use dbus_projection::DisconnectWatcher;
 
-use std::error::Error;
-use std::sync::Arc;
-use std::sync::Mutex;
+use num_traits::cast::{FromPrimitive, ToPrimitive};
 
-use crate::dbus_arg::DBusArg;
+use std::sync::Arc;
+
+use crate::dbus_arg::{DBusArg, DBusArgError, RefArgToRust};
+
+#[dbus_propmap(BluetoothDevice)]
+pub struct BluetoothDeviceDBus {
+    address: String,
+    name: String,
+}
 
 #[allow(dead_code)]
 struct BluetoothCallbackDBus {}
 
 #[dbus_proxy_obj(BluetoothCallback, "org.chromium.bluetooth.BluetoothCallback")]
 impl IBluetoothCallback for BluetoothCallbackDBus {
-    #[dbus_method("OnBluetoothStateChange")]
-    fn on_bluetooth_state_changed(&self, prev_state: u32, new_state: u32) {}
-    #[dbus_method("OnBluetoothAddressChanged")]
-    fn on_bluetooth_address_changed(&self, addr: String) {}
+    #[dbus_method("OnAddressChanged")]
+    fn on_address_changed(&self, addr: String) {}
+    #[dbus_method("OnDeviceFound")]
+    fn on_device_found(&self, remote_device: BluetoothDevice) {}
+    #[dbus_method("OnDiscoveringChanged")]
+    fn on_discovering_changed(&self, discovering: bool) {}
+    #[dbus_method("OnSspRequest")]
+    fn on_ssp_request(
+        &self,
+        remote_device: BluetoothDevice,
+        cod: u32,
+        variant: BtSspVariant,
+        passkey: u32,
+    ) {
+    }
 }
+
+impl_dbus_arg_enum!(BluetoothTransport);
+impl_dbus_arg_enum!(BtSspVariant);
 
 #[allow(dead_code)]
 struct IBluetoothDBus {}
@@ -35,11 +60,13 @@ impl IBluetooth for IBluetoothDBus {
     #[dbus_method("RegisterCallback")]
     fn register_callback(&mut self, callback: Box<dyn IBluetoothCallback + Send>) {}
 
-    #[dbus_method("Enable")]
+    // Not exposed over D-Bus. The stack is automatically enabled when the daemon starts.
     fn enable(&mut self) -> bool {
         false
     }
-    #[dbus_method("Disable")]
+
+    // Not exposed over D-Bus. The stack is automatically disabled when the daemon exits.
+    // TODO(b/189495858): Handle shutdown properly when SIGTERM is received.
     fn disable(&mut self) -> bool {
         false
     }
@@ -47,5 +74,20 @@ impl IBluetooth for IBluetoothDBus {
     #[dbus_method("GetAddress")]
     fn get_address(&self) -> String {
         String::from("")
+    }
+
+    #[dbus_method("StartDiscovery")]
+    fn start_discovery(&self) -> bool {
+        true
+    }
+
+    #[dbus_method("CancelDiscovery")]
+    fn cancel_discovery(&self) -> bool {
+        true
+    }
+
+    #[dbus_method("CreateBond")]
+    fn create_bond(&self, _device: BluetoothDevice, _transport: BluetoothTransport) -> bool {
+        true
     }
 }

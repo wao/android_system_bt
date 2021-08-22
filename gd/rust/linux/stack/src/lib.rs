@@ -8,55 +8,31 @@ extern crate num_derive;
 
 pub mod bluetooth;
 pub mod bluetooth_gatt;
+pub mod bluetooth_media;
 
-use bt_topshim::btif::ffi;
-use bt_topshim::btif::BtState;
+use bt_topshim::btif::BaseCallbacks;
+use bt_topshim::profiles::a2dp::A2dpCallbacks;
+use bt_topshim::profiles::gatt::GattClientCallbacks;
+use bt_topshim::profiles::gatt::GattServerCallbacks;
 
-use std::convert::TryInto;
-use std::fmt::{Debug, Formatter, Result};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::bluetooth::{Bluetooth, BtifBluetoothCallbacks};
+use crate::bluetooth::Bluetooth;
+use crate::bluetooth_gatt::BluetoothGatt;
+use crate::bluetooth_media::BluetoothMedia;
 
 /// Represents a Bluetooth address.
 // TODO: Add support for LE random addresses.
-#[derive(Copy, Clone)]
-pub struct BDAddr {
-    val: [u8; 6],
-}
-
-impl Debug for BDAddr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        f.write_fmt(format_args!(
-            "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
-            self.val[0], self.val[1], self.val[2], self.val[3], self.val[4], self.val[5]
-        ))
-    }
-}
-
-impl ToString for BDAddr {
-    fn to_string(&self) -> String {
-        String::from(format!(
-            "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
-            self.val[0], self.val[1], self.val[2], self.val[3], self.val[4], self.val[5]
-        ))
-    }
-}
-
-impl BDAddr {
-    /// Constructs a BDAddr from a vector of 6 bytes.
-    fn from_byte_vec(raw_addr: &Vec<u8>) -> BDAddr {
-        BDAddr { val: raw_addr.clone().try_into().unwrap() }
-    }
-}
 
 /// Message types that are sent to the stack main dispatch loop.
 pub enum Message {
-    BluetoothAdapterStateChanged(BtState),
-    BluetoothAdapterPropertiesChanged(i32, i32, Vec<ffi::BtProperty>),
+    A2dp(A2dpCallbacks),
+    Base(BaseCallbacks),
+    GattClient(GattClientCallbacks),
+    GattServer(GattServerCallbacks),
     BluetoothCallbackDisconnected(u32),
 }
 
@@ -70,7 +46,12 @@ impl Stack {
     }
 
     /// Runs the main dispatch loop.
-    pub async fn dispatch(mut rx: Receiver<Message>, bluetooth: Arc<Mutex<Bluetooth>>) {
+    pub async fn dispatch(
+        mut rx: Receiver<Message>,
+        bluetooth: Arc<Mutex<Box<Bluetooth>>>,
+        bluetooth_gatt: Arc<Mutex<Box<BluetoothGatt>>>,
+        bluetooth_media: Arc<Mutex<Box<BluetoothMedia>>>,
+    ) {
         loop {
             let m = rx.recv().await;
 
@@ -80,16 +61,21 @@ impl Stack {
             }
 
             match m.unwrap() {
-                Message::BluetoothAdapterStateChanged(state) => {
-                    bluetooth.lock().unwrap().adapter_state_changed(state);
+                Message::A2dp(a) => {
+                    bluetooth_media.lock().unwrap().dispatch_a2dp_callbacks(a);
                 }
 
-                Message::BluetoothAdapterPropertiesChanged(status, num_properties, properties) => {
-                    bluetooth.lock().unwrap().adapter_properties_changed(
-                        status,
-                        num_properties,
-                        properties,
-                    );
+                Message::Base(b) => {
+                    bluetooth.lock().unwrap().dispatch_base_callbacks(b);
+                }
+
+                Message::GattClient(m) => {
+                    bluetooth_gatt.lock().unwrap().dispatch_gatt_client_callbacks(m);
+                }
+
+                Message::GattServer(m) => {
+                    // TODO(b/193685149): dispatch GATT server callbacks.
+                    println!("Unhandled Message::GattServer: {:?}", m);
                 }
 
                 Message::BluetoothCallbackDisconnected(id) => {
@@ -106,5 +92,9 @@ impl Stack {
 /// RPC object. Therefore the object may be disconnected and thus should implement
 /// `register_disconnect` to let others observe the disconnection event.
 pub trait RPCProxy {
+    /// Registers disconnect observer that will be notified when the remote object is disconnected.
     fn register_disconnect(&mut self, f: Box<dyn Fn() + Send>);
+
+    /// Returns the ID of the object. For example this would be an object path in D-Bus RPC.
+    fn get_object_id(&self) -> String;
 }

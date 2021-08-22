@@ -77,7 +77,7 @@ using DiscoverabilityState = struct {
 };
 using ConnectabilityState = DiscoverabilityState;
 
-using HACK_ScoDisconnectCallback = std::function<void(uint16_t, uint8_t)>;
+using HACK_NonAclDisconnectCallback = std::function<void(uint16_t, uint8_t)>;
 
 using BtmStatus = tBTM_STATUS;
 
@@ -183,9 +183,6 @@ class Btm {
 
   uint16_t GetAclHandle(const RawAddress& remote_bda, tBT_TRANSPORT transport);
 
-  void Register_HACK_SetScoDisconnectCallback(
-      HACK_ScoDisconnectCallback callback);
-
   static hci::AddressWithType GetAddressAndType(const RawAddress& bd_addr);
 
  private:
@@ -215,6 +212,8 @@ class Btm {
     void OnScannerRegistered(const bluetooth::hci::Uuid app_uuid,
                              bluetooth::hci::ScannerId scanner_id,
                              ScanningStatus status);
+    void OnSetScannerParameterComplete(bluetooth::hci::ScannerId scanner_id,
+                                       ScanningStatus status);
     void OnScanResult(uint16_t event_type, uint8_t address_type,
                       bluetooth::hci::Address address, uint8_t primary_phy,
                       uint8_t secondary_phy, uint8_t advertising_sid,

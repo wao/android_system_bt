@@ -1,5 +1,4 @@
 // libbtcore static library for target and host
-// ========================================================
 package {
     // See: http://go/android-license-faq
     // A large-scale-change added 'default_applicable_licenses' to import
@@ -13,7 +12,10 @@ cc_library_static {
     name: "libbtcore",
     defaults: ["fluoride_defaults"],
     local_include_dirs: ["include"],
-    include_dirs: ["system/bt"],
+    include_dirs: [
+        "system/bt",
+        "system/bt/gd",
+    ],
     srcs: [
         "src/device_class.cc",
         "src/hal_util.cc",
@@ -33,10 +35,17 @@ cc_library_static {
     },
 }
 
+cc_library_headers {
+    name: "libbtcore_headers",
+    defaults: ["libchrome_support_defaults"],
+    export_include_dirs: ["./"],
+    vendor_available: true,
+    host_supported: true,
+}
+
 // Note: It's good to get the tests compiled both for the host and the target so
 // we get to test with both Bionic libc and glibc
 // libbtcore unit tests for target and host
-// ========================================================
 cc_test {
     name: "net_test_btcore",
     test_suites: ["device-tests"],

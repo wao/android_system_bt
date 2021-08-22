@@ -71,7 +71,7 @@ bool BTM_IsDeviceUp(void);
  * Returns          BTM_CMD_STARTED if successful, otherwise an error
  *
  ******************************************************************************/
-tBTM_STATUS BTM_SetLocalDeviceName(char* p_name);
+tBTM_STATUS BTM_SetLocalDeviceName(const char* p_name);
 
 /*******************************************************************************
  *
@@ -668,6 +668,24 @@ extern bool btm_sec_is_a_bonded_dev(const RawAddress& bda);
 
 /*******************************************************************************
  *
+ * Function         BTM_GetPeerDeviceTypeFromFeatures
+ *
+ * Description      This function is called to retrieve the peer device type
+ *                  by referencing the remote features.
+ *
+ * Parameters:      bd_addr - address of the peer
+ *
+ * Returns          BT_DEVICE_TYPE_DUMO if both BR/EDR and BLE transports are
+ *                  supported by the peer,
+ *                  BT_DEVICE_TYPE_BREDR if only BR/EDR transport is supported,
+ *                  BT_DEVICE_TYPE_BLE if only BLE transport is supported.
+ *
+ ******************************************************************************/
+extern tBT_DEVICE_TYPE BTM_GetPeerDeviceTypeFromFeatures(
+    const RawAddress& bd_addr);
+
+/*******************************************************************************
+ *
  * Function         BTM_SecReadDevName
  *
  * Description      Looks for the device name in the security database for the
@@ -890,8 +908,8 @@ void BTM_RemoveEirService(uint32_t* p_eir_uuid, uint16_t uuid16);
  *                  max_num_uuid16 - max number of UUID can be written in EIR
  *                  num_uuid16 - number of UUID have been written in EIR
  *
- * Returns          BTM_EIR_MORE_16BITS_UUID_TYPE, if it has more than max
- *                  BTM_EIR_COMPLETE_16BITS_UUID_TYPE, otherwise
+ * Returns          HCI_EIR_MORE_16BITS_UUID_TYPE, if it has more than max
+ *                  HCI_EIR_COMPLETE_16BITS_UUID_TYPE, otherwise
  *
  ******************************************************************************/
 uint8_t BTM_GetEirSupportedServices(uint32_t* p_eir_uuid, uint8_t** p,
@@ -913,12 +931,12 @@ uint8_t BTM_GetEirSupportedServices(uint32_t* p_eir_uuid, uint8_t** p,
  *                  max_num_uuid - maximum number of UUID to be returned
  *
  * Returns          0 - if not found
- *                  BTM_EIR_COMPLETE_16BITS_UUID_TYPE
- *                  BTM_EIR_MORE_16BITS_UUID_TYPE
- *                  BTM_EIR_COMPLETE_32BITS_UUID_TYPE
- *                  BTM_EIR_MORE_32BITS_UUID_TYPE
- *                  BTM_EIR_COMPLETE_128BITS_UUID_TYPE
- *                  BTM_EIR_MORE_128BITS_UUID_TYPE
+ *                  HCI_EIR_COMPLETE_16BITS_UUID_TYPE
+ *                  HCI_EIR_MORE_16BITS_UUID_TYPE
+ *                  HCI_EIR_COMPLETE_32BITS_UUID_TYPE
+ *                  HCI_EIR_MORE_32BITS_UUID_TYPE
+ *                  HCI_EIR_COMPLETE_128BITS_UUID_TYPE
+ *                  HCI_EIR_MORE_128BITS_UUID_TYPE
  *
  ******************************************************************************/
 uint8_t BTM_GetEirUuidList(uint8_t* p_eir, size_t eir_len, uint8_t uuid_size,

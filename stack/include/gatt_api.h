@@ -196,7 +196,6 @@ inline std::string gatt_op_code_text(const tGATT_OP_CODE& op_code) {
 
 typedef enum : uint16_t {
   GATT_CONN_OK = 0,
-  GATT_CONN_UNKNOWN = 0,
   /* general L2cap failure  */
   GATT_CONN_L2C_FAILURE = 1,
   /* 0x08 connection timeout  */
@@ -207,6 +206,8 @@ typedef enum : uint16_t {
   GATT_CONN_TERMINATE_LOCAL_HOST = HCI_ERR_CONN_CAUSE_LOCAL_HOST,
   /* 0x22 connection fail for LMP response tout */
   GATT_CONN_LMP_TIMEOUT = HCI_ERR_LMP_RESPONSE_TIMEOUT,
+
+  GATT_CONN_FAILED_ESTABLISHMENT = HCI_ERR_CONN_FAILED_ESTABLISHMENT,
 
   BTA_GATT_CONN_NONE = 0x0101, /* 0x0101 no connection to cancel  */
 
@@ -225,9 +226,10 @@ inline std::string gatt_disconnection_reason_text(
     CASE_RETURN_TEXT(GATT_CONN_TERMINATE_PEER_USER);
     CASE_RETURN_TEXT(GATT_CONN_TERMINATE_LOCAL_HOST);
     CASE_RETURN_TEXT(GATT_CONN_LMP_TIMEOUT);
+    CASE_RETURN_TEXT(GATT_CONN_FAILED_ESTABLISHMENT);
     CASE_RETURN_TEXT(BTA_GATT_CONN_NONE);
     default:
-      return std::string("UNKNOWN[%hu]", reason);
+      return base::StringPrintf("UNKNOWN[%hu]", reason);
   }
 }
 #undef CASE_RETURN_TEXT

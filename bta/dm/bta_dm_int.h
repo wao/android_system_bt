@@ -66,17 +66,19 @@ enum {
   BTA_DM_SDP_RESULT_EVT,
   BTA_DM_SEARCH_CMPL_EVT,
   BTA_DM_DISCOVERY_RESULT_EVT,
-  BTA_DM_DISC_CLOSE_TOUT_EVT
+  BTA_DM_DISC_CLOSE_TOUT_EVT,
+  BTA_DM_API_QUEUE_SEARCH_EVT,
+  BTA_DM_API_QUEUE_DISCOVER_EVT
 };
 
-/* data type for BTA_DM_API_SEARCH_EVT */
+/* data type for BTA_DM_API_SEARCH_EVT and BTA_DM_API_QUEUE_SEARCH_EVT */
 typedef struct {
   BT_HDR_RIGID hdr;
   tBTA_SERVICE_MASK services;
   tBTA_DM_SEARCH_CBACK* p_cback;
 } tBTA_DM_API_SEARCH;
 
-/* data type for BTA_DM_API_DISCOVER_EVT */
+/* data type for BTA_DM_API_DISCOVER_EVT and BTA_DM_API_QUEUE_DISCOVER_EVT */
 typedef struct {
   BT_HDR_RIGID hdr;
   RawAddress bd_addr;
@@ -216,7 +218,7 @@ inline std::string device_info_text(tBTA_DM_DEV_INFO info) {
 #define BTA_DM_PM_EXECUTE 3
 typedef uint8_t tBTA_DM_PM_REQ;
 
-struct sBTA_DM_PEER_DEVICE {
+struct tBTA_DM_PEER_DEVICE {
   RawAddress peer_bdaddr;
   tBTA_DM_CONN_STATE conn_state;
   tBTA_PREF_ROLES pref_role;
@@ -227,7 +229,7 @@ struct sBTA_DM_PEER_DEVICE {
   friend void bta_dm_pm_btm_status(const RawAddress& bd_addr,
                                    tBTM_PM_STATUS status, uint16_t value,
                                    tHCI_STATUS hci_status);
-  friend void bta_dm_pm_sniff(struct sBTA_DM_PEER_DEVICE* p_peer_dev,
+  friend void bta_dm_pm_sniff(struct tBTA_DM_PEER_DEVICE* p_peer_dev,
                               uint8_t index);
   friend void bta_dm_rm_cback(tBTA_SYS_CONN_STATUS status, uint8_t id,
                               uint8_t app_id, const RawAddress& peer_addr);
@@ -244,7 +246,6 @@ struct sBTA_DM_PEER_DEVICE {
   bool remove_dev_pending;
   tBT_TRANSPORT transport;
 };
-typedef struct sBTA_DM_PEER_DEVICE tBTA_DM_PEER_DEVICE;
 
 /* structure to store list of
   active connections */
@@ -362,13 +363,14 @@ typedef struct {
   alarm_t* search_timer;
   uint8_t service_index;
   tBTA_DM_MSG* p_pending_search;
-  tBTA_DM_MSG* p_pending_discovery;
+  fixed_queue_t* pending_discovery_queue;
   bool wait_disc;
   bool sdp_results;
   bluetooth::Uuid uuid;
   uint8_t peer_scn;
   tBT_TRANSPORT transport;
   tBTA_DM_SEARCH_CBACK* p_scan_cback;
+  tBTA_DM_SEARCH_CBACK* p_csis_scan_cback;
   tGATT_IF client_if;
   uint8_t uuid_to_search;
   bool gatt_disc_active;
@@ -479,7 +481,8 @@ extern void bta_dm_set_dev_name(const std::vector<uint8_t>&);
 extern void bta_dm_set_visibility(tBTA_DM_DISC, tBTA_DM_CONN);
 extern void bta_dm_set_scan_config(tBTA_DM_MSG* p_data);
 extern void bta_dm_vendor_spec_command(tBTA_DM_MSG* p_data);
-extern void bta_dm_bond(const RawAddress&, tBLE_ADDR_TYPE, tBT_TRANSPORT, int);
+extern void bta_dm_bond(const RawAddress&, tBLE_ADDR_TYPE, tBT_TRANSPORT,
+                        tBT_DEVICE_TYPE);
 extern void bta_dm_bond_cancel(const RawAddress&);
 extern void bta_dm_pin_reply(std::unique_ptr<tBTA_DM_API_PIN_REPLY> msg);
 extern void bta_dm_add_device(std::unique_ptr<tBTA_DM_API_ADD_DEVICE> msg);
@@ -504,6 +507,8 @@ extern void bta_dm_ble_set_conn_params(const RawAddress&, uint16_t, uint16_t,
                                        uint16_t, uint16_t);
 extern void bta_dm_close_gatt_conn(tBTA_DM_MSG* p_data);
 extern void bta_dm_ble_observe(bool, uint8_t, tBTA_DM_SEARCH_CBACK*);
+extern void bta_dm_ble_scan(bool, uint8_t);
+extern void bta_dm_ble_csis_observe(bool, tBTA_DM_SEARCH_CBACK*);
 extern void bta_dm_ble_update_conn_params(const RawAddress&, uint16_t, uint16_t,
                                           uint16_t, uint16_t, uint16_t,
                                           uint16_t);
@@ -536,6 +541,8 @@ extern void bta_dm_search_result(tBTA_DM_MSG* p_data);
 extern void bta_dm_discovery_cmpl(tBTA_DM_MSG* p_data);
 extern void bta_dm_queue_search(tBTA_DM_MSG* p_data);
 extern void bta_dm_queue_disc(tBTA_DM_MSG* p_data);
+extern void bta_dm_execute_queued_request();
+extern bool bta_dm_is_search_request_queued();
 extern void bta_dm_search_clear_queue();
 extern void bta_dm_search_cancel_cmpl();
 extern void bta_dm_search_cancel_notify();

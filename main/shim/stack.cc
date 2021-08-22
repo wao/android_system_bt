@@ -18,15 +18,22 @@
 
 #include "device/include/controller.h"
 
+#include <fcntl.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <string>
+
 #include "gd/att/att_module.h"
 #include "gd/btaa/activity_attribution.h"
 #include "gd/common/init_flags.h"
+#include "gd/common/strings.h"
 #include "gd/hal/hci_hal.h"
 #include "gd/hci/acl_manager.h"
 #include "gd/hci/controller.h"
 #include "gd/hci/hci_layer.h"
 #include "gd/hci/le_advertising_manager.h"
 #include "gd/hci/le_scanning_manager.h"
+#include "gd/hci/vendor_specific_event_manager.h"
 #include "gd/l2cap/classic/l2cap_classic_module.h"
 #include "gd/l2cap/le/l2cap_le_module.h"
 #include "gd/neighbor/connectability.h"
@@ -53,6 +60,34 @@
 
 namespace bluetooth {
 namespace shim {
+
+using ::bluetooth::common::InitFlags;
+using ::bluetooth::common::StringFormat;
+
+namespace {
+// PID file format
+constexpr char pid_file_format[] = "/var/run/bluetooth/bluetooth%d.pid";
+
+void CreatePidFile() {
+  std::string pid_file =
+      StringFormat(pid_file_format, InitFlags::GetAdapterIndex());
+  int pid_fd_ = open(pid_file.c_str(), O_WRONLY | O_CREAT, 0644);
+  if (!pid_fd_) return;
+
+  pid_t my_pid = getpid();
+  dprintf(pid_fd_, "%d\n", my_pid);
+  close(pid_fd_);
+
+  LOG_INFO("%s - Created pid file %s", __func__, pid_file.c_str());
+}
+
+void RemovePidFile() {
+  std::string pid_file =
+      StringFormat(pid_file_format, InitFlags::GetAdapterIndex());
+  unlink(pid_file.c_str());
+  LOG_INFO("%s - Deleted pid file %s", __func__, pid_file.c_str());
+}
+}  // namespace
 
 Stack* Stack::GetInstance() {
   static Stack instance;
@@ -86,6 +121,9 @@ void Stack::StartEverything() {
           rust::get_controller(**rust_stack_));
     }
     bluetooth::shim::hci_on_reset_complete();
+
+    // Create pid since we're up and running
+    CreatePidFile();
     return;
   }
 
@@ -98,6 +136,7 @@ void Stack::StartEverything() {
     modules.add<hci::HciLayer>();
     modules.add<storage::StorageModule>();
     modules.add<shim::Dumpsys>();
+    modules.add<hci::VendorSpecificEventManager>();
   }
   if (common::init_flags::gd_controller_is_enabled()) {
     modules.add<hci::Controller>();
@@ -166,6 +205,9 @@ void Stack::StartEverything() {
   if (common::init_flags::btaa_hci_is_enabled()) {
     bluetooth::shim::init_activity_attribution();
   }
+
+  // Create pid since we're up and running
+  CreatePidFile();
 }
 
 void Stack::Start(ModuleList* modules) {
@@ -182,6 +224,9 @@ void Stack::Start(ModuleList* modules) {
 }
 
 void Stack::Stop() {
+  // First remove pid file so clients no stack is going down
+  RemovePidFile();
+
   if (common::init_flags::gd_rust_is_enabled()) {
     if (rust_stack_ != nullptr) {
       rust::stack_stop(**rust_stack_);

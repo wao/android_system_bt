@@ -36,6 +36,7 @@
 #include <base/logging.h>
 
 #include "buffer_allocator.h"
+#include "check.h"
 #include "common/stop_watch_legacy.h"
 #include "osi/include/log.h"
 
@@ -110,6 +111,7 @@ class BluetoothHciCallbacks : public V1_1::IBluetoothHciCallbacks {
   }
 
   Return<void> initializationComplete(Status status) override {
+    StopWatchLegacy(__func__);
     if (hci_is_root_inflammation_event_received()) {
       // Ignore the initializationComplete here as we have already received
       // root inflammation event earlier.

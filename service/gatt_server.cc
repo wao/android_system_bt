@@ -27,7 +27,6 @@ using std::mutex;
 namespace bluetooth {
 
 // GattServer implementation
-// ========================================================
 
 GattServer::GattServer(const Uuid& uuid, int server_id)
     : app_identifier_(uuid), server_id_(server_id), delegate_(nullptr) {}
@@ -93,7 +92,7 @@ bool GattServer::AddService(const bluetooth::Service& service,
 
   bt_status_t status =
       hal::BluetoothGattInterface::Get()->GetServerHALInterface()->add_service(
-          server_id_, svc);
+          server_id_, svc.data(), svc.size());
   if (status != BT_STATUS_SUCCESS) {
     LOG(ERROR) << "Failed to initiate call to populate GATT service";
     CleanUpPendingData();
@@ -217,10 +216,11 @@ bool GattServer::SendNotification(const std::string& device_address,
     // The HAL API takes char* rather const char* for |value|, so we have to
     // cast away the const.
     // TODO(armansito): Make HAL accept const char*.
-    bt_status_t status = hal::BluetoothGattInterface::Get()
-                             ->GetServerHALInterface()
-                             ->send_indication(server_id_, handle,
-                                               conn->conn_id, confirm, value);
+    bt_status_t status =
+        hal::BluetoothGattInterface::Get()
+            ->GetServerHALInterface()
+            ->send_indication(server_id_, handle, conn->conn_id, confirm,
+                              value.data(), value.size());
 
     // Increment the send count if this was successful. We don't immediately
     // fail if the HAL returned an error. It's better to report success as long
@@ -566,7 +566,6 @@ std::shared_ptr<GattServer::Connection> GattServer::GetConnection(
 }
 
 // GattServerFactory implementation
-// ========================================================
 
 GattServerFactory::GattServerFactory() {
   hal::BluetoothGattInterface::Get()->AddServerObserver(this);

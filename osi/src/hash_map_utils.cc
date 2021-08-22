@@ -15,15 +15,14 @@
  *  limitations under the License.
  *
  ******************************************************************************/
-#define LOG_TAG "hash_map_utils"
 
 #include "osi/include/hash_map_utils.h"
-
-#include <base/logging.h>
-#include <string.h>
-
+#include <base/logging.h>  // CHECK()
+#include <cstring>
+#include <map>
+#include <string>
+#include "check.h"
 #include "osi/include/allocator.h"
-#include "osi/include/log.h"
 #include "osi/include/osi.h"
 
 std::unordered_map<std::string, std::string>
@@ -34,8 +33,6 @@ hash_map_utils_new_from_string_params(const char* params) {
 
   char* str = osi_strdup(params);
   if (!str) return map;
-
-  LOG_VERBOSE("%s: source string: '%s'", __func__, str);
 
   // Parse |str| and add extracted key-and-value pair(s) in |map|.
   int items = 0;
@@ -69,15 +66,6 @@ hash_map_utils_new_from_string_params(const char* params) {
     kvpair = strtok_r(NULL, ";", &tmpstr);
   }
 
-  if (!items) LOG_VERBOSE("%s: no items found in string\n", __func__);
-
   osi_free(str);
   return map;
-}
-
-void hash_map_utils_dump_string_keys_string_values(
-    std::unordered_map<std::string, std::string>& map) {
-  for (const auto& ptr : map) {
-    LOG_INFO("key: '%s' value: '%s'\n", ptr.first.c_str(), ptr.second.c_str());
-  }
 }

@@ -86,12 +86,5 @@ typedef struct hci_t {
 
 const hci_t* hci_layer_get_interface();
 
-const hci_t* hci_layer_get_test_interface(
-    const allocator_t* buffer_allocator_interface,
-    const btsnoop_t* btsnoop_interface,
-    const packet_fragmenter_t* packet_fragmenter_interface);
-
-void post_to_main_message_loop(const base::Location& from_here, BT_HDR* p_msg);
-
 void hci_layer_cleanup_interface();
 bool hci_is_root_inflammation_event_received();

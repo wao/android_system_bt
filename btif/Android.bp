@@ -1,5 +1,4 @@
 // Common variables
-// ========================================================
 package {
     // See: http://go/android-license-faq
     // A large-scale-change added 'default_applicable_licenses' to import
@@ -11,32 +10,32 @@ package {
 
 btifCommonIncludes = [
     "system/bt",
+    "system/bt/bta/dm",
     "system/bt/bta/include",
     "system/bt/bta/sys",
-    "system/bt/bta/dm",
     "system/bt/btcore/include",
+    "system/bt/btif/avrcp",
+    "system/bt/btif/co",
+    "system/bt/btif/include",
     "system/bt/device/include",
+    "system/bt/embdrv/sbc/decoder/include",
+    "system/bt/embdrv/sbc/encoder/include",
+    "system/bt/gd",
+    "system/bt/hci/include",
+    "system/bt/include",
     "system/bt/internal_include",
+    "system/bt/stack/a2dp",
+    "system/bt/stack/avdt",
+    "system/bt/stack/btm",
     "system/bt/stack/include",
     "system/bt/stack/l2cap",
-    "system/bt/stack/a2dp",
-    "system/bt/stack/btm",
-    "system/bt/stack/avdt",
     "system/bt/udrv/include",
-    "system/bt/btif/avrcp",
-    "system/bt/btif/include",
-    "system/bt/btif/co",
-    "system/bt/hci/include",
-    "system/bt/vnd/include",
-    "system/bt/embdrv/sbc/encoder/include",
-    "system/bt/embdrv/sbc/decoder/include",
     "system/bt/utils/include",
-    "system/bt/include",
+    "system/bt/vnd/include",
     "system/libhwbinder/include",
 ]
 
 // libbtif static library for target
-// ========================================================
 cc_library_static {
     name: "libbtif",
     defaults: ["fluoride_defaults"],
@@ -54,7 +53,6 @@ cc_library_static {
         "src/bluetooth.cc",
         // BTIF implementation
         "src/btif_a2dp.cc",
-        "src/btif_a2dp_audio_interface.cc",
         "src/btif_a2dp_control.cc",
         "src/btif_a2dp_sink.cc",
         "src/btif_a2dp_source.cc",
@@ -102,12 +100,18 @@ cc_library_static {
         "src/btif_keystore.cc",
         "src/stack_manager.cc",
     ],
+    generated_headers: [
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysDataSchema_h",
+        "BluetoothGeneratedPackets_h",
+    ],
     shared_libs: [
         "android.hardware.bluetooth.a2dp@1.0",
         "android.hardware.bluetooth.audio@2.0",
         "android.hardware.bluetooth.audio@2.1",
         "libcrypto",
         "libcutils",
+        "libflatbuffers-cpp",
         "libhidlbase",
         "liblog",
         "libtinyxml2",
@@ -119,6 +123,7 @@ cc_library_static {
             shared_libs: [
                 "libaaudio",
                 "libfmq",
+                "libstatslog",
             ],
             srcs: ["src/btif_avrcp_audio_track.cc"],
         },
@@ -139,7 +144,6 @@ cc_library_static {
 }
 
 // btif unit tests for target
-// ========================================================
 cc_test {
     name: "net_test_btif",
     defaults: ["fluoride_defaults"],
@@ -195,7 +199,6 @@ cc_test {
 }
 
 // btif profile queue unit tests for target
-// ========================================================
 cc_test {
     name: "net_test_btif_profile_queue",
     defaults: ["fluoride_defaults"],
@@ -206,9 +209,15 @@ cc_test {
         "test/btif_profile_queue_test.cc",
     ],
     header_libs: ["libbluetooth_headers"],
+    generated_headers: [
+        "BluetoothGeneratedBundlerSchema_h_bfbs",
+        "BluetoothGeneratedDumpsysDataSchema_h",
+        "BluetoothGeneratedPackets_h",
+    ],
     shared_libs: [
-        "liblog",
         "libcutils",
+        "libflatbuffers-cpp",
+        "liblog",
     ],
     static_libs: [
         "libbluetooth-types",
@@ -218,7 +227,6 @@ cc_test {
 }
 
 // btif rc unit tests for target
-// ========================================================
 cc_test {
     name: "net_test_btif_rc",
     defaults: ["fluoride_defaults"],
@@ -254,7 +262,6 @@ cc_test {
 }
 
 // btif config cache unit tests for target
-// ========================================================
 cc_test {
     name: "net_test_btif_config_cache",
     defaults: ["fluoride_defaults"],
@@ -283,7 +290,6 @@ cc_test {
 }
 
 // btif hf client service tests for target
-// ========================================================
 cc_test {
     name: "net_test_btif_hf_client_service",
     defaults: ["fluoride_defaults"],
@@ -305,7 +311,6 @@ cc_test {
 }
 
 // Cycle stack test
-// ========================================================
 cc_test {
     name: "net_test_btif_stack",
     host_supported: true,
@@ -340,8 +345,23 @@ cc_test {
         ],
       srcs: [
           ":LibBluetoothSources",
+          ":TestCommonMainHandler",
           ":TestMockAndroidHardware",
-          ":TestMockBta",
+          ":BtaDmSources",
+          ":TestMockBtaAg",
+          ":TestMockBtaAr",
+          ":TestMockBtaAv",
+          ":TestMockBtaGatt",
+          ":TestMockBtaHd",
+          ":TestMockBtaHearingAid",
+          ":TestMockBtaHf",
+          ":TestMockBtaHh",
+          ":TestMockBtaJv",
+          ":TestMockBtaPan",
+          ":TestMockBtaSdp",
+          ":TestMockBtaSys",
+          ":TestMockBtaVc",
+          ":TestMockBtu",
           ":TestMockBtcore",
           ":TestMockCommon",
           ":TestMockFrameworks",
@@ -350,6 +370,8 @@ cc_test {
           ":TestMockStack",
           ":TestMockSystemLibfmq",
           ":TestMockUdrv",
+          ":TestMockUtils",
+          "test/btif_core_test.cc",
           "test/btif_stack_test.cc",
       ],
       generated_headers: [
@@ -380,4 +402,9 @@ cc_test {
           "libosi",
       ],
       cflags: ["-DBUILDCFG"],
+      sanitize: {
+        address: true,
+        cfi: true,
+        misc_undefined: ["bounds"],
+    },
 }

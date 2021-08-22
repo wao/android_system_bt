@@ -23,7 +23,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "base/time/time.h"
 #include "hci/address.h"
 #include "hci/hci_packets.h"
 #include "link_layer_controller.h"
@@ -213,6 +212,9 @@ class DualModeController : public Device {
 
   // 7.2.6
   void QosSetup(CommandView args);
+
+  // 7.2.7
+  void RoleDiscovery(CommandView args);
 
   // 7.2.10
   void WriteLinkPolicySettings(CommandView args);

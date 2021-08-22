@@ -56,10 +56,6 @@ bool BTM_BothEndsSupportSecureConnections(const RawAddress& bd_addr) {
   mock_function_count_map[__func__]++;
   return false;
 }
-bool BTM_GetSecurityFlags(const RawAddress& bd_addr, uint8_t* p_sec_flags) {
-  mock_function_count_map[__func__]++;
-  return false;
-}
 bool BTM_GetSecurityFlagsByTransport(const RawAddress& bd_addr,
                                      uint8_t* p_sec_flags,
                                      tBT_TRANSPORT transport) {
@@ -85,6 +81,10 @@ bool BTM_IsLinkKeyKnown(const RawAddress& bd_addr, tBT_TRANSPORT transport) {
 bool BTM_PeerSupportsSecureConnections(const RawAddress& bd_addr) {
   mock_function_count_map[__func__]++;
   return false;
+}
+tBT_DEVICE_TYPE BTM_GetPeerDeviceTypeFromFeatures(const RawAddress& bd_addr) {
+  mock_function_count_map[__func__]++;
+  return BT_DEVICE_TYPE_BREDR;
 }
 bool BTM_SecAddRmtNameNotifyCallback(tBTM_RMT_NAME_CALLBACK* p_callback) {
   mock_function_count_map[__func__]++;
@@ -137,7 +137,7 @@ tBTM_SEC_SERV_REC* btm_sec_find_first_serv(bool is_originator, uint16_t psm) {
   return nullptr;
 }
 tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                        tBT_TRANSPORT transport, int device_type,
+                        tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type,
                         uint8_t pin_len, uint8_t* p_pin) {
   mock_function_count_map[__func__]++;
   return BTM_SUCCESS;
@@ -203,8 +203,8 @@ uint8_t BTM_SecClrServiceByPsm(uint16_t psm) {
 void BTM_ConfirmReqReply(tBTM_STATUS res, const RawAddress& bd_addr) {
   mock_function_count_map[__func__]++;
 }
-void BTM_PINCodeReply(const RawAddress& bd_addr, uint8_t res, uint8_t pin_len,
-                      uint8_t* p_pin) {
+void BTM_PINCodeReply(const RawAddress& bd_addr, tBTM_STATUS res,
+                      uint8_t pin_len, uint8_t* p_pin) {
   mock_function_count_map[__func__]++;
 }
 void BTM_PasskeyReqReply(tBTM_STATUS res, const RawAddress& bd_addr,
@@ -287,7 +287,8 @@ void btm_sec_rmt_name_request_complete(const RawAddress* p_bd_addr,
 }
 void btm_sec_set_peer_sec_caps(uint16_t hci_handle, bool ssp_supported,
                                bool sc_supported,
-                               bool hci_role_switch_supported) {
+                               bool hci_role_switch_supported,
+                               bool br_edr_supported, bool le_supported) {
   mock_function_count_map[__func__]++;
 }
 void btm_sec_update_clock_offset(uint16_t handle, uint16_t clock_offset) {

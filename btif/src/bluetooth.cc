@@ -50,6 +50,7 @@
 #include "bta/include/bta_hearing_aid_api.h"
 #include "bta/include/bta_hf_client_api.h"
 #include "btif/avrcp/avrcp_service.h"
+#include "btif/include/stack_manager.h"
 #include "btif_a2dp.h"
 #include "btif_activity_attribution.h"
 #include "btif_api.h"
@@ -80,8 +81,8 @@
 #include "osi/include/wakelock.h"
 #include "stack/gatt/connection_manager.h"
 #include "stack/include/avdt_api.h"
+#include "stack/include/btm_api.h"
 #include "stack/include/btu.h"
-#include "stack_manager.h"
 
 using bluetooth::hearing_aid::HearingAidInterface;
 using bluetooth::le_audio::LeAudioClientInterface;
@@ -284,9 +285,8 @@ int set_remote_device_property(RawAddress* remote_addr,
 int get_remote_services(RawAddress* remote_addr) {
   if (!interface_ready()) return BT_STATUS_NOT_READY;
 
-  do_in_main_thread(FROM_HERE,
-                    base::BindOnce(btif_dm_get_remote_services, *remote_addr,
-                                   BT_TRANSPORT_UNKNOWN));
+  do_in_main_thread(FROM_HERE, base::BindOnce(btif_dm_get_remote_services,
+                                              *remote_addr, BT_TRANSPORT_AUTO));
   return BT_STATUS_SUCCESS;
 }
 
@@ -526,14 +526,14 @@ int le_test_mode(uint16_t opcode, uint8_t* buf, uint8_t len) {
 static bt_os_callouts_t* wakelock_os_callouts_saved = nullptr;
 
 static int acquire_wake_lock_cb(const char* lock_name) {
-  return do_in_main_thread(
+  return do_in_jni_thread(
       FROM_HERE, base::Bind(base::IgnoreResult(
                                 wakelock_os_callouts_saved->acquire_wake_lock),
                             lock_name));
 }
 
 static int release_wake_lock_cb(const char* lock_name) {
-  return do_in_main_thread(
+  return do_in_jni_thread(
       FROM_HERE, base::Bind(base::IgnoreResult(
                                 wakelock_os_callouts_saved->release_wake_lock),
                             lock_name));
@@ -630,6 +630,7 @@ bt_property_t* property_deep_copy_array(int num_properties,
 
     copy = (bt_property_t*)osi_calloc((sizeof(bt_property_t) * num_properties) +
                                       content_len);
+    ASSERT(copy != nullptr);
     uint8_t* content = (uint8_t*)(copy + num_properties);
 
     for (int i = 0; i < num_properties; i++) {
@@ -739,9 +740,15 @@ void invoke_ssp_request_cb(RawAddress bd_addr, bt_bdname_t bd_name,
 }
 
 void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c,
-                                Octet16 r, RawAddress raw_address) {
+                                Octet16 r, RawAddress raw_address,
+                                uint8_t address_type) {
   LOG_INFO("%s", __func__);
   bt_oob_data_t oob_data = {};
+  char* local_name;
+  BTM_ReadLocalDeviceName(&local_name);
+  for (int i = 0; i < BTM_MAX_LOC_BD_NAME_LEN; i++) {
+    oob_data.device_name[i] = local_name[i];
+  }
 
   // Set the local address
   int j = 5;
@@ -749,8 +756,7 @@ void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c,
     oob_data.address[i] = raw_address.address[j];
     j--;
   }
-  // Set type always public
-  oob_data.address[6] = 0;
+  oob_data.address[6] = address_type;
 
   // Each value (for C and R) is 16 octets in length
   bool c_empty = true;

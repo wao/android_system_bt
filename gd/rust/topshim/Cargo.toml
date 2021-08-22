@@ -22,10 +22,8 @@ edition = "2018"
 # BT dependencies
 bt_common = { path = "../common" }
 bt_facade_helpers = { path = "../facade/helpers" }
-bt_hal = { path = "../hal" }
-bt_hci = { path = "../hci" }
-bt_main = { path = "../main" }
-bt_packets = { path = "../packets" }
+bluetooth_rs = { path = "../stack" }
+topshim_macros = { path = "macros" }
 
 cxx = "*"
 lazy_static = "*"
@@ -34,14 +32,12 @@ num-derive = "*"
 num-traits = "*"
 tokio = { version = "*", features = ['bytes', 'fs', 'io-util', 'libc', 'macros', 'memchr', 'mio', 'net', 'num_cpus', 'rt', 'rt-multi-thread', 'sync', 'time', 'tokio-macros'] }
 tokio-stream = "*"
+bitflags ="*"
 
-# TODO(abps) - Decide whether we want to use bindgen
-# [build-dependencies]
-# bindgen = "0.51"
-# pkg-config = "0.3"
+[build-dependencies]
+bindgen = "0.59"
+pkg-config = "0.3"
 
 [lib]
 path = "src/lib.rs"
-
-# Build is only necessary if using bindgen
-# build = "build.rs"
+build = "build.rs"

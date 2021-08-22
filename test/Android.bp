@@ -13,9 +13,120 @@ subdirs = [
 ]
 
 filegroup {
+    name: "TestMockBtaAg",
+    srcs: [
+      "mock/mock_bta_ag_*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaAr",
+    srcs: [
+      "mock/mock_bta_ar.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaAv",
+    srcs: [
+      "mock/mock_bta_av_*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaDm",
+    srcs: [
+      "mock/mock_bta_dm_*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaGatt",
+    srcs: [
+      "mock/mock_bta_gatt*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaHd",
+    srcs: [
+      "mock/mock_bta_hd*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaHearingAid",
+    srcs: [
+      "mock/mock_bta_hearing_aid.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaHf",
+    srcs: [
+      "mock/mock_bta_hf*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaHh",
+    srcs: [
+      "mock/mock_bta_hh*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaJv",
+    srcs: [
+      "mock/mock_bta_jv_*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaPan",
+    srcs: [
+      "mock/mock_bta_pan_*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaSdp",
+    srcs: [
+      "mock/mock_bta_sdp_*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaSys",
+    srcs: [
+      "mock/mock_bta_sys_*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockBtaVc",
+    srcs: [
+      "mock/mock_bta_vc*.cc",
+    ],
+}
+
+filegroup {
     name: "TestMockBta",
     srcs: [
-      "mock/mock_bta_*.cc",
+      ":TestMockBtaAg",
+      ":TestMockBtaAr",
+      ":TestMockBtaAv",
+      ":TestMockBtaDm",
+      ":TestMockBtaGatt",
+      ":TestMockBtaHd",
+      ":TestMockBtaHearingAid",
+      ":TestMockBtaHf",
+      ":TestMockBtaHh",
+      ":TestMockBtaJv",
+      ":TestMockBtaPan",
+      ":TestMockBtaSdp",
+      ":TestMockBtaSys",
+      ":TestMockBtaVc",
     ],
 }
 
@@ -30,6 +141,20 @@ filegroup {
     name: "TestMockCommon",
     srcs: [
       "mock/mock_common_*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockStackA2dp",
+    srcs: [
+      "mock/mock_stack_a2dp_*.cc",
+    ],
+}
+
+filegroup {
+    name: "TestMockStackL2cap",
+    srcs: [
+      "mock/mock_stack_l2cap_*.cc",
     ],
 }
 
@@ -118,21 +243,14 @@ filegroup {
 }
 
 filegroup {
-  name: "TestStackL2cap",
-  srcs: [
-      "mock/mock_stack_l2cap_*.cc",
-  ],
-}
-
-filegroup {
-  name: "TestStackSdp",
+  name: "TestMockStackSdp",
   srcs: [
       "mock/mock_stack_sdp*.cc",
   ],
 }
 
 filegroup {
-  name: "TestStackBtm",
+  name: "TestMockStackBtm",
   srcs: [
       "mock/mock_stack_btm*.cc",
   ],
@@ -150,6 +268,13 @@ filegroup {
   srcs: [
       "stub/osi.cc",
   ],
+}
+
+filegroup {
+  name: "TestMockOsi",
+    srcs: [
+      "mock/mock_osi_*.cc",
+    ],
 }
 
 filegroup {
@@ -205,5 +330,40 @@ filegroup {
   name: "TestMockStackCryptotoolbox",
   srcs: [
       "mock/mock_stack_crypto_toolbox*.cc",
+  ],
+}
+
+filegroup {
+  name: "TestMockBtu",
+  srcs: [
+      "mock/mock_btu_*cc",
+  ],
+}
+
+filegroup {
+  name: "TestMockUtils",
+  srcs: [
+      "mock/mock_utils_*cc",
+  ],
+}
+
+filegroup {
+  name: "TestCommonMockFunctions",
+  srcs: [
+      "common/mock_functions.cc",
+  ],
+}
+
+filegroup {
+  name: "TestCommonMainHandler",
+  srcs: [
+      "common/main_handler.cc",
+  ],
+}
+
+filegroup {
+  name: "TestCommonInitFlags",
+  srcs: [
+      "common/init_flags.cc",
   ],
 }

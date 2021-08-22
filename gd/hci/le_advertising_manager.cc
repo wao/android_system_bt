@@ -25,6 +25,7 @@
 #include "module.h"
 #include "os/handler.h"
 #include "os/log.h"
+#include "os/system_properties.h"
 
 namespace bluetooth {
 namespace hci {
@@ -116,9 +117,15 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       advertising_api_type_ = AdvertisingApiType::ANDROID_HCI;
     } else {
       advertising_api_type_ = AdvertisingApiType::LEGACY;
-      hci_layer_->EnqueueCommand(
-          LeReadAdvertisingPhysicalChannelTxPowerBuilder::Create(),
-          handler->BindOnceOn(this, &impl::on_read_advertising_physical_channel_tx_power));
+      int vendor_version = os::GetAndroidVendorReleaseVersion();
+      if (vendor_version != 0 && vendor_version <= 11 && os::IsRootCanalEnabled()) {
+        LOG_INFO("LeReadAdvertisingPhysicalChannelTxPower is not supported on Android R RootCanal, default to 0");
+        le_physical_channel_tx_power_ = 0;
+      } else {
+        hci_layer_->EnqueueCommand(
+            LeReadAdvertisingPhysicalChannelTxPowerBuilder::Create(),
+            handler->BindOnceOn(this, &impl::on_read_advertising_physical_channel_tx_power));
+      }
     }
   }
 
@@ -238,6 +245,13 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
           set_data(id, true, config.scan_response);
         }
         set_data(id, false, config.advertisement);
+        auto address_policy = le_address_manager_->GetAddressPolicy();
+        if (address_policy == LeAddressManager::AddressPolicy::USE_NON_RESOLVABLE_ADDRESS ||
+            address_policy == LeAddressManager::AddressPolicy::USE_RESOLVABLE_ADDRESS) {
+          advertising_sets_[id].current_address = le_address_manager_->GetAnotherAddress();
+        } else {
+          advertising_sets_[id].current_address = le_address_manager_->GetCurrentAddress();
+        }
         if (!paused) {
           enable_advertiser(id, true, 0, 0);
         } else {
@@ -245,13 +259,19 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
         }
       } break;
       case (AdvertisingApiType::ANDROID_HCI): {
+        auto address_policy = le_address_manager_->GetAddressPolicy();
+        if (address_policy == LeAddressManager::AddressPolicy::USE_NON_RESOLVABLE_ADDRESS ||
+            address_policy == LeAddressManager::AddressPolicy::USE_RESOLVABLE_ADDRESS) {
+          advertising_sets_[id].current_address = le_address_manager_->GetAnotherAddress();
+        } else {
+          advertising_sets_[id].current_address = le_address_manager_->GetCurrentAddress();
+        }
         set_parameters(id, config);
         if (config.advertising_type == AdvertisingType::ADV_IND ||
             config.advertising_type == AdvertisingType::ADV_NONCONN_IND) {
           set_data(id, true, config.scan_response);
         }
         set_data(id, false, config.advertisement);
-        advertising_sets_[id].current_address = le_address_manager_->GetAnotherAddress();
         le_advertising_interface_->EnqueueCommand(
             hci::LeMultiAdvtSetRandomAddrBuilder::Create(advertising_sets_[id].current_address.GetAddress(), id),
             module_handler_->BindOnce(impl::check_status<LeMultiAdvtCompleteView>));
@@ -427,6 +447,16 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
         le_address_manager_->GetNextPrivateAddressIntervalMs());
   }
 
+  void get_own_address(AdvertiserId advertiser_id) {
+    if (advertising_sets_.find(advertiser_id) == advertising_sets_.end()) {
+      LOG_INFO("Unknown advertising id %u", advertiser_id);
+      return;
+    }
+    auto current_address = advertising_sets_[advertiser_id].current_address;
+    advertising_callbacks_->OnOwnAddressRead(
+        advertiser_id, static_cast<uint8_t>(current_address.GetAddressType()), current_address.GetAddress());
+  }
+
   void set_parameters(AdvertiserId advertiser_id, ExtendedAdvertisingConfig config) {
     advertising_sets_[advertiser_id].connectable = config.connectable;
     advertising_sets_[advertiser_id].tx_power = config.tx_power;
@@ -453,6 +483,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
                 config.interval_max,
                 config.advertising_type,
                 config.own_address_type,
+                advertising_sets_[advertiser_id].current_address.GetAddress(),
                 config.peer_address_type,
                 config.peer_address,
                 config.channel_map,
@@ -584,7 +615,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       case (AdvertisingApiType::EXTENDED): {
         uint16_t data_len = 0;
         // check data size
-        for (int i = 0; i < data.size(); i++) {
+        for (size_t i = 0; i < data.size(); i++) {
           if (data[i].size() > kLeMaximumFragmentLength) {
             LOG_WARN("AD data len shall not greater than %d", kLeMaximumFragmentLength);
             if (advertising_callbacks_ != nullptr) {
@@ -624,7 +655,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
           uint16_t sub_data_len = 0;
           Operation operation = Operation::FIRST_FRAGMENT;
 
-          for (int i = 0; i < data.size(); i++) {
+          for (size_t i = 0; i < data.size(); i++) {
             if (sub_data_len + data[i].size() > kLeMaximumFragmentLength) {
               send_data_fragment(advertiser_id, set_scan_rsp, sub_data, operation);
               operation = Operation::INTERMEDIATE_FRAGMENT;
@@ -737,7 +768,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
   void set_periodic_data(AdvertiserId advertiser_id, std::vector<GapData> data) {
     uint16_t data_len = 0;
     // check data size
-    for (int i = 0; i < data.size(); i++) {
+    for (size_t i = 0; i < data.size(); i++) {
       if (data[i].size() > kLeMaximumFragmentLength) {
         LOG_WARN("AD data len shall not greater than %d", kLeMaximumFragmentLength);
         if (advertising_callbacks_ != nullptr) {
@@ -766,7 +797,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       uint16_t sub_data_len = 0;
       Operation operation = Operation::FIRST_FRAGMENT;
 
-      for (int i = 0; i < data.size(); i++) {
+      for (size_t i = 0; i < data.size(); i++) {
         if (sub_data_len + data[i].size() > kLeMaximumFragmentLength) {
           send_periodic_data_fragment(advertiser_id, sub_data, operation);
           operation = Operation::INTERMEDIATE_FRAGMENT;
@@ -926,6 +957,13 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
 
   void on_read_advertising_physical_channel_tx_power(CommandCompleteView view) {
     auto complete_view = LeReadAdvertisingPhysicalChannelTxPowerCompleteView::Create(view);
+    if (!complete_view.IsValid()) {
+      auto payload = view.GetPayload();
+      if (payload.size() == 1 && payload[0] == static_cast<uint8_t>(ErrorCode::UNKNOWN_HCI_COMMAND)) {
+        LOG_INFO("Unknown command, not setting tx power");
+        return;
+      }
+    }
     ASSERT(complete_view.IsValid());
     if (complete_view.GetStatus() != ErrorCode::SUCCESS) {
       LOG_INFO("Got a command complete with status %s", ErrorCodeText(complete_view.GetStatus()).c_str());
@@ -1236,6 +1274,10 @@ AdvertiserId LeAdvertisingManager::ExtendedCreateAdvertiser(
       max_extended_advertising_events,
       handler);
   return id;
+}
+
+void LeAdvertisingManager::GetOwnAddress(uint8_t advertiser_id) {
+  CallOn(pimpl_.get(), &impl::get_own_address, advertiser_id);
 }
 
 void LeAdvertisingManager::SetParameters(AdvertiserId advertiser_id, ExtendedAdvertisingConfig config) {
