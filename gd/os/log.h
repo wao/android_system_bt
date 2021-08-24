@@ -60,12 +60,32 @@ static_assert(LOG_TAG != nullptr, "LOG_TAG is null after header inclusion");
 #endif /* FUZZ_TARGET */
 #define LOG_ERROR(fmt, args...) ALOGE("%s:%d %s: " fmt, __FILE__, __LINE__, __func__, ##args)
 
-#else
+#elif defined (ANDROID_EMULATOR)
+// Log using android emulator logging mechanism
+#include "android/utils/debug.h"
 
+#define LOGWRAPPER(fmt, args...) VERBOSE_INFO(bluetooth, "bluetooth: %s:%d - %s: " fmt, \
+                                              __FILE__, __LINE__, __func__, ##args)
+
+#define LOG_VEBOSE(...) LOGWRAPPER(__VA_ARGS__)
+#define LOG_DEBUG(...)  LOGWRAPPER(__VA_ARGS__)
+#define LOG_INFO(...)   LOGWRAPPER(__VA_ARGS__)
+#define LOG_WARN(...)   LOGWRAPPER(__VA_ARGS__)
+#define LOG_ERROR(...)  LOGWRAPPER(__VA_ARGS__)
+#define LOG_ALWAYS_FATAL(fmt, args...)                                              \
+  do {                                                                              \
+    fprintf(stderr, "%s:%d - %s: " fmt "\n", __FILE__, __LINE__, __func__, ##args); \
+    abort();                                                                        \
+  } while (false)
+#else
 /* syslog didn't work well here since we would be redefining LOG_DEBUG. */
 #include <chrono>
 #include <cstdio>
 #include <ctime>
+
+#include <sys/syscall.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #define LOGWRAPPER(fmt, args...)                                                                                    \
   do {                                                                                                              \
@@ -77,7 +97,18 @@ static_assert(LOG_TAG != nullptr, "LOG_TAG is null after header inclusion");
     auto l = std::strftime(_buf, sizeof(_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&_now_t));                       \
     snprintf(                                                                                                       \
         _buf + l, sizeof(_buf) - l, ".%03u", static_cast<unsigned int>(_now_ms.time_since_epoch().count() % 1000)); \
-    fprintf(stderr, "%s %s - %s:%d - %s: " fmt "\n", _buf, LOG_TAG, __FILE__, __LINE__, __func__, ##args);          \
+    /* pid max is 2^22 = 4194304 in 64-bit system, and 32768 by default, hence 7 digits are needed most */          \
+    fprintf(                                                                                                        \
+        stderr,                                                                                                     \
+        "%s %7d %7ld %s - %s:%d - %s: " fmt "\n",                                                                   \
+        _buf,                                                                                                       \
+        static_cast<int>(getpid()),                                                                                 \
+        syscall(SYS_gettid),                                                                                        \
+        LOG_TAG,                                                                                                    \
+        __FILE__,                                                                                                   \
+        __LINE__,                                                                                                   \
+        __func__,                                                                                                   \
+        ##args);                                                                                                    \
   } while (false)
 
 #ifdef FUZZ_TARGET
