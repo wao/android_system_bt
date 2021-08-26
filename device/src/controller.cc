@@ -29,20 +29,14 @@
 #include "check.h"
 #include "hcimsgs.h"
 #include "main/shim/controller.h"
+#include "main/shim/hci_layer.h"
 #include "main/shim/shim.h"
 #include "osi/include/future.h"
 #include "osi/include/properties.h"
 #include "stack/include/btm_ble_api.h"
 
-const bt_event_mask_t BLE_EVENT_MASK = {{0x00, 0x00, 0x00, 0x00, 0x7F, 0x02,
-#if (BLE_PRIVACY_SPT == TRUE)
-                                         0xFE,
-#else
-                                         /* Disable "LE Enhanced Connection
-                                            Complete" when privacy is off */
-                                         0xFC,
-#endif
-                                         0x7f}};
+const bt_event_mask_t BLE_EVENT_MASK = {
+    {0x00, 0x00, 0x00, 0x00, 0x7F, 0x02, 0xFE, 0x7f}};
 
 const bt_event_mask_t CLASSIC_EVENT_MASK = {HCI_DUMO_EVENT_MASK_EXT};
 
@@ -827,7 +821,7 @@ static const controller_t* controller_get_interface_legacy() {
   if (!loaded) {
     loaded = true;
 
-    local_hci = hci_layer_get_interface();
+    local_hci = bluetooth::shim::hci_layer_get_interface();
     packet_factory = hci_packet_factory_get_interface();
     packet_parser = hci_packet_parser_get_interface();
   }
@@ -841,14 +835,4 @@ const controller_t* controller_get_interface() {
   } else {
     return controller_get_interface_legacy();
   }
-}
-
-const controller_t* controller_get_test_interface(
-    const hci_t* hci_interface,
-    const hci_packet_factory_t* packet_factory_interface,
-    const hci_packet_parser_t* packet_parser_interface) {
-  local_hci = hci_interface;
-  packet_factory = packet_factory_interface;
-  packet_parser = packet_parser_interface;
-  return &interface;
 }

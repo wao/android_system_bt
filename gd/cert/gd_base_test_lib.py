@@ -14,15 +14,10 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-import importlib
 import logging
 import os
 import signal
 import subprocess
-import traceback
-
-from functools import wraps
-from grpc import RpcError
 
 from cert.async_subprocess_logger import AsyncSubprocessLogger
 from cert.os_utils import get_gd_root
@@ -30,11 +25,9 @@ from cert.os_utils import read_crash_snippet_and_log_tail
 from cert.os_utils import is_subprocess_alive
 from cert.os_utils import make_ports_available
 from cert.os_utils import TerminalColor
-from cert.gd_device import MOBLY_CONTROLLER_CONFIG_NAME as CONTROLLER_CONFIG_NAME
-from facade import rootservice_pb2 as facade_rootservice
 
 
-def setup_class_core(dut_module, cert_module, verbose_mode, log_path_base, controller_configs):
+def setup_rootcanal(dut_module, cert_module, verbose_mode, log_path_base, controller_configs):
     info = {}
     info['dut_module'] = dut_module
     info['cert_module'] = cert_module
@@ -104,7 +97,7 @@ def setup_class_core(dut_module, cert_module, verbose_mode, log_path_base, contr
     return info
 
 
-def teardown_class_core(rootcanal_running, rootcanal_process, rootcanal_logger, subprocess_wait_timeout_seconds):
+def teardown_rootcanal(rootcanal_running, rootcanal_process, rootcanal_logger, subprocess_wait_timeout_seconds):
     if rootcanal_running:
         stop_signal = signal.SIGINT
         rootcanal_process.send_signal(stop_signal)
@@ -122,21 +115,6 @@ def teardown_class_core(rootcanal_running, rootcanal_process, rootcanal_logger, 
         if return_code != 0 and return_code != -stop_signal:
             logging.error("rootcanal stopped with code: %d" % return_code)
         rootcanal_logger.stop()
-
-
-def setup_test_core(dut, cert, dut_module, cert_module):
-    dut.rootservice.StartStack(
-        facade_rootservice.StartStackRequest(module_under_test=facade_rootservice.BluetoothModule.Value(dut_module),))
-    cert.rootservice.StartStack(
-        facade_rootservice.StartStackRequest(module_under_test=facade_rootservice.BluetoothModule.Value(cert_module),))
-
-    dut.wait_channel_ready()
-    cert.wait_channel_ready()
-
-
-def teardown_test_core(cert, dut):
-    cert.rootservice.StopStack(facade_rootservice.StopStackRequest())
-    dut.rootservice.StopStack(facade_rootservice.StopStackRequest())
 
 
 def dump_crashes_core(dut, cert, rootcanal_running, rootcanal_process, rootcanal_logpath):

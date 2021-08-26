@@ -64,7 +64,6 @@
 #include "btif_keystore.h"
 #include "btif_metrics_logging.h"
 #include "btif_storage.h"
-#include "btsnoop.h"
 #include "btsnoop_mem.h"
 #include "common/address_obfuscator.h"
 #include "common/metric_id_allocator.h"
@@ -282,11 +281,11 @@ int set_remote_device_property(RawAddress* remote_addr,
   return BT_STATUS_SUCCESS;
 }
 
-int get_remote_services(RawAddress* remote_addr) {
+int get_remote_services(RawAddress* remote_addr, int transport) {
   if (!interface_ready()) return BT_STATUS_NOT_READY;
 
   do_in_main_thread(FROM_HERE, base::BindOnce(btif_dm_get_remote_services,
-                                              *remote_addr, BT_TRANSPORT_AUTO));
+                                              *remote_addr, transport));
   return BT_STATUS_SUCCESS;
 }
 

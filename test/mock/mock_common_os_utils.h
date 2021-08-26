@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
+#pragma once
+
 /*
  * Generated mock file from original source file
- *   Functions generated:3
+ *   Functions generated:1
  *
- *  mockcify.pl ver 0.2
+ *  mockcify.pl ver 0.3.0
  */
 
 #include <cstdint>
@@ -33,51 +35,28 @@ extern std::map<std::string, int> mock_function_count_map;
 //       include files may not be required.  The include-what-you-use
 //       still applies, but crafting proper inclusion is out of scope
 //       for this effort.  This compilation unit may compile as-is, or
-//       may need attention to prune the inclusion set.
-#include <base/logging.h>
-#include <hardware/bluetooth.h>
-#include "bt_common.h"
-#include "btcore/include/module.h"
-#include "bte.h"
-#include "btif/include/btif_config.h"
-#include "btu.h"
-#include "device/include/interop.h"
-#include "hci/include/hci_layer.h"
-#include "main/shim/hci_layer.h"
-#include "main/shim/shim.h"
-#include "osi/include/log.h"
-#include "osi/include/osi.h"
-#include "stack_config.h"
+//       may need attention to prune from (or add to ) the inclusion set.
+#include <private/android_filesystem_config.h>
+#include <unistd.h>
 
 // Mocked compile conditionals, if any
-#ifndef UNUSED_ATTR
-#define UNUSED_ATTR
-#endif
 
 namespace test {
 namespace mock {
-namespace main_bte {
+namespace common_os_utils {
 
 // Shared state between mocked functions and tests
-// Name: bte_main_init
-// Params: void
-// Returns: void
-struct bte_main_init {
-  std::function<void(void)> body{[](void) {}};
-  void operator()(void) { body(); };
+// Name: is_bluetooth_uid
+// Params:
+// Return: bool
+struct is_bluetooth_uid {
+  static bool return_value;
+  std::function<bool()> body{[]() { return return_value; }};
+  bool operator()() { return body(); };
 };
-extern struct bte_main_init bte_main_init;
-// Name: bte_main_hci_send
-// Params: BT_HDR* p_msg, uint16_t event
-// Returns: void
-struct bte_main_hci_send {
-  std::function<void(BT_HDR* p_msg, uint16_t event)> body{
-      [](BT_HDR* p_msg, uint16_t event) {}};
-  void operator()(BT_HDR* p_msg, uint16_t event) { body(p_msg, event); };
-};
-extern struct bte_main_hci_send bte_main_hci_send;
+extern struct is_bluetooth_uid is_bluetooth_uid;
 
-}  // namespace main_bte
+}  // namespace common_os_utils
 }  // namespace mock
 }  // namespace test
 
