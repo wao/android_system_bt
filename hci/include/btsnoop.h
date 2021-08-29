@@ -19,8 +19,9 @@
 #pragma once
 
 #include <stdbool.h>
+#include <cstdint>
 
-#include "bt_types.h"
+#include "stack/include/bt_hdr.h"
 
 static const char BTSNOOP_MODULE[] = "btsnoop_module";
 

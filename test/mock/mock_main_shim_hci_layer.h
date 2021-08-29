@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+#pragma once
+
 /*
  * Generated mock file from original source file
- *   Functions generated:1
+ *   Functions generated:3
  *
  *  mockcify.pl ver 0.3.0
  */
@@ -34,41 +36,4 @@ extern std::map<std::string, int> mock_function_count_map;
 //       still applies, but crafting proper inclusion is out of scope
 //       for this effort.  This compilation unit may compile as-is, or
 //       may need attention to prune from (or add to ) the inclusion set.
-#include <errno.h>
-#include <processgroup/sched_policy.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/resource.h>
-#include <unistd.h>
-
-#include <mutex>
-
-#include "bt_utils.h"
-#include "btcore/include/module.h"
-#include "osi/include/compat.h"
-#include "osi/include/log.h"
-#include "osi/include/properties.h"
-
-// Mocked compile conditionals, if any
-
-namespace test {
-namespace mock {
-namespace utils_bt {
-
-// Shared state between mocked functions and tests
-// Name: raise_priority_a2dp
-// Params: tHIGH_PRIORITY_TASK high_task
-// Return: void
-struct raise_priority_a2dp {
-  std::function<void(tHIGH_PRIORITY_TASK high_task)> body{
-      [](tHIGH_PRIORITY_TASK high_task) {}};
-  void operator()(tHIGH_PRIORITY_TASK high_task) { body(high_task); };
-};
-extern struct raise_priority_a2dp raise_priority_a2dp;
-
-}  // namespace utils_bt
-}  // namespace mock
-}  // namespace test
-
-// END mockcify generation
+#include "main/shim/hci_layer.h"
