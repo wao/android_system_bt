@@ -3,7 +3,6 @@ use btstack::bluetooth_media::{IBluetoothMedia, IBluetoothMediaCallback};
 use btstack::RPCProxy;
 
 use dbus::arg::RefArg;
-use dbus::nonblock::SyncConnection;
 use dbus::strings::Path;
 
 use dbus_macros::{dbus_method, dbus_propmap, dbus_proxy_obj, generate_dbus_exporter};
@@ -29,6 +28,12 @@ impl IBluetoothMediaCallback for BluetoothMediaCallbackDBus {
 
     #[dbus_method("OnBluetoothAudioDeviceRemoved")]
     fn on_bluetooth_audio_device_removed(&self, addr: String) {}
+
+    #[dbus_method("OnAbsoluteVolumeSupportedChanged")]
+    fn on_absolute_volume_supported_changed(&self, supported: bool) {}
+
+    #[dbus_method("OnAbsoluteVolumeChanged")]
+    fn on_absolute_volume_changed(&self, volume: i32) {}
 }
 
 #[allow(dead_code)]
