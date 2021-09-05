@@ -25,11 +25,14 @@
 #ifndef RFC_INT_H
 #define RFC_INT_H
 
-#include "l2c_api.h"
-#include "port_int.h"
-#include "stack/include/btm_status.h"
-
+#include <cstdint>
+#include <cstring>
 #include <unordered_map>
+
+#include "stack/include/btm_status.h"
+#include "stack/include/l2c_api.h"
+#include "stack/rfcomm/port_int.h"
+#include "stack/rfcomm/rfc_event.h"
 
 /*
  * Define RFCOMM result codes
@@ -185,39 +188,6 @@ inline std::string rfcomm_mx_state_text(tRFC_MX_STATE state) {
 #define RFC_STATE_OPENED 4
 #define RFC_STATE_DISC_WAIT_UA 5
 
-/*
- * Events that can be received by multiplexer as well as port state machines
-*/
-#define RFC_EVENT_SABME 0
-#define RFC_EVENT_UA 1
-#define RFC_EVENT_DM 2
-#define RFC_EVENT_DISC 3
-#define RFC_EVENT_UIH 4
-#define RFC_EVENT_TIMEOUT 5
-#define RFC_EVENT_BAD_FRAME 50
-/*
- * Multiplexer events
-*/
-#define RFC_MX_EVENT_START_REQ 6
-#define RFC_MX_EVENT_START_RSP 7
-#define RFC_MX_EVENT_CLOSE_REQ 8
-#define RFC_MX_EVENT_CONN_CNF 9
-#define RFC_MX_EVENT_CONN_IND 10
-#define RFC_MX_EVENT_CONF_CNF 11
-#define RFC_MX_EVENT_CONF_IND 12
-#define RFC_MX_EVENT_QOS_VIOLATION_IND 13
-#define RFC_MX_EVENT_DISC_IND 14
-
-/*
- * Port events
-*/
-#define RFC_EVENT_OPEN 9
-#define RFC_EVENT_ESTABLISH_RSP 11
-#define RFC_EVENT_CLOSE 12
-#define RFC_EVENT_CLEAR 13
-#define RFC_EVENT_DATA 14
-#define RFC_EVENT_SEC_COMPLETE 15
-
 /* seconds to wait for reply with Poll bit */
 #define RFC_T1_TIMEOUT 20
 /* seconds to wait for reply with Poll bit other than MX */
@@ -282,7 +252,8 @@ extern uint8_t rfc_calc_fcs(uint16_t len, uint8_t* p);
 
 #endif
 
-extern void rfc_mx_sm_execute(tRFC_MCB* p_mcb, uint16_t event, void* p_data);
+extern void rfc_mx_sm_execute(tRFC_MCB* p_mcb, tRFC_MX_EVENT event,
+                              void* p_data);
 
 /*
  * Functions provided by the rfc_port_fsm.cc
@@ -349,8 +320,8 @@ extern void rfc_send_fcoff(tRFC_MCB* p_mcb, bool is_command);
 extern void rfc_send_buf_uih(tRFC_MCB* p_rfc_mcb, uint8_t dlci, BT_HDR* p_buf);
 extern void rfc_send_credit(tRFC_MCB* p_mcb, uint8_t dlci, uint8_t credit);
 extern void rfc_process_mx_message(tRFC_MCB* p_rfc_mcb, BT_HDR* p_buf);
-extern uint8_t rfc_parse_data(tRFC_MCB* p_rfc_mcb, MX_FRAME* p_frame,
-                              BT_HDR* p_buf);
+extern tRFC_EVENT rfc_parse_data(tRFC_MCB* p_rfc_mcb, MX_FRAME* p_frame,
+                                 BT_HDR* p_buf);
 
 /* Call back functions from RFCOMM */
 extern void rfcomm_l2cap_if_init(void);

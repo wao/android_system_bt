@@ -23,16 +23,13 @@
  *
  *****************************************************************************/
 
-#include <cstring>
-#include "bt_common.h"
+#include <cstdint>
+#include <unordered_map>
+
 #include "bt_target.h"
-#include "bt_utils.h"
-#include "l2c_api.h"
-#include "osi/include/osi.h"
-#include "port_api.h"
-#include "port_int.h"
-#include "rfc_int.h"
-#include "rfcdefs.h"
+#include "osi/include/osi.h"  // UNUSED_ATTR
+#include "stack/rfcomm/port_int.h"
+#include "stack/rfcomm/rfc_int.h"
 
 tRFC_CB rfc_cb;
 std::unordered_map<uint32_t, uint16_t> rfcomm_security_records;
@@ -89,7 +86,7 @@ void RFCOMM_DlcEstablishReq(tRFC_MCB* p_mcb, uint8_t dlci,
     return;
   }
 
-  rfc_port_sm_execute(p_port, RFC_EVENT_OPEN, nullptr);
+  rfc_port_sm_execute(p_port, RFC_PORT_EVENT_OPEN, nullptr);
 }
 
 /*******************************************************************************
@@ -112,7 +109,7 @@ void RFCOMM_DlcEstablishRsp(tRFC_MCB* p_mcb, uint8_t dlci,
     RFCOMM_TRACE_WARNING("%s Unable to find DLCI port dlci:%d", __func__, dlci);
     return;
   }
-  rfc_port_sm_execute(p_port, RFC_EVENT_ESTABLISH_RSP, &result);
+  rfc_port_sm_execute(p_port, RFC_PORT_EVENT_ESTABLISH_RSP, &result);
 }
 
 /*******************************************************************************
@@ -321,8 +318,8 @@ void RFCOMM_LineStatusReq(tRFC_MCB* p_mcb, uint8_t dlci, uint8_t status) {
  *
  ******************************************************************************/
 void RFCOMM_DlcReleaseReq(tRFC_MCB* p_mcb, uint8_t dlci) {
-  rfc_port_sm_execute(port_find_mcb_dlci_port(p_mcb, dlci), RFC_EVENT_CLOSE,
-                      nullptr);
+  rfc_port_sm_execute(port_find_mcb_dlci_port(p_mcb, dlci),
+                      RFC_PORT_EVENT_CLOSE, nullptr);
 }
 
 /*******************************************************************************
@@ -333,6 +330,6 @@ void RFCOMM_DlcReleaseReq(tRFC_MCB* p_mcb, uint8_t dlci) {
  *
  ******************************************************************************/
 void RFCOMM_DataReq(tRFC_MCB* p_mcb, uint8_t dlci, BT_HDR* p_buf) {
-  rfc_port_sm_execute(port_find_mcb_dlci_port(p_mcb, dlci), RFC_EVENT_DATA,
+  rfc_port_sm_execute(port_find_mcb_dlci_port(p_mcb, dlci), RFC_PORT_EVENT_DATA,
                       p_buf);
 }

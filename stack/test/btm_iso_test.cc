@@ -23,6 +23,8 @@
 #include "main/shim/shim.h"
 #include "mock_controller.h"
 #include "mock_hcic_layer.h"
+#include "stack/include/hci_error_code.h"
+#include "stack/include/hcidefs.h"
 
 using bluetooth::hci::IsoManager;
 using testing::_;
@@ -494,8 +496,8 @@ TEST_F(IsoManagerTest, RegisterCallbacks) {
   auto* iso_mgr = IsoManager::GetInstance();
   ASSERT_EQ(manager_instance_, iso_mgr);
 
-  iso_mgr->RegisterBigCallbacks(new MockBigCallbacks());
-  iso_mgr->RegisterCigCallbacks(new MockCigCallbacks());
+  iso_mgr->RegisterBigCallbacks(big_callbacks_.get());
+  iso_mgr->RegisterCigCallbacks(cig_callbacks_.get());
 }
 
 TEST_F(IsoManagerDeathTestNoInit, RegisterNullBigCallbacks) {

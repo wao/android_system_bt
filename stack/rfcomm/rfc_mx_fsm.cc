@@ -22,18 +22,16 @@
  *  channel of the RFCOMM unit
  *
  ******************************************************************************/
-#include <string.h>
-#include "bt_common.h"
-#include "bt_utils.h"
-#include "l2c_api.h"
-#include "l2cdefs.h"
+
+#include <cstdint>
+
 #include "main/shim/dumpsys.h"
+#include "osi/include/allocator.h"
 #include "osi/include/log.h"
-#include "osi/include/osi.h"
-#include "port_api.h"
-#include "port_int.h"
-#include "rfc_int.h"
-#include "rfcdefs.h"
+#include "osi/include/osi.h"  // UNUSED_ATTR
+#include "stack/include/l2c_api.h"
+#include "stack/rfcomm/port_int.h"
+#include "stack/rfcomm/rfc_int.h"
 
 #define L2CAP_SUCCESS 0
 #define L2CAP_ERROR 1
@@ -69,7 +67,7 @@ static void rfc_mx_conf_cnf(tRFC_MCB* p_mcb, uint16_t result);
  * Returns          void
  *
  ******************************************************************************/
-void rfc_mx_sm_execute(tRFC_MCB* p_mcb, uint16_t event, void* p_data) {
+void rfc_mx_sm_execute(tRFC_MCB* p_mcb, tRFC_MX_EVENT event, void* p_data) {
   CHECK(p_mcb != nullptr) << __func__ << ": NULL mcb for event " << event;
 
   LOG_INFO(
