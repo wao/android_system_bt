@@ -103,6 +103,10 @@ void rfc_mx_sm_execute(tRFC_MCB* p_mcb, tRFC_MX_EVENT event, void* p_data) {
     case RFC_MX_STATE_DISC_WAIT_UA:
       rfc_mx_sm_state_disc_wait_ua(p_mcb, event, p_data);
       break;
+
+    default:
+      LOG_ERROR("Received unexpected event:%hu in state:%hhu", event,
+                p_mcb->state);
   }
 }
 
@@ -150,18 +154,18 @@ void rfc_mx_sm_state_idle(tRFC_MCB* p_mcb, uint16_t event, void* p_data) {
       p_mcb->state = RFC_MX_STATE_CONFIGURE;
       return;
 
-    case RFC_EVENT_SABME:
+    case RFC_MX_EVENT_SABME:
       break;
 
-    case RFC_EVENT_UA:
-    case RFC_EVENT_DM:
+    case RFC_MX_EVENT_UA:
+    case RFC_MX_EVENT_DM:
       return;
 
-    case RFC_EVENT_DISC:
+    case RFC_MX_EVENT_DISC:
       rfc_send_dm(p_mcb, RFCOMM_MX_DLCI, true);
       return;
 
-    case RFC_EVENT_UIH:
+    case RFC_MX_EVENT_UIH:
       rfc_send_dm(p_mcb, RFCOMM_MX_DLCI, false);
       return;
 
@@ -214,7 +218,7 @@ void rfc_mx_sm_state_wait_conn_cnf(tRFC_MCB* p_mcb, uint16_t event,
       PORT_CloseInd(p_mcb);
       return;
 
-    case RFC_EVENT_TIMEOUT:
+    case RFC_MX_EVENT_TIMEOUT:
       p_mcb->state = RFC_MX_STATE_IDLE;
       L2CA_DisconnectReq(p_mcb->lcid);
 
@@ -251,6 +255,9 @@ void rfc_mx_sm_state_wait_conn_cnf(tRFC_MCB* p_mcb, uint16_t event,
         PORT_CloseInd(p_mcb);
       }
       return;
+    default:
+      LOG_ERROR("Received unexpected event:%hu in state:%hhu", event,
+                p_mcb->state);
   }
   RFCOMM_TRACE_EVENT("RFCOMM MX ignored - evt:%d in state:%d", event,
                      p_mcb->state);
@@ -288,7 +295,7 @@ void rfc_mx_sm_state_configure(tRFC_MCB* p_mcb, uint16_t event, void* p_data) {
       PORT_CloseInd(p_mcb);
       return;
 
-    case RFC_EVENT_TIMEOUT:
+    case RFC_MX_EVENT_TIMEOUT:
       LOG(ERROR) << __func__ << ": L2CAP configuration timeout for "
                  << p_mcb->bd_addr;
       p_mcb->state = RFC_MX_STATE_IDLE;
@@ -296,6 +303,9 @@ void rfc_mx_sm_state_configure(tRFC_MCB* p_mcb, uint16_t event, void* p_data) {
 
       PORT_StartCnf(p_mcb, RFCOMM_ERROR);
       return;
+    default:
+      LOG_ERROR("Received unexpected event:%hu in state:%hhu", event,
+                p_mcb->state);
   }
   RFCOMM_TRACE_EVENT("RFCOMM MX ignored - evt:%d in state:%d", event,
                      p_mcb->state);
@@ -336,7 +346,7 @@ void rfc_mx_sm_sabme_wait_ua(tRFC_MCB* p_mcb, uint16_t event,
       PORT_CloseInd(p_mcb);
       return;
 
-    case RFC_EVENT_UA:
+    case RFC_MX_EVENT_UA:
       rfc_timer_stop(p_mcb);
 
       p_mcb->state = RFC_MX_STATE_CONNECTED;
@@ -345,18 +355,21 @@ void rfc_mx_sm_sabme_wait_ua(tRFC_MCB* p_mcb, uint16_t event,
       PORT_StartCnf(p_mcb, RFCOMM_SUCCESS);
       return;
 
-    case RFC_EVENT_DM:
+    case RFC_MX_EVENT_DM:
       rfc_timer_stop(p_mcb);
       FALLTHROUGH_INTENDED; /* FALLTHROUGH */
 
     case RFC_MX_EVENT_CONF_IND: /* workaround: we don't support reconfig */
     case RFC_MX_EVENT_CONF_CNF: /* workaround: we don't support reconfig */
-    case RFC_EVENT_TIMEOUT:
+    case RFC_MX_EVENT_TIMEOUT:
       p_mcb->state = RFC_MX_STATE_IDLE;
       L2CA_DisconnectReq(p_mcb->lcid);
 
       PORT_StartCnf(p_mcb, RFCOMM_ERROR);
       return;
+    default:
+      LOG_ERROR("Received unexpected event:%hu in state:%hhu", event,
+                p_mcb->state);
   }
   RFCOMM_TRACE_EVENT("RFCOMM MX ignored - evt:%d in state:%d", event,
                      p_mcb->state);
@@ -380,7 +393,7 @@ void rfc_mx_sm_state_wait_sabme(tRFC_MCB* p_mcb, uint16_t event, void* p_data) {
       PORT_CloseInd(p_mcb);
       return;
 
-    case RFC_EVENT_SABME:
+    case RFC_MX_EVENT_SABME:
       /* if we gave up outgoing connection request */
       if (p_mcb->pending_lcid) {
         p_mcb->pending_lcid = 0;
@@ -413,12 +426,15 @@ void rfc_mx_sm_state_wait_sabme(tRFC_MCB* p_mcb, uint16_t event, void* p_data) {
 
     case RFC_MX_EVENT_CONF_IND: /* workaround: we don't support reconfig */
     case RFC_MX_EVENT_CONF_CNF: /* workaround: we don't support reconfig */
-    case RFC_EVENT_TIMEOUT:
+    case RFC_MX_EVENT_TIMEOUT:
       p_mcb->state = RFC_MX_STATE_IDLE;
       L2CA_DisconnectReq(p_mcb->lcid);
 
       PORT_CloseInd(p_mcb);
       return;
+
+    default:
+      LOG_WARN("RFCOMM MX ignored - evt:%d in state:%d", event, p_mcb->state);
   }
   RFCOMM_TRACE_EVENT("RFCOMM MX ignored - evt:%d in state:%d", event,
                      p_mcb->state);
@@ -439,7 +455,7 @@ void rfc_mx_sm_state_connected(tRFC_MCB* p_mcb, uint16_t event,
   RFCOMM_TRACE_EVENT("%s: event %d", __func__, event);
 
   switch (event) {
-    case RFC_EVENT_TIMEOUT:
+    case RFC_MX_EVENT_TIMEOUT:
     case RFC_MX_EVENT_CLOSE_REQ:
       rfc_timer_start(p_mcb, RFC_DISC_TIMEOUT);
       p_mcb->state = RFC_MX_STATE_DISC_WAIT_UA;
@@ -451,7 +467,7 @@ void rfc_mx_sm_state_connected(tRFC_MCB* p_mcb, uint16_t event,
       PORT_CloseInd(p_mcb);
       return;
 
-    case RFC_EVENT_DISC:
+    case RFC_MX_EVENT_DISC:
       /* Reply with UA.  If initiator bring down L2CAP connection */
       /* If server wait for some time if client decide to reinitiate channel */
       rfc_send_ua(p_mcb, RFCOMM_MX_DLCI);
@@ -461,6 +477,9 @@ void rfc_mx_sm_state_connected(tRFC_MCB* p_mcb, uint16_t event,
       /* notify all ports that connection is gone */
       PORT_CloseInd(p_mcb);
       return;
+    default:
+      LOG_ERROR("Received unexpected event:%hu in state:%hhu", event,
+                p_mcb->state);
   }
   RFCOMM_TRACE_EVENT("RFCOMM MX ignored - evt:%d in state:%d", event,
                      p_mcb->state);
@@ -482,9 +501,9 @@ void rfc_mx_sm_state_disc_wait_ua(tRFC_MCB* p_mcb, uint16_t event,
 
   RFCOMM_TRACE_EVENT("%s: event %d", __func__, event);
   switch (event) {
-    case RFC_EVENT_UA:
-    case RFC_EVENT_DM:
-    case RFC_EVENT_TIMEOUT:
+    case RFC_MX_EVENT_UA:
+    case RFC_MX_EVENT_DM:
+    case RFC_MX_EVENT_TIMEOUT:
       L2CA_DisconnectReq(p_mcb->lcid);
 
       if (p_mcb->restart_required) {
@@ -515,11 +534,11 @@ void rfc_mx_sm_state_disc_wait_ua(tRFC_MCB* p_mcb, uint16_t event,
       rfc_release_multiplexer_channel(p_mcb);
       return;
 
-    case RFC_EVENT_DISC:
+    case RFC_MX_EVENT_DISC:
       rfc_send_ua(p_mcb, RFCOMM_MX_DLCI);
       return;
 
-    case RFC_EVENT_UIH:
+    case RFC_MX_EVENT_UIH:
       osi_free(p_data);
       rfc_send_dm(p_mcb, RFCOMM_MX_DLCI, false);
       return;
@@ -538,6 +557,9 @@ void rfc_mx_sm_state_disc_wait_ua(tRFC_MCB* p_mcb, uint16_t event,
 
     case RFC_MX_EVENT_QOS_VIOLATION_IND:
       break;
+    default:
+      LOG_ERROR("Received unexpected event:%hu in state:%hhu", event,
+                p_mcb->state);
   }
   RFCOMM_TRACE_EVENT("RFCOMM MX ignored - evt:%d in state:%d", event,
                      p_mcb->state);
