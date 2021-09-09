@@ -31,11 +31,11 @@
 #include "bt_common.h"
 #include "btu.h"
 #include "common/time_util.h"
-#include "hcimsgs.h"
 #include "l2c_api.h"
 #include "l2c_int.h"
 #include "l2cdefs.h"
 
+#include "osi/include/allocator.h"
 #include "osi/include/log.h"
 
 /* Flag passed to retransmit_i_frames() when all packets should be retransmitted

@@ -173,23 +173,38 @@ void TestModel::DelDeviceFromPhy(size_t dev_index, size_t phy_index) {
 
 void TestModel::AddLinkLayerConnection(std::shared_ptr<AsyncDataChannel> socket,
                                        Phy::Type phy_type) {
+  LOG_INFO("Adding a new link layer connection of type: %s",
+           phy_type == Phy::Type::BR_EDR ? "BR_EDR" : "LOW_ENERGY");
   std::shared_ptr<Device> dev = LinkLayerSocketDevice::Create(socket, phy_type);
+
   int index = Add(dev);
+  AsyncUserId user_id = get_user_id_();
+
   for (size_t i = 0; i < phys_.size(); i++) {
     if (phy_type == phys_[i].GetType()) {
       AddDeviceToPhy(index, i);
     }
   }
+
+  dev->RegisterCloseCallback([this, socket, index, user_id] {
+    schedule_task_(user_id, std::chrono::milliseconds(0),
+                   [this, socket, index, user_id]() {
+                     OnConnectionClosed(socket, index, user_id);
+                   });
+  });
+
 }
 
 void TestModel::IncomingLinkLayerConnection(
     std::shared_ptr<AsyncDataChannel> socket) {
   // TODO: Handle other phys
+  LOG_INFO("A new link layer connection has arrived.");
   AddLinkLayerConnection(socket, Phy::Type::BR_EDR);
 }
 
 void TestModel::AddRemote(const std::string& server, int port,
                           Phy::Type phy_type) {
+  LOG_INFO("Connecting to %s:%d", server.c_str(), port);
   std::shared_ptr<AsyncDataChannel> socket = connect_to_remote_(server, port);
   if (!socket->Connected()) {
     return;
@@ -197,9 +212,9 @@ void TestModel::AddRemote(const std::string& server, int port,
   AddLinkLayerConnection(socket, phy_type);
 }
 
-void TestModel::IncomingHciConnection(
-    std::shared_ptr<AsyncDataChannel> socket) {
-  auto dev = HciSocketDevice::Create(socket);
+void TestModel::IncomingHciConnection(std::shared_ptr<AsyncDataChannel> socket,
+                                      std::string properties_filename) {
+  auto dev = HciSocketDevice::Create(socket, properties_filename);
   size_t index = Add(std::static_pointer_cast<Device>(dev));
   std::string addr = "da:4c:10:de:17:";  // Da HCI dev
   std::stringstream stream;
@@ -220,12 +235,12 @@ void TestModel::IncomingHciConnection(
   dev->RegisterCloseCallback([this, socket, index, user_id] {
     schedule_task_(user_id, std::chrono::milliseconds(0),
                    [this, socket, index, user_id]() {
-                     OnHciConnectionClosed(socket, index, user_id);
+                     OnConnectionClosed(socket, index, user_id);
                    });
   });
 }
 
-void TestModel::OnHciConnectionClosed(std::shared_ptr<AsyncDataChannel> socket,
+void TestModel::OnConnectionClosed(std::shared_ptr<AsyncDataChannel> socket,
                                       size_t index, AsyncUserId user_id) {
   if (index >= devices_.size() || devices_[index] == nullptr) {
     LOG_WARN("Unknown device %zu", index);

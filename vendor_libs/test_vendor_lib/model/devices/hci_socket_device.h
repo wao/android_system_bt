@@ -33,24 +33,26 @@ using android::net::AsyncDataChannel;
 
 class HciSocketDevice : public DualModeController {
  public:
-  HciSocketDevice(std::shared_ptr<AsyncDataChannel> socket);
+  HciSocketDevice(std::shared_ptr<AsyncDataChannel> socket,
+                  std::string properties_filename);
   ~HciSocketDevice() = default;
 
   static std::shared_ptr<HciSocketDevice> Create(
-      std::shared_ptr<AsyncDataChannel> socket) {
-    return std::make_shared<HciSocketDevice>(socket);
+      std::shared_ptr<AsyncDataChannel> socket,
+      std::string properties_filename) {
+    return std::make_shared<HciSocketDevice>(socket, properties_filename);
   }
 
-  virtual std::string GetTypeString() const override {
+  std::string GetTypeString() const override {
     return "hci_socket_device";
   }
 
-  virtual void TimerTick() override;
+  void TimerTick() override;
 
   void SendHci(PacketType packet_type,
                const std::shared_ptr<std::vector<uint8_t>> packet);
 
-  void RegisterCloseCallback(std::function<void()>);
+  void Close() override;
 
  private:
   std::shared_ptr<AsyncDataChannel> socket_;
@@ -61,8 +63,6 @@ class HciSocketDevice : public DualModeController {
                               [](const std::vector<uint8_t>&) {},
                               [](const std::vector<uint8_t>&) {},
                               [] {}};
-
-  std::function<void()> close_callback_;
 };
 
 }  // namespace test_vendor_lib

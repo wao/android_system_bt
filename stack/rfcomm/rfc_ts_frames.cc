@@ -22,16 +22,16 @@
  *
  ******************************************************************************/
 
-#include <stddef.h>
-#include "bt_common.h"
-#include "bt_target.h"
-#include "l2c_api.h"
-#include "port_api.h"
-#include "port_int.h"
-#include "rfc_int.h"
-#include "rfcdefs.h"
+#include <log/log.h>
+#include <cstdint>
+#include <cstring>
 
-#include "osi/include/log.h"
+#include "bt_target.h"
+#include "osi/include/allocator.h"
+#include "stack/include/l2c_api.h"
+#include "stack/include/rfcdefs.h"
+#include "stack/rfcomm/port_int.h"
+#include "stack/rfcomm/rfc_int.h"
 
 /*******************************************************************************
  *
@@ -506,7 +506,7 @@ void rfc_send_credit(tRFC_MCB* p_mcb, uint8_t dlci, uint8_t credit) {
  * Description      This function processes data packet received from L2CAP
  *
  ******************************************************************************/
-uint8_t rfc_parse_data(tRFC_MCB* p_mcb, MX_FRAME* p_frame, BT_HDR* p_buf) {
+tRFC_EVENT rfc_parse_data(tRFC_MCB* p_mcb, MX_FRAME* p_frame, BT_HDR* p_buf) {
   uint8_t ead, eal, fcs;
   uint8_t* p_data = (uint8_t*)(p_buf + 1) + p_buf->offset;
   uint8_t* p_start = p_data;

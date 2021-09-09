@@ -82,10 +82,11 @@ class TestModel {
   void AddLinkLayerConnection(std::shared_ptr<AsyncDataChannel> socket_fd,
                               Phy::Type phy_type);
   void IncomingLinkLayerConnection(std::shared_ptr<AsyncDataChannel> socket_fd);
-  void IncomingHciConnection(std::shared_ptr<AsyncDataChannel> socket_fd);
+  void IncomingHciConnection(std::shared_ptr<AsyncDataChannel> socket_fd,
+                             std::string properties_filename = "");
 
-  // Handle closed remote connections
-  void OnHciConnectionClosed(std::shared_ptr<AsyncDataChannel> socket_fd,
+  // Handle closed remote connections (both hci & link layer)
+  void OnConnectionClosed(std::shared_ptr<AsyncDataChannel> socket_fd,
                              size_t index, AsyncUserId user_id);
 
   // Connect to a remote device

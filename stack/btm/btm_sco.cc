@@ -37,7 +37,6 @@
 #include "stack/include/btm_api.h"
 #include "stack/include/btm_api_types.h"
 #include "stack/include/hci_error_code.h"
-#include "stack/include/hcimsgs.h"
 #include "types/class_of_device.h"
 #include "types/raw_address.h"
 
@@ -84,20 +83,10 @@ const bluetooth::legacy::hci::Interface& GetLegacyHciInterface() {
 /******************************************************************************/
 /*            L O C A L    F U N C T I O N     P R O T O T Y P E S            */
 /******************************************************************************/
+static tBTM_STATUS BTM_ChangeEScoLinkParms(uint16_t sco_inx,
+                                           tBTM_CHG_ESCO_PARAMS* p_parms);
 
 static uint16_t btm_sco_voice_settings_to_legacy(enh_esco_params_t* p_parms);
-
-/*******************************************************************************
- *
- * Function         btm_sco_flush_sco_data
- *
- * Description      This function is called to flush the SCO data for this
- *                  channel.
- *
- * Returns          void
- *
- ******************************************************************************/
-static void btm_sco_flush_sco_data(UNUSED_ATTR uint16_t sco_inx) {}
 
 /*******************************************************************************
  *
@@ -184,6 +173,8 @@ static void btm_esco_conn_rsp(uint16_t sco_inx, uint8_t hci_status,
  *
  ******************************************************************************/
 void btm_route_sco_data(BT_HDR* p_msg) {
+  LOG_INFO("Received SCO packet from HCI. Dropping it since no handler so far");
+  // TODO(b/195344796): Implement the SCO over HCI data path
   osi_free(p_msg);
 }
 
@@ -861,8 +852,6 @@ bool btm_sco_removed(uint16_t hci_handle, tHCI_REASON reason) {
   for (xx = 0; xx < BTM_MAX_SCO_LINKS; xx++, p++) {
     if ((p->state != SCO_ST_UNUSED) && (p->state != SCO_ST_LISTENING) &&
         (p->hci_handle == hci_handle)) {
-      btm_sco_flush_sco_data(xx);
-
       p->state = SCO_ST_UNUSED;
       p->hci_handle = HCI_INVALID_HANDLE;
       p->rem_bd_known = false;
@@ -943,8 +932,6 @@ void btm_sco_acl_removed(const RawAddress* bda) {
   for (xx = 0; xx < BTM_MAX_SCO_LINKS; xx++, p++) {
     if (p->state != SCO_ST_UNUSED) {
       if ((!bda) || (p->esco.data.bd_addr == *bda && p->rem_bd_known)) {
-        btm_sco_flush_sco_data(xx);
-
         p->state = SCO_ST_UNUSED;
         p->esco.p_esco_cback = NULL; /* Deregister eSCO callback */
         (*p->p_disc_cb)(xx);
@@ -1070,12 +1057,8 @@ tBTM_STATUS BTM_RegForEScoEvts(uint16_t sco_inx,
  *                                 sco_inx.
  *
  ******************************************************************************/
-tBTM_STATUS BTM_ChangeEScoLinkParms(uint16_t sco_inx,
-                                    tBTM_CHG_ESCO_PARAMS* p_parms) {
-  if (BTM_MAX_SCO_LINKS == 0) {
-    return BTM_WRONG_MODE;
-  }
-
+static tBTM_STATUS BTM_ChangeEScoLinkParms(uint16_t sco_inx,
+                                           tBTM_CHG_ESCO_PARAMS* p_parms) {
   /* Make sure sco handle is valid and on an active link */
   if (sco_inx >= BTM_MAX_SCO_LINKS ||
       btm_cb.sco_cb.sco_db[sco_inx].state != SCO_ST_CONNECTED)

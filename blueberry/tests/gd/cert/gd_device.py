@@ -226,6 +226,7 @@ class GdAndroidDevice(GdDeviceBase):
     def setup(self):
         logging.info("Setting up device %s %s" % (self.label, self.serial_number))
         asserts.assert_true(self.adb.ensure_root(), "device %s cannot run as root", self.serial_number)
+        self.ensure_verity_disabled()
 
         # Try freeing ports and ignore results
         self.cleanup_port_forwarding()
@@ -237,7 +238,6 @@ class GdAndroidDevice(GdDeviceBase):
         self.tcp_reverse_or_die(self.signal_port, self.signal_port)
 
         # Push test binaries
-        self.ensure_verity_disabled()
         self.push_or_die(os.path.join(get_gd_root(), "target", "bluetooth_stack_with_facade"), "system/bin")
         self.push_or_die(
             os.path.join(get_gd_root(), "target", "android.system.suspend.control-V1-ndk.so"), "system/lib64")
@@ -354,6 +354,7 @@ class GdAndroidDevice(GdDeviceBase):
                           "syncing them by setting timezone to %s" % (device_tz, host_tz, target_timezone))
             self.adb.shell("setprop persist.sys.timezone %s" % target_timezone)
             self.reboot()
+            self.adb.remount()
             device_tz = self.adb.shell("date +%z")
             asserts.assert_equal(
                 host_tz, device_tz, "Device timezone %s still does not match host "
@@ -407,6 +408,7 @@ class GdAndroidDevice(GdDeviceBase):
                     "[%s] Failed to TCP forward host port %d to "
                     "device port %d, num_retries left is %d" % (self.label, host_port, device_port, num_retry))
                 self.reboot()
+                self.adb.remount()
                 return self.tcp_forward_or_die(host_port, device_port, num_retry=num_retry)
             asserts.fail(
                 'Unable to forward host port %d to device port %d, error %s' % (host_port, device_port, error_or_port))
@@ -434,6 +436,7 @@ class GdAndroidDevice(GdDeviceBase):
                     "[%s] Failed to TCP reverse device port %d to "
                     "host port %d, num_retries left is %d" % (self.label, device_port, host_port, num_retry))
                 self.reboot()
+                self.adb.remount()
                 return self.tcp_reverse_or_die(device_port, host_port, num_retry=num_retry)
             asserts.fail(
                 'Unable to reverse device port %d to host port %d, error %s' % (device_port, host_port, error_or_port))
