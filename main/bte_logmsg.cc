@@ -27,9 +27,7 @@
 #include <time.h>
 
 #include "avrc_api.h"
-#include "bt_common.h"
 #include "bta_api.h"
-#include "bte.h"
 #include "btm_api.h"
 #include "btu.h"
 #include "l2c_api.h"

@@ -20,13 +20,10 @@
 
 #include <base/callback.h>
 #include <base/location.h>
-#include <stdbool.h>
 
-#include "bt_types.h"
-#include "osi/include/allocator.h"
-#include "osi/include/fixed_queue.h"
 #include "osi/include/future.h"
-#include "osi/include/osi.h"
+#include "osi/include/osi.h"  // INVALID_FD
+#include "stack/include/bt_types.h"
 
 static const char HCI_MODULE[] = "hci_module";
 
@@ -53,15 +50,7 @@ static const char HCI_MODULE[] = "hci_module";
 #define LOCAL_BR_EDR_CONTROLLER_ID 0
 
 ///// END LEGACY DEFINITIONS /////
-
-typedef struct hci_hal_t hci_hal_t;
-typedef struct btsnoop_t btsnoop_t;
-typedef struct controller_t controller_t;
-typedef struct hci_inject_t hci_inject_t;
 typedef struct packet_fragmenter_t packet_fragmenter_t;
-typedef struct vendor_t vendor_t;
-
-typedef unsigned char* bdaddr_t;
 typedef uint16_t command_opcode_t;
 
 typedef void (*command_complete_cb)(BT_HDR* response, void* context);

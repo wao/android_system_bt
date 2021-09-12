@@ -40,14 +40,12 @@
 #include <hardware/bt_av.h>
 
 #include "avrc_defs.h"
-#include "bt_common.h"
 #include "bta_ag_api.h"
 #include "bta_api.h"
 #include "bta_av_api.h"
 #include "bta_hd_api.h"
 #include "bta_hf_client_api.h"
 #include "bta_hh_api.h"
-#include "bte.h"
 #include "btif_common.h"
 #include "btif_dm.h"
 #include "btu.h"

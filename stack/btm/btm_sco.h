@@ -92,7 +92,6 @@ typedef struct {
 
 /* SCO Management control block */
 typedef struct {
-  tBTM_SCO_IND_CBACK* app_sco_ind_cb;
   tSCO_CONN sco_db[BTM_MAX_SCO_LINKS];
   enh_esco_params_t def_esco_parms;
   bool esco_supported;        /* true if 1.2 cntlr AND supports eSCO links */
@@ -132,3 +131,9 @@ typedef struct {
 
 extern void btm_sco_chk_pend_rolechange(uint16_t hci_handle);
 extern void btm_sco_disc_chk_pend_for_modechange(uint16_t hci_handle);
+
+// Visible for test only
+BT_HDR* btm_sco_make_packet(std::vector<uint8_t> data, uint16_t sco_handle);
+
+// Send a SCO packet
+void btm_send_sco_packet(std::vector<uint8_t> data, uint16_t sco_handle);

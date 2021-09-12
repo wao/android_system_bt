@@ -20,12 +20,13 @@
 
 #include "check.h"
 #include "hci/include/buffer_allocator.h"
-#include "hci_internals.h"
 #include "hci_layer.h"
 #include "hci_packet_factory.h"
 #include "hcidefs.h"
 #include "osi/include/allocator.h"
 #include "stack/include/bt_hdr.h"
+
+#define HCI_COMMAND_PREAMBLE_SIZE 3
 
 static const allocator_t* buffer_allocator;
 

@@ -55,9 +55,6 @@ const bluetooth::legacy::hci::Interface& GetLegacyHciInterface() {
 /*               L O C A L    D A T A    D E F I N I T I O N S                */
 /******************************************************************************/
 
-#define BTM_SCO_PKT_TYPE_MASK \
-  (HCI_PKT_TYPES_MASK_HV1 | HCI_PKT_TYPES_MASK_HV2 | HCI_PKT_TYPES_MASK_HV3)
-
 /* MACROs to convert from SCO packet types mask to ESCO and back */
 #define BTM_SCO_PKT_TYPE_MASK \
   (HCI_PKT_TYPES_MASK_HV1 | HCI_PKT_TYPES_MASK_HV2 | HCI_PKT_TYPES_MASK_HV3)
@@ -87,18 +84,6 @@ static tBTM_STATUS BTM_ChangeEScoLinkParms(uint16_t sco_inx,
                                            tBTM_CHG_ESCO_PARAMS* p_parms);
 
 static uint16_t btm_sco_voice_settings_to_legacy(enh_esco_params_t* p_parms);
-
-/*******************************************************************************
- *
- * Function         btm_sco_flush_sco_data
- *
- * Description      This function is called to flush the SCO data for this
- *                  channel.
- *
- * Returns          void
- *
- ******************************************************************************/
-static void btm_sco_flush_sco_data(UNUSED_ATTR uint16_t sco_inx) {}
 
 /*******************************************************************************
  *
@@ -185,7 +170,45 @@ static void btm_esco_conn_rsp(uint16_t sco_inx, uint8_t hci_status,
  *
  ******************************************************************************/
 void btm_route_sco_data(BT_HDR* p_msg) {
+  if (p_msg->len < 3) {
+    LOG_ERROR("Received incomplete SCO header");
+    osi_free(p_msg);
+    return;
+  }
+  uint8_t* payload = p_msg->data;
+  uint16_t handle_with_flags = 0;
+  uint8_t length = 0;
+  STREAM_TO_UINT16(handle_with_flags, payload);
+  STREAM_TO_UINT8(length, payload);
+  if (p_msg->len != length + 3) {
+    LOG_ERROR("Received invalid SCO data of size: %hhu, dropping", length);
+    osi_free(p_msg);
+    return;
+  }
+  LOG_INFO("Received SCO packet from HCI. Dropping it since no handler so far");
+  // TODO(b/195344796): Implement the SCO over HCI data path
+  // std::vector<uint8_t> data(payload, payload + length);
   osi_free(p_msg);
+}
+
+void btm_send_sco_packet(std::vector<uint8_t> data, uint16_t sco_handle) {
+  BT_HDR* packet = btm_sco_make_packet(std::move(data), sco_handle);
+  bte_main_hci_send(packet, BT_EVT_TO_LM_HCI_SCO);
+}
+
+// Build a SCO packet from uint8
+BT_HDR* btm_sco_make_packet(std::vector<uint8_t> data, uint16_t sco_handle) {
+  ASSERT_LOG(data.size() <= BTM_SCO_DATA_SIZE_MAX, "Invalid SCO data size: %zu",
+             data.size());
+  BT_HDR* p_buf = (BT_HDR*)osi_calloc(BT_SMALL_BUFFER_SIZE);
+  p_buf->event = BT_EVT_TO_LM_HCI_SCO;
+  // SCO header size is 3 per Core 5.2 Vol 4 Part E 5.4.3 figure 5.3
+  p_buf->len = data.size() + 3;
+  uint8_t* payload = p_buf->data;
+  UINT16_TO_STREAM(payload, sco_handle);
+  UINT8_TO_STREAM(payload, data.size());
+  ARRAY_TO_STREAM(payload, data.data(), static_cast<int>(data.size()));
+  return p_buf;
 }
 
 /*******************************************************************************
@@ -644,28 +667,6 @@ void btm_sco_conn_req(const RawAddress& bda, const DEV_CLASS& dev_class,
     }
   }
 
-  /* TCS usage */
-  if (btm_cb.sco_cb.app_sco_ind_cb) {
-    /* Now, try to find an unused control block */
-    uint16_t sco_index;
-    for (sco_index = 0, p = &btm_cb.sco_cb.sco_db[0];
-         sco_index < BTM_MAX_SCO_LINKS; sco_index++, p++) {
-      if (p->state == SCO_ST_UNUSED) {
-        p->is_orig = false;
-        p->state = SCO_ST_LISTENING;
-
-        p->esco.data.link_type = link_type;
-        p->esco.data.bd_addr = bda;
-        p->rem_bd_known = true;
-        break;
-      }
-    }
-    if (sco_index < BTM_MAX_SCO_LINKS) {
-      btm_cb.sco_cb.app_sco_ind_cb(sco_index);
-      return;
-    }
-  }
-
   /* If here, no one wants the SCO connection. Reject it */
   BTM_TRACE_WARNING("%s: rejecting SCO for %s", __func__,
                     bda.ToString().c_str());
@@ -862,8 +863,6 @@ bool btm_sco_removed(uint16_t hci_handle, tHCI_REASON reason) {
   for (xx = 0; xx < BTM_MAX_SCO_LINKS; xx++, p++) {
     if ((p->state != SCO_ST_UNUSED) && (p->state != SCO_ST_LISTENING) &&
         (p->hci_handle == hci_handle)) {
-      btm_sco_flush_sco_data(xx);
-
       p->state = SCO_ST_UNUSED;
       p->hci_handle = HCI_INVALID_HANDLE;
       p->rem_bd_known = false;
@@ -944,8 +943,6 @@ void btm_sco_acl_removed(const RawAddress* bda) {
   for (xx = 0; xx < BTM_MAX_SCO_LINKS; xx++, p++) {
     if (p->state != SCO_ST_UNUSED) {
       if ((!bda) || (p->esco.data.bd_addr == *bda && p->rem_bd_known)) {
-        btm_sco_flush_sco_data(xx);
-
         p->state = SCO_ST_UNUSED;
         p->esco.p_esco_cback = NULL; /* Deregister eSCO callback */
         (*p->p_disc_cb)(xx);
@@ -1174,47 +1171,6 @@ void BTM_EScoConnRsp(uint16_t sco_inx, uint8_t hci_status,
       btm_cb.sco_cb.sco_db[sco_inx].state == SCO_ST_W4_CONN_RSP) {
     btm_esco_conn_rsp(sco_inx, hci_status,
                       btm_cb.sco_cb.sco_db[sco_inx].esco.data.bd_addr, p_parms);
-  }
-}
-
-/*******************************************************************************
- *
- * Function         btm_esco_proc_conn_chg
- *
- * Description      This function is called by BTIF when an SCO connection
- *                  is changed.
- *
- * Returns          void
- *
- ******************************************************************************/
-void btm_esco_proc_conn_chg(uint8_t status, uint16_t handle,
-                            uint8_t tx_interval, uint8_t retrans_window,
-                            uint16_t rx_pkt_len, uint16_t tx_pkt_len) {
-  tSCO_CONN* p = &btm_cb.sco_cb.sco_db[0];
-  tBTM_CHG_ESCO_EVT_DATA data;
-  uint16_t xx;
-
-  BTM_TRACE_EVENT("btm_esco_proc_conn_chg -> handle 0x%04x, status 0x%02x",
-                  handle, status);
-
-  for (xx = 0; xx < BTM_MAX_SCO_LINKS; xx++, p++) {
-    if (p->state == SCO_ST_CONNECTED && handle == p->hci_handle) {
-      /* If upper layer wants notification */
-      if (p->esco.p_esco_cback) {
-        data.bd_addr = p->esco.data.bd_addr;
-        data.hci_status = status;
-        data.sco_inx = xx;
-        data.rx_pkt_len = p->esco.data.rx_pkt_len = rx_pkt_len;
-        data.tx_pkt_len = p->esco.data.tx_pkt_len = tx_pkt_len;
-        data.tx_interval = p->esco.data.tx_interval = tx_interval;
-        data.retrans_window = p->esco.data.retrans_window = retrans_window;
-
-        tBTM_ESCO_EVT_DATA btm_esco_evt_data;
-        btm_esco_evt_data.chg_evt = data;
-        (*p->esco.p_esco_cback)(BTM_ESCO_CHG_EVT, &btm_esco_evt_data);
-      }
-      return;
-    }
   }
 }
 
