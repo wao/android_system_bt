@@ -1977,9 +1977,13 @@ void btif_dm_create_bond_out_of_band(const RawAddress bd_addr,
           bond_state_changed(BT_STATUS_FAIL, bd_addr, BT_BOND_STATE_NONE);
           return;
       }
+
       pairing_cb.is_local_initiated = true;
-      LOG_ERROR("Classic not implemented yet");
-      bond_state_changed(BT_STATUS_FAIL, bd_addr, BT_BOND_STATE_NONE);
+      BTIF_TRACE_EVENT("%s: bd_addr=%s, transport=%d", __func__,
+                   bd_addr.ToString().c_str(), transport);
+      btif_dm_create_bond(bd_addr, transport);
+      //LOG_ERROR("Classic not implemented yet");
+      //bond_state_changed(BT_STATUS_FAIL, bd_addr, BT_BOND_STATE_NONE);
       return;
     case BT_TRANSPORT_LE: {
       // Guess default RANDOM for address type for LE
@@ -2262,7 +2266,7 @@ void btif_dm_proc_io_req(tBTM_AUTH_REQ* p_auth_req, bool is_orig) {
   BTIF_TRACE_DEBUG("+%s: p_auth_req=%d", __func__, *p_auth_req);
   if (pairing_cb.is_local_initiated) {
     /* if initing/responding to a dedicated bonding, use dedicate bonding bit */
-    *p_auth_req = BTA_AUTH_DD_BOND | BTA_AUTH_SP_YES;
+    *p_auth_req = BTA_AUTH_GEN_BOND | BTM_AUTH_SP_NO;
   } else if (!is_orig) {
     /* peer initiated paring. They probably know what they want.
     ** Copy the mitm from peer device.
@@ -2580,6 +2584,7 @@ bool btif_dm_get_smp_config(tBTE_APPL_CFG* p_cfg) {
 
 bool btif_dm_proc_rmt_oob(const RawAddress& bd_addr, Octet16* p_c,
                           Octet16* p_r) {
+#if 0
   const char* path_a = "/data/misc/bluedroid/LOCAL/a.key";
   const char* path_b = "/data/misc/bluedroid/LOCAL/b.key";
   const char* path = NULL;
@@ -2605,6 +2610,10 @@ bool btif_dm_proc_rmt_oob(const RawAddress& bd_addr, Octet16* p_c,
   (void)fread(p_c->data(), 1, OCTET16_LEN, fp);
   (void)fread(p_r->data(), 1, OCTET16_LEN, fp);
   fclose(fp);
+#endif
+
+  memcpy( p_c->data(), oob_cb.p256_data.c, 16);
+  memcpy( p_r->data(), oob_cb.p256_data.r, 16);
 
   bond_state_changed(BT_STATUS_SUCCESS, bd_addr, BT_BOND_STATE_BONDING);
   return true;

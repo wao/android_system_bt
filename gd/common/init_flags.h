@@ -34,11 +34,11 @@ class InitFlags final {
     if (tag_setting != logging_debug_explicit_tag_settings.end()) {
       return tag_setting->second;
     }
-    return logging_debug_enabled_for_all;
+    return true;
   }
 
   inline static bool IsDebugLoggingEnabledForAll() {
-    return logging_debug_enabled_for_all;
+    return true;
   }
 
   inline static int GetAdapterIndex() {
