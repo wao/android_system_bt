@@ -1954,6 +1954,7 @@ void btif_dm_create_bond_out_of_band(const RawAddress bd_addr,
   uint8_t empty[] = {0, 0, 0, 0, 0, 0, 0};
   switch (transport) {
     case BT_TRANSPORT_BR_EDR:
+#if 0
       // TODO(182162589): Flesh out classic impl in legacy BTMSec
       // Nothing to do yet, but not an error
 
@@ -1977,6 +1978,7 @@ void btif_dm_create_bond_out_of_band(const RawAddress bd_addr,
           bond_state_changed(BT_STATUS_FAIL, bd_addr, BT_BOND_STATE_NONE);
           return;
       }
+#endif
 
       pairing_cb.is_local_initiated = true;
       BTIF_TRACE_EVENT("%s: bd_addr=%s, transport=%d", __func__,
@@ -2297,11 +2299,7 @@ void btif_dm_proc_io_rsp(UNUSED_ATTR const RawAddress& bd_addr,
 }
 
 void btif_dm_set_oob_for_io_req(tBTM_OOB_DATA* p_has_oob_data) {
-  if (is_empty_128bit(oob_cb.p192_data.c)) {
-    *p_has_oob_data = false;
-  } else {
-    *p_has_oob_data = true;
-  }
+  *p_has_oob_data = oob_cb.data_present;
   BTIF_TRACE_DEBUG("%s: *p_has_oob_data=%d", __func__, *p_has_oob_data);
 }
 

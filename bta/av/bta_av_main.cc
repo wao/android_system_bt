@@ -807,8 +807,6 @@ static void bta_av_sys_rs_cback(UNUSED_ATTR tBTA_SYS_CONN_STATUS status,
   tHCI_ROLE cur_role;
   uint8_t peer_idx = 0;
 
-  return;
-
   APPL_TRACE_DEBUG(
       "%s: peer %s new_role:%d hci_status:0x%x bta_av_cb.rs_idx:%d", __func__,
       peer_addr.ToString().c_str(), id, app_id, bta_av_cb.rs_idx);

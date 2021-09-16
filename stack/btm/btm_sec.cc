@@ -2588,8 +2588,7 @@ void btm_io_capabilities_req(const RawAddress& p) {
                     __func__, evt_data.auth_req);
   }
 
-  evt_data.auth_req = 0x04;
-  evt_data.oob_data = 0x03;
+  //evt_data.auth_req = 0x04;
 
   /* if the user does not indicate "reply later" by setting the oob_data to
    * unknown */
@@ -3367,7 +3366,7 @@ void btm_sec_connected(const RawAddress& bda, uint16_t handle,
                        tHCI_STATUS status, uint8_t enc_mode,
                        tHCI_ROLE assigned_role) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bda);
-  //tBTM_STATUS res;
+  tBTM_STATUS res;
   bool is_pairing_device = false;
   bool addr_matched;
   uint8_t bit_shift = 0;
@@ -3628,14 +3627,12 @@ void btm_sec_connected(const RawAddress& bda, uint16_t handle,
   /* been scheduled while connection was down */
   LOG_DEBUG("Is connection locally initiated:%s",
             logbool(p_dev_rec->is_originator).c_str());
-#if 0
   if (!(p_dev_rec->sec_flags & BTM_SEC_NAME_KNOWN) ||
       p_dev_rec->is_originator) {
     res = btm_sec_execute_procedure(p_dev_rec);
     if (res != BTM_CMD_STARTED)
       btm_sec_dev_rec_cback_event(p_dev_rec, res, false);
   }
-#endif
   return;
 }
 
