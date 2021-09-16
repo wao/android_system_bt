@@ -729,6 +729,7 @@ typedef enum : uint16_t {
 #define HCI_EIR_OOB_COD_TYPE 0x0D
 #define HCI_EIR_OOB_SSP_HASH_C_TYPE 0x0E
 #define HCI_EIR_OOB_SSP_RAND_R_TYPE 0x0F
+#define HCI_EIR_RSI_TYPE 0x2E
 
 /* Definitions for Write Simple Pairing Mode */
 #define HCI_SP_MODE_ENABLED 0x01
@@ -833,7 +834,6 @@ typedef enum : uint8_t {
  * This is 1-byte for opcode and 1 byte for length
 */
 #define HCIE_PREAMBLE_SIZE 2
-#define HCI_SCO_PREAMBLE_SIZE 3
 
 // Packet boundary flags
 constexpr uint8_t kFIRST_NON_AUTOMATICALLY_FLUSHABLE = 0x0;

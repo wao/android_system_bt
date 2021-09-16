@@ -26,12 +26,12 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/poll.h>
 #include <sys/prctl.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -42,7 +42,6 @@
 #include <set>
 
 #include "audio_a2dp_hw/include/audio_a2dp_hw.h"
-#include "bt_common.h"
 #include "bt_trace.h"
 #include "bt_utils.h"
 #include "osi/include/osi.h"

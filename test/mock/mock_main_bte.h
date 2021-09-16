@@ -36,9 +36,7 @@ extern std::map<std::string, int> mock_function_count_map;
 //       may need attention to prune the inclusion set.
 #include <base/logging.h>
 #include <hardware/bluetooth.h>
-#include "bt_common.h"
 #include "btcore/include/module.h"
-#include "bte.h"
 #include "btif/include/btif_config.h"
 #include "btu.h"
 #include "device/include/interop.h"
